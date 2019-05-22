@@ -49,8 +49,12 @@ static int tn_dev_init_send(struct tn_device* device, void** packets_base_addr, 
 {
 }
 
+static int tn_dev_start(struct tn_device* device)
+{
+}
+
 // Initialization; returns 0 or error code.
-int tn_dev_init_all(void)
+int tn_dev_init(void)
 {
 	// Allocate a 2MB hugepage, enough for 128 16KB buffers
 	void* hugepage = tn_hp_allocate(128 * 16 * 1024);
