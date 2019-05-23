@@ -35,7 +35,10 @@
 // Operations on the NIC
 
 // Macros that assume _READ and _WRITE primitives for the given type
-// TODO reconsider whether we need this abomination
+// TODO uniform representation for registers? i.e. even those with a single one could take an index...
+#define _IXGBE_WRITE(type, addr, reg, index, field, value) \
+		IXGBE_##type_WRITE(addr, IXGBE_##type_##reg(index), \
+				((IXGBE_##type_READ(addr, IXGBE_##type_##reg(index)) & ~IXGBE_##type_##reg_##field) | ((value << TRAILING_ZEROES(IXGBE_##type_##reg_##field)) & IXGBE_##type_##reg_##field)))
 #define _IXGBE_WRITE(type, addr, reg, field, value) \
 		IXGBE_##type_WRITE(addr, IXGBE_##type_##reg, \
 				((IXGBE_##type_READ(addr, IXGBE_##type_##reg) & ~IXGBE_##type_##reg_##field) | ((value << TRAILING_ZEROES(IXGBE_##type_##reg_##field)) & IXGBE_##type_##reg_##field)))
@@ -45,6 +48,7 @@
 
 #define IXGBE_REG_READ(addr, reg) ???
 #define IXGBE_REG_WRITE(addr, reg, value) ???
+#define IXGBE_REG_WRITE(addr, reg, index, field, value) _IXGBE_WRITE(type, addr, reg, index, field, value)
 #define IXGBE_REG_WRITE(addr, reg, field, value) _IXGBE_WRITE(type, addr, reg, field, value)
 #define IXGBE_REG_CLEARED(addr, reg, field) _IXGBE_CLEARED(REG, addr, reg, field)
 #define IXGBE_REG_SET(addr, reg, field) _IXGBE_SET(REG, addr, reg, field)
@@ -75,6 +79,10 @@
 #define IXGBE_REG_CTRL 0x00000
 #define IXGBE_REG_CTRL_MASTERDISABLE BIT(2)
 #define IXGBE_REG_CTRL_LRST BIT(3)
+
+// Section 8.2.3.9.1 DMA Tx TCP Max Allow Size Requests
+#define IXGBE_REG_DTXMXSZRQ 0x08100
+#define IXGBE_REG_DTXMXSZRQ_MAXBYTESNUMREQ BITS(0,11)
 
 // Section 8.2.3.2.1 EEPROM/Flash Control Register
 #define IXGBE_REG_EEC 0x10010
@@ -118,6 +126,10 @@
 #define IXGBE_REG_HLREG0 0x04240
 #define IXGBE_REG_HLREG0_LPBK BIT(15)
 
+// Section 8.2.3.22.34 MAC Flow Control Register
+#define IXGBE_REG_MFLCN 0x04294
+#define IXGBE_REG_MFLCN_RFCE BIT(3)
+
 // Section 8.2.3.7.10 MAC Pool Select Array
 #define IXGBE_MPSAR_REGISTERS_COUNT 256
 #define IXGBE_REG_MPSAR(n) (0x0A600 + 4*n)
@@ -138,6 +150,24 @@
 #define IXGBE_PFVLVFB_REGISTERS_COUNT 128
 #define IXGBE_REG_PFVLVFB(n) (0x0F200 + 4*n)
 
+// Section 8.2.3.8.8 Receive DMA Control Register
+#define IXGBE_REG_RDRXCTL 0x02F00
+#define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
+
+#define IXGBE_REG_RXCTRL 0x03000
+#define IXGBE_REG_RXCTRL_RXEN BIT(0)
+
+#define IXGBE_REG_RXDCTL(n) (n <= 63 ? (0x01028 + 0x40*n) : (0x0D028 + 0x40*(n-64)))
+#define IXGBE_REG_RXDCTL_ENABLE BIT(25)
+
+// Section 8.2.3.8.9 Receive Packe Buffer Size
+#define IXGBE_RXPBSIZE_REGISTERS_COUNT 8
+#define IXGBE_REG_RXPBSIZE(n) (0x03C00 + 4*n)
+#define IXGBE_REG_RXPBSIZE_SIZE BITS(10,19)
+
+#define IXGBE_REG_STATUS 0x00008
+#define IXGBE_REG_STATUS_MASTERENABLE BIT(19)
+
 #define IXGBE_REG_SWFWSYNC 0x10160
 #define IXGBE_REG_SWFWSYNC_SW BITS(0,4)
 #define IXGBE_REG_SWFWSYNC_FW BITS(5,9)
@@ -146,18 +176,14 @@
 #define IXGBE_REG_SWSM_SMBI    BIT(0)
 #define IXGBE_REG_SWSM_SWESMBI BIT(1)
 
-// Section 8.2.3.8.8 Receive DMA Control Register
-#define IXGBE_REG_RDRXCTL 0x02F00
-#define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
+#define IXGBE_TXPBSIZE_REGISTERS_COUNT 8
+#define IXGBE_REG_TXPBSIZE(n) (0x0CC00 + 4*n)
+#define IXGBE_REG_TXPBSIZE_SIZE BITS(10,19)
 
-#define IXGBE_REG_RXCTRL 0x03000
-#define IXGBE_REG_RXCTRL_RXEN BIT(0)
-
-#define IXGBE_REG_RXDCTL(queue) (queue <= 63 ? (0x01028 + 0x40*queue) : (0x0D028 + 0x40*(queue-64)))
-#define IXGBE_REG_RXDCTL_ENABLE BIT(25)
-
-#define IXGBE_REG_STATUS 0x00008
-#define IXGBE_REG_STATUS_MASTERENABLE BIT(19)
+// Section 8.2.3.9.16 Tx Packet Buffer Threshold
+#define IXGBE_TXPBTHRESH_REGISTERS_COUNT 8
+#define IXGBE_REG_TXPBTHRESH(n) (0x04950 + 4*n)
+#define IXGBE_REG_TXPBTHRESH_THRESH BITS(0,9)
 
 // ----------------------------------------------------
 // Section 10.5.4 Software and Firmware Synchronization
@@ -629,25 +655,70 @@ static bool ixgbe_device_init(uint64_t addr)
 	//		"Set the configuration bits as specified in Section 4.6.11.3.1 with the following exceptions:"
 	//		"Disable multiple packet buffers and allocate all queues and traffic to PB0:"
 	//		"- RXPBSIZE[0].SIZE=0x200, RXPBSIZE[1-7].SIZE=0x0"
+	//		Section 8.2.3.8.9 Receive Packet Buffer Size (RXPBSIZE[n]):
+	//			"SIZE, Init val 0x200"
+	//			"The default size of PB[1-7] is also 512 KB but it is meaningless in non-DCB mode."
+	// INTERPRETATION: We do not need to change PB[0]. Let's stay on the safe side and clear PB[1-7] to 0 anyway.
+	for (int n = 1; n < IXGBE_RXPBSIZE_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(addr, RXPBSIZE(0));
+	}
 	//		"- TXPBSIZE[0].SIZE=0xA0, TXPBSIZE[1-7].SIZE=0x0"
+	//		Section 8.2.3.9.13 Transmit Packet Buffer Size (TXPBSIZE[n]):
+	//			"SIZE, Init val 0xA0"
+	//			"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
+	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
+	for (int n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(addr, TXPBSIZE(0));
+	}
 	//		"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
+	// INTERPRETATION: Typo in the spec; should be TXPBTHRESH[0].THRESH
+	//		Section 8.2.3.9.16 Tx Packet Buffer Threshold (TXPBTHRESH):
+	//			"Default values: 0x96 for TXPBSIZE0, 0x0 for TXPBSIZE1-7."
+	// INTERPRETATION: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
+	// Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
+	IXGBE_REG_WRITE(addr, TXPBTHRESH, 0, THRESH, 0xA0);
 	//		"- MRQC and MTQC"
 	//			"- Set MRQE to 0xxxb, with the three least significant bits set according to the RSS mode"
+	// 			Section 8.2.3.7.12 Multiple Receive Queues Command Register (MRQC): "MRQE, Init Val 0x0; 0000b = RSS disabled"
+	// Thus we do not need to modify MRQC.
 	//			"- Clear both RT_Ena and VT_Ena bits in the MTQC register."
 	//			"- Set MTQC.NUM_TC_OR_Q to 00b."
+	//			Section 8.2.3.9.15 Multiple Transmit Queues Command Register (MTQC):
+	//				"RT_Ena, Init val 0b"
+	//				"VT_Ena, Init val 0b"
+	//				"NUM_TC_OR_Q, Init val 00b"
+	// Thus we do not need to modify MTQC.
 	//		"- Clear PFVTCTL.VT_Ena (as the MRQC.VT_Ena)"
+	//		Section 8.2.3.27.1 VT Control Register (PFVTCTL):
+	//			"VT_Ena, Init val 0b"
+	// Thus we do not need to modify PFVTCTL.
 	//		(from 4.6.11.3.1) "Queue Drop Enable (PFQDE) — In SR-IO the QDE bit should be set to 1b in the PFQDE register for all queues. In VMDq mode, the QDE bit should be set to 0b for all queues."
-	//		(from 4.6.11.3.1) "Split receive control (SRRCTL[0-127]): Drop_En=1 — drop policy for all the queues, in order to avoid crosstalk between VMs"
+	// ASSUMPTION: We do not need SR-IO or VMDq.
+	// INTERPRETATION: We do not need to change PFQDE.
 	//		"- Rx UP to TC (RTRUP2TC), UPnMAP=0b, n=0,...,7"
+	//		Section 8.2.3.10.4 DCB Receive User Priority to Traffic Class (RTRUP2TC): All init vals = 0
+	// Thus we do not need to modify RTRUP2TC.
 	//		"- Tx UP to TC (RTTUP2TC), UPnMAP=0b, n=0,...,7"
+	//		Section 8.2.3.10.5 DCB Transmit User Priority to Traffic Class (RTTUP2TC): All init vals = 0
+	// Thus we do not need to modify RTTUP2TC.
 	//		"- DMA TX TCP Maximum Allowed Size Requests (DTXMXSZRQ) — set Max_byte_num_req = 0xFFF = 1 MB"
+	IXGBE_REG_WRITE(addr, DTXMXSZRQ, MAXBYTESNUMREQ, 0xFFF);
 	//		"Allow no-drop policy in Rx:"
 	//		"- PFQDE: The QDE bit should be set to 0b in the PFQDE register for all queues enabling per queue policy by the SRRCTL[n] setting."
+	//		Section 8.2.3.27.9 PF PF Queue Drop Enable Register (PFQDE): "QDE, Init val 0b"
+	// Thus we do not need to modify PFQDE.
 	//		"- Split Receive Control (SRRCTL[0-127]): The Drop_En bit should be set per receive queue according to the required drop / no-drop policy of the TC of the queue."
+	//		Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]): "Drop_En, Init val 0b; Drop Enabled."
+	// ASSUMPTION: We do not want to drop packets.
+	// Thus we do not need to modify SRRCTL.
 	//		"Disable PFC and enable legacy flow control:"
 	//		"- Disable receive PFC via: MFLCN.RPFCE=0b"
+	//		Section 8.2.3.22.34 MAC Flow Control Register (MFLCN): "RPFCE, Init val 0b"
+	// Thus we do not need to modify MFLCN.
 	//		"- Enable receive legacy flow control via: MFLCN.RFCE=1b"
+	IXGBE_REG_WRITE(addr, MFLCN, RFCE, 1);
 	//		"- Enable transmit legacy flow control via: FCCFG.TFCE=01b"
+	IXGBE_REG_WRITE(addr, FCCFG, TFCE, 1);
 	//		"Reset all arbiters:"
 	//		"- Clear RTTDT1C register, per each queue, via setting RTTDQSEL first"
 	//		"- Clear RTTDT2C[0-7] registers"
