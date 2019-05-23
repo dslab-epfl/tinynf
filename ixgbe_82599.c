@@ -66,9 +66,11 @@
 #define IXGBE_PCIREG_DEVICESTATUS_TRANSACTIONPENDING BIT(5)
 
 
-// -------------------------------------------------------------
-// Registers, in alphabetical order, along with their sub-values
-// -------------------------------------------------------------
+// ---------------------------------------------------------
+// Registers, in alphabetical order, along with their fields
+// ---------------------------------------------------------
+
+// TODO eliminate all "count" variables, and express them in terms of primitive counts instead (#pools, #MACs, ...)
 
 #define IXGBE_REG_CTRL 0x00000
 #define IXGBE_REG_CTRL_MASTERDISABLE BIT(2)
@@ -81,6 +83,9 @@
 
 #define IXGBE_REG_EIMC(n) (n == 0 ? 0x00888 : (0x00AB0 + 4*(n-1)))
 #define IXGBE_REG_EIMC_MASK BITS(0,31)
+
+// Section 8.2.3.3.7 Flow Control Configuration
+#define IXGBE_REG_FCCFG 0x03D00
 
 // Section 8.2.3.3.2 Flow Control Transmit Timer Value n
 #define IXGBE_FCTTV_REGISTERS_COUNT 4
@@ -97,8 +102,12 @@
 // Section 8.2.3.3.5 Flow Control Refresh Threshold Value
 #define IXGBE_REG_FCRTV 0x032A0
 
-// Section 8.2.3.3.7 Flow Control Configuration
-#define IXGBE_REG_FCCFG 0x03D00
+// Section 8.2.3.7.1 Filter Control Register (FCTRL)
+#define IXGBE_REG_FCTRL 0x05080
+
+// Section 8.2.3.7.19 Five tuple Queue Filter
+#define IXGBE_FTQF_REGISTERS_COUNT 128
+#define IXGBE_REG_FTQF(n) (0x0E600 + 4*n)
 
 #define IXGBE_REG_FWSM 0x10148
 #define IXGBE_REG_FWSM_EXTERRIND BITS(19,24)
@@ -108,6 +117,26 @@
 
 #define IXGBE_REG_HLREG0 0x04240
 #define IXGBE_REG_HLREG0_LPBK BIT(15)
+
+// Section 8.2.3.7.10 MAC Pool Select Array
+#define IXGBE_MPSAR_REGISTERS_COUNT 256
+#define IXGBE_REG_MPSAR(n) (0x0A600 + 4*n)
+
+// Section 8.2.3.7.7 Multicast Table Array
+#define IXGBE_MTA_REGISTERS_COUNT 128
+#define IXGBE_REG_MTA(n) (0x05200 + 4*n)
+
+// Section 8.2.3.27.17 PF Unicast Table Array
+#define IXGBE_PFUTA_REGISTERS_COUNT 128
+#define IXGBE_REG_PFUTA(n) (0x0F400 + 4*n)
+
+// Section 8.2.3.27.15 PF VM VLAN Pool Filter
+#define IXGBE_PFVLVF_REGISTERS_COUNT 64
+#define IXGBE_REG_PFVLVF(n) (0x0F100 + 4*n)
+
+// Section 8.2.3.27.16 PF VM VLAN Pool Filter Bitmap
+#define IXGBE_PFVLVFB_REGISTERS_COUNT 128
+#define IXGBE_REG_PFVLVFB(n) (0x0F200 + 4*n)
 
 #define IXGBE_REG_SWFWSYNC 0x10160
 #define IXGBE_REG_SWFWSYNC_SW BITS(0,4)
@@ -135,6 +164,7 @@
 // ----------------------------------------------------
 
 // NOTE: For simplicity, we always gain/release control of all resources
+// TODO: Do we really need this part?
 
 // "Gaining Control of Shared Resource by Software"
 static void ixgbe_lock_swsm(uint64_t addr, bool* out_sw_malfunction, bool* out_fw_malfunction)
@@ -443,10 +473,205 @@ static bool ixgbe_device_init(uint64_t addr)
 	// INTERPRETATION: We don't need to do anything here.
 
 	// "- Initialize receive (see Section 4.6.7)."
-	???
+	// Section 4.6.7 Receive Initialization
+	//	"Initialize the following register tables before receive and transmit is enabled:"
+
+	//	"- Receive Address (RAL[n] and RAH[n]) for used addresses."
+	//	"Program the Receive Address register(s) (RAL[n], RAH[n]) per the station address
+	//	 This can come from the EEPROM or from any other means (for example, it could be stored anywhere in the EEPROM or even in the platform PROM for LOM design)."
+	//	Section 8.2.3.7.9 Receive Address High (RAH[n]):
+	//		"After reset, if the EEPROM is present, the first register (Receive Address Register 0) is loaded from the IA field in the EEPROM, its Address Select field is 00b, and its Address Valid field is 1b."
+	// INTERPRETATION: Since we checked that the EEPROM is present and valid, RAH[0] and RAL[0] are initialized from the EEPROM, thus we do not need to initialize them.
+
+	//	"- Receive Address High (RAH[n].VAL = 0b) for unused addresses."
+	//	Section 8.2.3.7.9 Receive Address High (RAH[n]):
+	//		"After reset, if the EEPROM is present, the first register (Receive Address Register 0) is loaded [...] The Address Valid field for all of the other registers are 0b."
+	// INTERPRETATION: Since we checked that the EEPROM is present and valid, RAH[n] for n != 0 has Address Valid == 0, thus we do not need to initialize them.
+
+	//	"- Unicast Table Array (PFUTA)."
+	//	Section 8.2.3.27.12 PF Unicast Table Array (PFUTA[n]):
+	//		"This table should be zeroed by software before start of operation."
+	for (int n = 0; n < IXGBE_PFUTA_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(addr, PFUTA(n));
+	}
+
+	//	"- VLAN Filter Table Array (VFTA[n])."
+	//	Section 7.1.1.2 VLAN Filtering:
+	//		Figure 7-3 states that matching to a valid VFTA[n] is only done if VLNCTRL.VFE is set.
+	//	Section 8.2.3.7.2 VLAN Control Register (VLNCTRL):
+	//		"VFE: Bit 30; Init val: 0; VLAN Filter Enable. 0b = Disabled (filter table does not decide packet acceptance)"
+	// INTERPRETATION: By default, VLAN filtering is disabled, and the value of VFTA[n] does not matter; thus we do not need to initialize them.
+
+	//	"- VLAN Pool Filter (PFVLVF[n])."
+	// INTERPRETATION: While the spec appears to mention PFVLVF only in conjunction with VLNCTRL.VFE being enabled, let's be conservative and initialize them anyway.
+	// 	Section 8.2.3.27.15 PF VM VLAN Pool Filter (PFVLVF[n]):
+	//		"Software should initialize these registers before transmit and receive are enabled."
+	for (int n = 0; n < IXGBE_PFVLVF_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(addr, PFVLVF(n));
+	}
+
+	//	"- MAC Pool Select Array (MPSAR[n])."
+	//	Section 8.2.3.7.10 MAC Pool Select Array (MPSAR[n]):
+	//		"Software should initialize these registers before transmit and receive are enabled."
+	//		"Each couple of registers '2*n' and '2*n+1' are associated with Ethernet MAC address filter 'n' as defined by RAL[n] and RAH[n].
+	//		 Each bit when set, enables packet reception with the associated pools as follows:
+	//		 Bit 'i' in register '2*n' is associated with POOL 'i'.
+	//		 Bit 'i' in register '2*n+1' is associated with POOL '32+i'."
+	// INTERPRETATION: We should enable all pools with address 0, just in case, and disable everything else since we only have 1 MAC address.
+	IXGBE_REG_WRITE(addr, MPSAR(0), 0xFFFFFFFF);
+	IXGBE_REG_WRITE(addr, MPSAR(1), 0xFFFFFFFF);
+	for (int n = 2; n < IXGBE_MPSAR_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(addr, MPSAR(n));
+	}
+
+	//	"- VLAN Pool Filter Bitmap (PFVLVFB[n])."
+	// INTERPRETATION: See above remark on PFVLVF
+	//	Section 8.2.3.27.16: PF VM VLAN Pool Filter Bitmap
+	for (int n = 0; n < IXGBE_PFVLVFB_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(addr, PFVLVFB(n));
+	}
+
+	//	"Set up the Multicast Table Array (MTA) registers.
+	//	 This entire table should be zeroed and only the desired multicast addresses should be permitted (by writing 0x1 to the corresponding bit location).
+	//	 Set the MCSTCTRL.MFE bit if multicast filtering is required."
+	for (int n = 0; n < IXGBE_MTA_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(addr, MTA(n));
+	}
+
+	//	"Initialize the flexible filters 0...5 — Flexible Host Filter Table registers (FHFT)."
+	//	Section 5.3.3.2 Flexible Filter:
+	//		"The 82599 supports a total of six host flexible filters.
+	//		 Each filter can be configured to recognize any arbitrary pattern within the first 128 bytes of the packet.
+	//		 To configure the flexible filter, software programs the required values into the Flexible Host Filter Table (FHFT).
+	//		 These contain separate values for each filter.
+	//		 Software must also enable the filter in the WUFC register, and enable the overall wake-up functionality must be enabled by setting the PME_En bit in the PMCSR or the WUC register."
+	//	Section 8.2.3.24.2 Wake Up Filter Control Register (WUFC):
+	//		"FLX{0-5}: Bits {16-21}; Init val 0b; Flexible Filter {0-5} Enable"
+	// ASSUMPTION: We do not want flexible filters.
+	// INTERPRETATION: Since WUFC.FLX{0-5} are disabled by default, and FHFT(n) only matters if the corresponding WUFC.FLX is enabled, we do not need to do anything as we do not want flexible filters.
+
+	//	"After all memories in the filter units previously indicated are initialized, enable ECC reporting by setting the RXFECCERR0.ECCFLT_EN bit."
+	//	Section 8.2.3.7.23 Rx Filter ECC Err Insertion 0 (RXFECCERR0):
+	//		"Filter ECC Error indication Enablement.
+	//		 When set to 1b, enables the ECC-INT + the RXF-blocking during ECC-ERR in one of the Rx filter memories.
+	//		 At 0b, the ECC logic can still function overcoming only single errors while dual or multiple errors can be ignored silently."
+	// INTERPRETATION: Since we do not want flexible filters, this step is not necessary.
+
+	//	"Program the different Rx filters and Rx offloads via registers FCTRL, VLNCTRL, MCSTCTRL, RXCSUM, RQTC, RFCTL, MPSAR, RSSRK, RETA, SAQF, DAQF, SDPQF, FTQF, SYNQF, ETQF, ETQS, RDRXCTL, RSCDBU."
+	//	"Note that RDRXCTL.CRCStrip and HLREG0.RXCRCSTRP must be set to the same value. At the same time the RDRXCTL.RSCFRSTSIZE should be set to 0x0 as opposed to its hardware default."
+	//	Section 8.2.3.7.1 Filter Control Register (FCTRL):
+	//		"Bit 1, Store Bad Bacpets; 0b = Do not store."
+	//		"Bit 8, Multicast Promiscuous Enable. 1b = Enabled."
+	//		"Bit 9, Unicast Promiscuous Enable. 1b = Enabled."
+	//		"Bit 10, Broadcast Accept Mode. 1b = Accept broadcast packets to host."
+	//		all other bits are "Reserved"
+	// We want to receive all good packets, thus we disable bad packet store but enable promiscuous and broadcast accept.
+	IXGBE_REG_WRITE(addr, FCTRL, BITS(8,10));
+	//	Section 8.2.3.7.2 VLAN Control Register (VLNCTRL):
+	//		"Bit 30, VLAN Filter Enable, Init val 0b; 0b = Disabled."
+	// ASSUMPTION: We do not want VLAN handling.
+	// INTERPRETATION: Since we do not want VLAN handling, we do not need to set up VLNCTRL.
+	//	Section 8.2.3.7.2 Multicast Control Register (MCSTCTRL):
+	//		"Bit 2, Multicast Filter Enable, Init val 0b; 0b = The multicast table array filter (MTA[n]) is disabled."
+	// ASSUMPTION: We do not want multicast filtering.
+	// INTERPRETATION: Since multicast filtering is disabled by default, we do not need to set up MCSTCTRL.
+	// 	Section 8.2.3.7.5 Receive Checksum Control (RXCSUM):
+	//		"Bit 12, Init val 0b, IP Payload Checksum Enable."
+	//		"Bit 13, Init val 0b, RSS/Fragment Checksum Status Selection."
+	//		"The Receive Checksum Control register controls the receive checksum offloading features of the 82599."
+	// ASSUMPTION: We do not want receive checksum offloading.
+	// INTERPRETATION: Since checksum offloading is disabled by default, we do not need to set up RXCSUM.
+	//	Section 8.2.3.7.13 RSS Queues Per Traffic Class Register (RQTC):
+	//		"RQTC{0-7}, This field is used only if MRQC.MRQE equals 0100b or 0101b."
+	//	Section 8.2.3.7.12 Multiple Receive Queues Command Register (MRQC):
+	//		"MRQE, Init val 0x0"
+	// ASSUMPTION: We do not want RSS.
+	// INTERPRETATION: Since RSS is disabled by default, we do not need to do anything.
+	//	Section 8.2.3.7.6 Receive Filter Control Register (RFCTL):
+	//		"Bit 5, Init val 0b; RSC Disable. The default value is 0b (RSC feature is enabled)."
+	//		"Bit 6, Init val 0b; NFS Write disable."
+	//		"Bit 7, Init val 0b; NFS Read disable."
+	// ASSUMPTION: We want RSC since it makes software processing easier.
+	// ASSUMPTION: We do not care about NFS.
+	// INTERPRETATION: We do not need to write to RFCTL.
+	// We already initialized MPSAR earlier.
+	//	Section 4.6.10.1.1 Global Filtering and Offload Capabilities:
+	//		"In RSS mode, the RSS key (RSSRK) and redirection table (RETA) should be programmed."
+	// INTERPRETATION: Since we do not want RSS, we do not need to touch RSSRK or RETA.
+	//	Section 8.2.3.7.19 Five tuple Queue Filter (FTQF[n]):
+	//		All bits have an unspecified default value.
+	//		"Mask, bits 29:25: Mask bits for the 5-tuple fields (1b = don’t compare)."
+	//		"Queue Enable, bit 31; When set, enables filtering of Rx packets by the 5-tuple defined in this filter to the queue indicated in register L34TIMIR."
+	// ASSUMPTION: We do not want 5-tuple filtering.
+	// INTERPRETATION: We clear Queue Enable, and set the mask to 0b11111 just in case. We then do not need to deal with SAQF, DAQF, SDPQF, SYNQF.
+	for (int n = 0; n < IXGBE_FTQF_REGISTERS_COUNT; n++) {
+		IXGBE_REG_SET(addr, FTQF(n), MASK);
+		IXGBE_REG_CLEAR(addr, FTQF(n), QUEUEENABLE);
+	}
+	//	Section 7.1.2.3 L2 Ethertype Filters:
+	//		"The following flow is used by the Ethertype filters:
+	//		 1. If the Filter Enable bit is cleared, the filter is disabled and the following steps are ignored."
+	//	Section 8.2.3.7.21 EType Queue Filter (ETQF[n]):
+	//		"Bit 31, Filter Enable, Init val 0b; 0b = The filter is disabled for any functionality."
+	// ASSUMPTION: We do not want L2 ethertype filtering.
+	// INTERPRETATION: Since filters are disabled by default, we do not need to do anything to ETQF and ETQS.
+	//	Section 8.2.3.8.8 Receive DMA Control Register (RDRXCTL):
+	//		The only non-reserved, non-RO bit is "CRCStrip, bit 1, Init val 0; 0b = No CRC Strip by HW."
+	// ASSUMPTION: We do not want HW CRC strip.
+	// INTERPRETATION: We do not need to change RDRXCTL.
+	//	Section 8.2.3.8.12 RSC Data Buffer Control Register (RSCDBU):
+	//		The only non-reserved bit is "RSCACKDIS, bit 7, init val 0b; Disable RSC for ACK Packets."
+	// ASSUMPTION: We do not care of disabling RSC for ACK packets.
+	// INTERPRETATION: We do not need to change RSCDBU.
+
+	//	"Program RXPBSIZE, MRQC, PFQDE, RTRUP2TC, MFLCN.RPFCE, and MFLCN.RFCE according to the DCB and virtualization modes (see Section 4.6.11.3)."
+	//	Section 4.6.11.3.4 DCB-Off, VT-Off:
+	//		"Set the configuration bits as specified in Section 4.6.11.3.1 with the following exceptions:"
+	//		"Disable multiple packet buffers and allocate all queues and traffic to PB0:"
+	//		"- RXPBSIZE[0].SIZE=0x200, RXPBSIZE[1-7].SIZE=0x0"
+	//		"- TXPBSIZE[0].SIZE=0xA0, TXPBSIZE[1-7].SIZE=0x0"
+	//		"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
+	//		"- MRQC and MTQC"
+	//			"- Set MRQE to 0xxxb, with the three least significant bits set according to the RSS mode"
+	//			"- Clear both RT_Ena and VT_Ena bits in the MTQC register."
+	//			"- Set MTQC.NUM_TC_OR_Q to 00b."
+	//		"- Clear PFVTCTL.VT_Ena (as the MRQC.VT_Ena)"
+	//		(from 4.6.11.3.1) "Queue Drop Enable (PFQDE) — In SR-IO the QDE bit should be set to 1b in the PFQDE register for all queues. In VMDq mode, the QDE bit should be set to 0b for all queues."
+	//		(from 4.6.11.3.1) "Split receive control (SRRCTL[0-127]): Drop_En=1 — drop policy for all the queues, in order to avoid crosstalk between VMs"
+	//		"- Rx UP to TC (RTRUP2TC), UPnMAP=0b, n=0,...,7"
+	//		"- Tx UP to TC (RTTUP2TC), UPnMAP=0b, n=0,...,7"
+	//		"- DMA TX TCP Maximum Allowed Size Requests (DTXMXSZRQ) — set Max_byte_num_req = 0xFFF = 1 MB"
+	//		"Allow no-drop policy in Rx:"
+	//		"- PFQDE: The QDE bit should be set to 0b in the PFQDE register for all queues enabling per queue policy by the SRRCTL[n] setting."
+	//		"- Split Receive Control (SRRCTL[0-127]): The Drop_En bit should be set per receive queue according to the required drop / no-drop policy of the TC of the queue."
+	//		"Disable PFC and enable legacy flow control:"
+	//		"- Disable receive PFC via: MFLCN.RPFCE=0b"
+	//		"- Enable receive legacy flow control via: MFLCN.RFCE=1b"
+	//		"- Enable transmit legacy flow control via: FCCFG.TFCE=01b"
+	//		"Reset all arbiters:"
+	//		"- Clear RTTDT1C register, per each queue, via setting RTTDQSEL first"
+	//		"- Clear RTTDT2C[0-7] registers"
+	//		"- Clear RTTPT2C[0-7] registers"
+	//		"- Clear RTRPT4C[0-7] registers"
+	//		"Disable TC and VM arbitration layers:"
+	//		"- Tx Descriptor Plane Control and Status (RTTDCS), bits: TDPAC=0b, VMPAC=0b, TDRM=0b, BDPM=1b, BPBFSM=1b"
+	//		"- Tx Packet Plane Control and Status (RTTPCS): TPPAC=0b, TPRM=0b, ARBD=0x224"
+	//		"- Rx Packet Plane Control and Status (RTRPCS): RAC=0b, RRM=0b"
+	//		(from 4.6.11.3.1) "Set the SECTXMINIFG.SECTXDCB field to 0x1F."
+
+	//	"Enable jumbo reception by setting HLREG0.JUMBOEN in one of the following two cases:
+	//	 1. Jumbo packets are expected. Set the MAXFRS.MFS to expected max packet size.
+	//	 2. LinkSec encapsulation is expected."
+	// ASSUMPTION: We do not want jumbo or LinkSec packets.
+	// Thus we do not have anything to do here.
+
+	//	"Enable receive coalescing if required as described in Section 4.6.7.2."
+
+	// We do not set queues up at this point.
+
 
 	// "- Initialize transmit (see Section 4.6.8)."
-	???
+	//	Section 4.6.8
 
 	// "- Enable interrupts (see Section 4.6.3.1)."
 	// Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
