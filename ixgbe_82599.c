@@ -435,10 +435,12 @@ static bool ixgbe_device_init(uint64_t addr)
 	}
 
 	// "- Setup the PHY and the link (see Section 4.6.4)."
-	???
+	// ASSUMPTION: The cables are already plugged in.
+	// INTERPRETATION: We don't need to do anything here.
 
 	// "- Initialize all statistical counters (see Section 4.6.5)."
-	// NOTE: We do not care about statistics. Thus we ignore this step.
+	// ASSUMPTION: We do not care about statistics.
+	// INTERPRETATION: We don't need to do anything here.
 
 	// "- Initialize receive (see Section 4.6.7)."
 	???
@@ -447,5 +449,7 @@ static bool ixgbe_device_init(uint64_t addr)
 	???
 
 	// "- Enable interrupts (see Section 4.6.3.1)."
-	???
+	// Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
+	// ASSUMPTION: We do not want interrupts.
+	// INTERPRETATION: We don't need to do anything here.
 }
