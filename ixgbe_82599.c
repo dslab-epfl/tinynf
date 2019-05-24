@@ -1,7 +1,6 @@
 #include "arch.h"
 #include "pci.h"
 
-#include <errno.h>
 #include <stdbool.h>
 #include <unistd.h>
 

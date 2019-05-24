@@ -1,6 +1,7 @@
 #include "device.h"
 #include "filesystem.h"
 #include "hugepage.h"
+#include "ixgbe_82599.h"
 #include "pci.h"
 
 #include <errno.h>
@@ -64,11 +65,16 @@ int tn_dev_init(void)
 	for (int n = 0; n < 2; n++) {
 		// TODO hardcoded addrs...
 		uint64_t dev_base_addr = tn_pci_get_device(0x85, 0x00, n, 0x7FFFF); // length comes from manually checking
+printf("dev base addr %lu\n", dev_base_addr);
+printf("dev base reg %u\n", *((uint32_t*)dev_base_addr));
 		if (dev_base_addr == 0) {
 			return EINVAL;
 		}
 
 		tn_devices[n].base_addr = dev_base_addr;
+		if (!ixgbe_device_init(dev_base_addr)) {
+			return EINVAL;
+		}
 //		DO_OR_RET(tn_dev_init(&tn_devices[n]));
 //		DO_OR_RET(tn_dev_init_recv(&tn_devices[n], hugepage, 128));
 //		DO_OR_RET(tn_dev_init_send(&tn_devices[n], hugepage, 128));
@@ -85,6 +91,7 @@ int tn_dev_init(void)
 	// - All TX_DD = 1
 	// - TX_HD/TL = 0
 	// - RX[n] = TX[n] = &hugepage[n * 16 * 1024]
+	return 0;
 }
 
 void tn_dev_receive(void)

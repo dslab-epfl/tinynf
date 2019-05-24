@@ -2,7 +2,6 @@
 
 #include <sys/mman.h>
 
-
 void* tn_hp_allocate(size_t size)
 {
 	// We only support 2MB hugepages
@@ -21,8 +20,8 @@ void* tn_hp_allocate(size_t size)
 		HUGEPAGE_SIZE,
 		// R/W page
 		PROT_READ | PROT_WRITE,
-		// Hugepage, not backed by a file
-		MAP_HUGETLB | (HUGEPAGE_SIZE_POWER << MAP_HUGE_SHIFT) | MAP_ANONYMOUS,
+		// Hugepage, not backed by a file; note that without MAP_SHARED the call fails
+		MAP_HUGETLB | (HUGEPAGE_SIZE_POWER << MAP_HUGE_SHIFT) | MAP_ANONYMOUS | MAP_SHARED,
 		// Required on MAP_ANONYMOUS
 		-1,
 		// Required on MAP_ANONYMOUS

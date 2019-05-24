@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <sys/io.h>
 
-
 // Physical addresses at which we can talk to PCI via geographical addressing
 #define PCI_CONFIG_ADDR 0xCF8
 #define PCI_CONFIG_DATA 0xCFC
@@ -65,7 +64,7 @@ uint64_t tn_pci_get_device(uint8_t bus, uint8_t device, uint8_t function, uint64
 	// Offset to 3rd number: 2 * (18-char number + 1 space)
 	uint64_t dev_resource_flags = strtoull(dev_resource_line + 2 * (18 + 1), NULL, 16);
 
-	if (dev_addr_end - dev_addr <= min_length) {
+	if (dev_addr_end - dev_addr < min_length) {
 		// Not enough memory given what was expected
 		goto error;
 	}
