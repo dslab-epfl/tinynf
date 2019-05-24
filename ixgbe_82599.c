@@ -1,3 +1,6 @@
+#include "arch.h"
+#include "pci.h"
+
 #include <errno.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -14,10 +17,16 @@
 // Section 7.3.1 Interrupts Registers:
 //	"These registers are extended to 64 bits by an additional set of two registers.
 //	 EICR has an additional two registers EICR(1)... EICR(2) and so on for the EICS, EIMS, EIMC, EIAM and EITR registers."
+// TODO move this to the registers section
 #define IXGBE_INTERRUPT_REGISTERS_COUNT 3
 
 
+// ---------
 // Utilities
+// ---------
+
+// Overload macros for up to 5 args, see https://stackoverflow.com/a/11763277/3311770
+#define GET_MACRO(_1, _2, _3, _4, _5, NAME, ...) NAME
 
 // Refer to a bit, or an inclusive range of bits; zero-based indexes!
 #define BIT(n) (1 << (n + 1))
@@ -36,34 +45,49 @@
 		}
 
 
+// ---------------------
 // Operations on the NIC
+// ---------------------
+
+// Register primitives
+static uint32_t ixgbe_read32(volatile uint32_t* addr) { uint32_t val = *addr; tn_read_barrier(); return val; }
+#define _IXGBE_REG_READ(addr, reg) tn_le_to_cpu(ixgbe_read32(((volatile uint32_t*)((char*)addr + reg))))
+// TODO: Why do we need this STATUS read? Intel's driver uses it to "flush" the read...
+static void ixgbe_write32(volatile uint32_t* addr, uint32_t value) { write_barrier(); *addr = value; } 
+#define _IXGBE_REG_WRITE(addr, reg, value) ixgbe_write32((volatile uint32_t*)((char*)addr + reg), tn_cpu_to_le(value)); IXGBE_REG_READ(addr, STATUS);
+
+// PCI primitives (we do not write to PCI)
+#define _IXGBE_PCIREG_READ(addr, reg) tn_pci_read(addr, reg)
+
 
 // Macros that assume _READ and _WRITE primitives for the given type
 // TODO uniform representation for registers? i.e. even those with a single one could take an index...
-#define _IXGBE_WRITE(type, addr, reg, index, field, value) \
-		IXGBE_##type_WRITE(addr, IXGBE_##type_##reg(index), \
-				((IXGBE_##type_READ(addr, IXGBE_##type_##reg(index)) & ~IXGBE_##type_##reg_##field) | ((value << TRAILING_ZEROES(IXGBE_##type_##reg_##field)) & IXGBE_##type_##reg_##field)))
-#define _IXGBE_WRITE(type, addr, reg, field, value) \
-		IXGBE_##type_WRITE(addr, IXGBE_##type_##reg, \
-				((IXGBE_##type_READ(addr, IXGBE_##type_##reg) & ~IXGBE_##type_##reg_##field) | ((value << TRAILING_ZEROES(IXGBE_##type_##reg_##field)) & IXGBE_##type_##reg_##field)))
-#define _IXGBE_CLEARED(type, addr, reg, field) (IXGBE_##type_READ(addr, IXGBE_##type_##reg) & IXGBE_REG_##reg_##field) == 0
-#define _IXGBE_SET(type, addr, reg, field) IXGBE_##type_WRITE(addr, IXGBE_##type_##reg, (IXGBE_##type_READ(addr, IXGBE_##type_##reg) | IXGBE_##type_##reg_##field))
-#define _IXGBE_CLEAR(type, addr, reg, field) IXGBE_##type_WRITE(addr, IXGBE_##type_##reg, (IXGBE_##type_READ(addr, IXGBE_##type_##reg) & ~IXGBE_##type_##reg_##field))
+#define __IXGBE_WRITE6(type, addr, reg, index, field, value) \
+		_IXGBE_##type_WRITE(addr, IXGBE_##type_##reg(index), \
+				((_IXGBE_##type_READ(addr, IXGBE_##type_##reg(index)) & ~IXGBE_##type_##reg_##field) | ((value << TRAILING_ZEROES(IXGBE_##type_##reg_##field)) & IXGBE_##type_##reg_##field)))
+#define _IXGBE_WRITE6(type, addr, reg, index, field, value) __IXGBE_WRITE6(type, addr, reg, index, field, value)
+#define __IXGBE_WRITE5(type, addr, reg, field, value) \
+		_IXGBE_##type_WRITE(addr, _IXGBE_##type_##reg, \
+				((_IXGBE_##type_READ(addr, IXGBE_##type_##reg) & ~IXGBE_##type_##reg_##field) | ((value << TRAILING_ZEROES(IXGBE_##type_##reg_##field)) & IXGBE_##type_##reg_##field)))
+#define _IXGBE_WRITE5(type, addr, reg, field, value) __IXGBE_WRITE5(type, addr, reg, field, value)
+#define __IXGBE_CLEARED(type, addr, reg, field) (_IXGBE_##type_READ(addr, IXGBE_##type_##reg) & IXGBE_REG_##reg_##field) == 0
+#define _IXGBE_CLEARED(type, addr, reg, field) __IXGBE_CLEARED(type, addr, reg, field)
+#define __IXGBE_SET(type, addr, reg, field) _IXGBE_##type_WRITE(addr, IXGBE_##type_##reg, (_IXGBE_##type_READ(addr, IXGBE_##type_##reg) | IXGBE_##type_##reg_##field))
+#define _IXGBE_SET(type, addr, reg, field) __IXGBE_SET(type, addr, reg, field)
+#define __IXGBE_CLEAR(type, addr, reg, field) _IXGBE_##type_WRITE(addr, IXGBE_##type_##reg, (_IXGBE_##type_READ(addr, IXGBE_##type_##reg) & ~IXGBE_##type_##reg_##field))
+#define _IXGBE_CLEAR(type, addr, reg, field) __IXGBE_CLEAR(type, addr, reg, field)
 
-#define IXGBE_REG_READ(addr, reg) ???
-#define IXGBE_REG_WRITE(addr, reg, value) ???
-#define IXGBE_REG_WRITE(addr, reg, index, field, value) _IXGBE_WRITE(type, addr, reg, index, field, value)
-#define IXGBE_REG_WRITE(addr, reg, field, value) _IXGBE_WRITE(type, addr, reg, field, value)
+#define IXGBE_REG_WRITE5(addr, reg, index, field, value) _IXGBE_WRITE6(REG, addr, reg, index, field, value)
+#define IXGBE_REG_WRITE4(addr, reg, field, value) _IXGBE_WRITE5(REG, addr, reg, field, value)
+#define IXGBE_REG_WRITE3(addr, reg, value) _IXGBE_REG_WRITE(addr, reg, value)
+#define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_CLEARED(addr, reg, field) _IXGBE_CLEARED(REG, addr, reg, field)
 #define IXGBE_REG_SET(addr, reg, field) _IXGBE_SET(REG, addr, reg, field)
-#define IXGBE_REG_CLEAR(addr, reg, field) _IXGBE_CLEAR(REG, addr, reg, field)
-#define IXGBE_REG_CLEAR(addr, reg) IXGBE_REG_CLEAR(addr, reg, 0xFFFFFFFF)
+#define IXGBE_REG_CLEAR3(addr, reg, field) _IXGBE_CLEAR(REG, addr, reg, field)
+#define IXGBE_REG_CLEAR2(addr, reg) IXGBE_REG_CLEAR3(addr, reg, 0xFFFFFFFF)
+#define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, _UNUSED, IXGBE_REG_CLEAR3, IXGBE_REG_CLEAR2, _UNUSED)(__VA_ARGS__)
 
-#define IXGBE_PCIREG_READ(addr, reg) ???
-#define IXGBE_PCIREG_WRITE(addr, reg, value) ???
 #define IXGBE_PCIREG_CLEARED(addr, reg, field) _IXGBE_CLEARED(PCIREG, addr, reg, field)
-#define IXGBE_PCIREG_SET(addr, reg, field) _IXGBE_SET(PCIREG, addr, reg, field)
-#define IXGBE_PCIREG_CLEAR(addr, reg, field) _IXGBE_CLEAR(PCIREG, addr, reg, field)
 
 
 // -------------------------------------------------------------
@@ -223,23 +247,23 @@ static void ixgbe_lock_swsm(uint64_t addr, bool* out_sw_malfunction, bool* out_f
 	// "- Software polls the SWSM.SMBI bit until it is read as 0b or time expires (recommended expiration is ~10 ms+ expiration time used for the SWSM.SWESMBI)."
 	// "- If SWSM.SMBI is found at 0b, the semaphore is taken. Note that following this read cycle hardware auto sets the bit to 1b."
 	// "- If time expired, it is assumed that the software of the other function malfunctions. Software proceeds to the next steps checking SWESMBI for firmware use."
-	WAIT_WITH_TIMEOUT(*out_sw_malfunction, 10 + 3000, IXGBE_REG_CLEARED(SWSM, SMBI));
+	WAIT_WITH_TIMEOUT(*out_sw_malfunction, 10 + 3000, IXGBE_REG_CLEARED(addr, SWSM, SMBI));
 
 
 	// "Software checks that the firmware does not use the software/firmware semaphore and then takes its control"
 
 	// "- Software writes a 1b to the SWSM.SWESMBI bit"
-	IXGBE_REG_SET(SWSM, SWESMBI);
+	IXGBE_REG_SET(addr, SWSM, SWESMBI);
 
 	// "- Software polls the SWSM.SWESMBI bit until it is read as 1b or time expires (recommended expiration is ~3 sec).
 	//    If time has expired software assumes that the firmware malfunctioned and proceeds to the next step while ignoring the firmware bits in the SW_FW_SYNC register."
-	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000, IXGBE_REG_CLEARED(SWSM, SWESMBI));
+	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000, IXGBE_REG_CLEARED(addr, SWSM, SWESMBI));
 }
 
 static void ixgbe_unlock_swsm(uint64_t addr)
 {
-	IXGBE_REG_CLEAR(SWSM, SWESMBI);
-	IXGBE_REG_CLEAR(SWSM, SMBI);
+	IXGBE_REG_CLEAR(addr, SWSM, SWESMBI);
+	IXGBE_REG_CLEAR(addr, SWSM, SMBI);
 }
 
 static bool ixgbe_lock_resources(uint64_t addr)
@@ -308,7 +332,7 @@ static void ixgbe_unlock_resources(uint64_t addr)
 	ixgbe_lock_swfw(addr, &ignored, &ignored);
 
 	// "Software clears the bit(s) of the released resource(s) in the SW_FW_SYNC register."
-	IXGBE_REG_CLEAR(SWFWSYNC, SW);
+	IXGBE_REG_CLEAR(addr, SWFWSYNC, SW);
 
 	// "Software releases the software/firmware semaphore by clearing the SWSM.SWESMBI and SWSM.SMBI bits"
 	ixgbe_unlock_swsm(addr);
@@ -355,7 +379,7 @@ static bool ixgbe_device_master_disable(uint64_t addr)
 	}
 
 	// "Then the device driver sets the PCIe Master Disable bit [in the Device Status register] when notified of a pending master disable (or D3 entry)."
-	IXGBE_REG_SET(CTRL, MASTERDISABLE);
+	IXGBE_REG_SET(addr, CTRL, MASTERDISABLE);
 
 	// "The 82599 then blocks new requests and proceeds to issue any pending requests by this function.
 	//  The driver then reads the change made to the PCIe Master Disable bit and then polls the PCIe Master Enable Status bit.
@@ -377,16 +401,16 @@ static bool ixgbe_device_master_disable(uint64_t addr)
 		//  The recommended method to flush the transmit data path is as follows:"
 		// "- Inhibit data transmission by setting the HLREG0.LPBK bit and clearing the RXCTRL.RXEN bit.
 		//    This configuration avoids transmission even if flow control or link down events are resumed."
-		IXGBE_REG_SET(HLREG0, LPBK);
-		IXGBE_REG_CLEAR(RXCTRL, RXEN);
+		IXGBE_REG_SET(addr, HLREG0, LPBK);
+		IXGBE_REG_CLEAR(addr, RXCTRL, RXEN);
 
 		// "- Set the GCR_EXT.Buffers_Clear_Func bit for 20 microseconds to flush internal buffers."
-		IXGBE_REG_SET(GCREXT, BUFFERSCLEAR);
+		IXGBE_REG_SET(addr, GCREXT, BUFFERSCLEAR);
 		usleep(20);
 
 		// "- Clear the HLREG0.LPBK bit and the GCR_EXT.Buffers_Clear_Func"
-		IXGBE_REG_CLEAR(HLREG0, LPBK);
-		IXGBE_REG_CLEAR(GCREXT, BUFFERSCLEAR);
+		IXGBE_REG_CLEAR(addr, HLREG0, LPBK);
+		IXGBE_REG_CLEAR(addr, GCREXT, BUFFERSCLEAR);
 
 		// "- It is now safe to issue a software reset."
 	}
@@ -406,12 +430,12 @@ static void ixgbe_device_reset(uint64_t addr)
 	bool master_disabled = ixgbe_device_master_disable(addr);
 
 	// "Initiated by writing the Link Reset bit of the Device Control register (CTRL.LRST)."
-	IXGBE_REG_SET(CTRL, LRST);
+	IXGBE_REG_SET(addr, CTRL, LRST);
 
 	// See quotes in ixgbe_device_master_disable
 	if (master_disabled) {
 		usleep(2);
-		IXGBE_REG_SET(CTRL, LRST);
+		IXGBE_REG_SET(addr, CTRL, LRST);
 	}
 
 	// Section 8.2.3.1.1 Device Control Register
@@ -501,7 +525,7 @@ static bool ixgbe_device_init(uint64_t addr)
 	// INTERPRETATION: No timeout is mentioned, so we use 1s.
 	bool eeprom_timed_out;
 	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, EEC, AUTORD));
-	if (eeprom_timed_out || IXGBE_REG_CLEARED(addr, EEC, EEPRES) || !IXGBE_REG_CLEARED(FWSM, EXTERRIND)) {
+	if (eeprom_timed_out || IXGBE_REG_CLEARED(addr, EEC, EEPRES) || !IXGBE_REG_CLEARED(addr, FWSM, EXTERRIND)) {
 		return false;
 	}
 
@@ -837,4 +861,6 @@ static bool ixgbe_device_init(uint64_t addr)
 	// Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
 	// ASSUMPTION: We do not want interrupts.
 	// INTERPRETATION: We don't need to do anything here.
+
+	return true;
 }

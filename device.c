@@ -26,10 +26,9 @@ struct tn_device {
 	uint64_t send_base;
 	uint64_t send_head;
 	uint64_t send_tail;
-}
+};
 
 // Known devices
-char* tn_device_addrs[] = { "0000:85:00.0", "0000:85:00.1", NULL };
 struct tn_device tn_devices[2];
 
 // Packet processing state
@@ -37,9 +36,9 @@ void** tn_packets;
 size_t tn_packet_index;
 uint16_t tn_packet_length;
 
-static int tn_dev_init(struct tn_device* device)
+/*static int tn_dev_init(struct tn_device* device)
 {
-}
+}*/
 
 static int tn_dev_init_recv(struct tn_device* device, void** packets_base_addr, uint16_t packets_count)
 {
@@ -62,18 +61,17 @@ int tn_dev_init(void)
 		return ENOMEM;
 	}
 
-	for (int n = 0; tn_device_addrs[n] != NULL; n++) {
-		char* dev_pci_addr = tn_device_addrs[n];
-
-		uint64_t dev_base_addr = tn_pci_get_device(tn_device_addrs[n], 0x7FFFF); // length comes from manually checking
+	for (int n = 0; n < 2; n++) {
+		// TODO hardcoded addrs...
+		uint64_t dev_base_addr = tn_pci_get_device(0x85, 0x00, n, 0x7FFFF); // length comes from manually checking
 		if (dev_base_addr == 0) {
 			return EINVAL;
 		}
 
 		tn_devices[n].base_addr = dev_base_addr;
-		DO_OR_RET(tn_dev_init(&tn_devices[n]));
-		DO_OR_RET(tn_dev_init_recv(&tn_devices[n], hugepage, 128));
-		DO_OR_RET(tn_dev_init_send(&tn_devices[n], hugepage, 128));
+//		DO_OR_RET(tn_dev_init(&tn_devices[n]));
+//		DO_OR_RET(tn_dev_init_recv(&tn_devices[n], hugepage, 128));
+//		DO_OR_RET(tn_dev_init_send(&tn_devices[n], hugepage, 128));
 	}
 	// Detect the NICs
 	// read the 1st memory line in /resource; then any reg is just the memory addr + reg
@@ -89,16 +87,22 @@ int tn_dev_init(void)
 	// - RX[n] = TX[n] = &hugepage[n * 16 * 1024]
 }
 
-void tn_dev_init(void)
+void tn_dev_receive(void)
 {
-	/sys/bus/pci/devices/0000\:85\:00.0/resource
 }
 
-void tn_dev_receive(void);
-
-void tn_dev_transmit(void);
+void tn_dev_transmit(void)
+{
+}
 
 // TODO: tn_dev_drop(void);
 
-void* tn_dev_get_packet(void);
-int16_t tn_dev_get_packet_length(void);
+void* tn_dev_get_packet(void)
+{
+	return NULL;
+}
+
+int16_t tn_dev_get_packet_length(void)
+{
+	return 0;
+}

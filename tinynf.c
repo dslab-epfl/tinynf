@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdint.h>
 
 // needs to be a multiple of 128; being 128 allows us to use a single hugepage for all buffers
