@@ -25,10 +25,10 @@
 // Utilities
 // ---------
 
-// Overload macros for up to 5 args, see https://stackoverflow.com/a/11763277/3311770
-#define GET_MACRO(_1, _2, _3, _4, _5, NAME, ...) NAME
+// Overload macros for up to 4 args, see https://stackoverflow.com/a/11763277/3311770
+#define GET_MACRO(_1, _2, _3, _4, NAME, ...) NAME
 
-// Refer to a bit, or an inclusive range of bits; zero-based indexes!
+// Bit tricks; note that we count bits starting from 0!
 #define BIT(n) (1 << (n + 1))
 #define BITS(start, end) (0xFFFFFFFF << (end + 1)) ^ (0xFFFFFFFF << start)
 #define TRAILING_ZEROES(n) __builtin_ctzll(n)
@@ -50,44 +50,25 @@
 // ---------------------
 
 // Register primitives
-static uint32_t ixgbe_read32(volatile uint32_t* addr) { uint32_t val = *addr; tn_read_barrier(); return val; }
-#define _IXGBE_REG_READ(addr, reg) tn_le_to_cpu(ixgbe_read32(((volatile uint32_t*)((char*)addr + reg))))
+static uint32_t ixgbe_reg_read(uint32_t addr, uint32_t reg) { uint32_t val = *((volatile uint32_t*)((char*)addr + reg)); tn_read_barrier(); return tn_le_to_cpu(val); }
 // TODO: Why do we need this STATUS read? Intel's driver uses it to "flush" the read...
-static void ixgbe_write32(volatile uint32_t* addr, uint32_t value) { write_barrier(); *addr = value; } 
-#define _IXGBE_REG_WRITE(addr, reg, value) ixgbe_write32((volatile uint32_t*)((char*)addr + reg), tn_cpu_to_le(value)); IXGBE_REG_READ(addr, STATUS);
+static void ixgbe_reg_write(uint32_t addr, uint32_t reg, uint32_t value) { write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); IXGBE_REG_READ(addr, STATUS); }
+#define IXGBE_REG_READ2(addr, reg) ixgbe_reg_read(addr, IXGBE_REG_##_reg);
+#define IXGBE_REG_READ3(addr, reg, field) ((IXGBE_REG_READ(addr, reg) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
+#define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ3, IXGBE_REG_READ2)(__VA_ARGS__)
+#define IXGBE_REG_WRITE3(addr, reg, value) ixgbe_reg_write(addr, IXGBE_REG_##reg, value)
+#define IXGBE_REG_WRITE4(addr, reg, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg, ((IXGBE_REG_READ(addr, reg) & ~IXGBE_REG_##reg##_##field) | ((value << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
+#define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE4, IXGBE_REG_WRITE3)(__VA_ARGS__)
+#define IXGBE_REG_CLEARED(addr, reg, field) (IXGBE_REG_READ(addr, reg, field) == 0)
+#define IXGBE_REG_CLEAR2(addr, reg) IXGBE_REG_WRITE(addr, reg, 0)
+#define IXGBE_REG_CLEAR3(addr, reg, field) IXGBE_REG_WRITE(addr, reg, field, (IXGBE_REG_READ(addr, reg) & ~IXGBE_REG_##reg##_##field))
+#define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR3, IXGBE_REG_CLEAR2)(__VA_ARGS__)
+// TODO better name than "set", since set implies to a specific value? what's the opposite of clear?
+#define IXGBE_REG_SET(addr, reg, field) IXGBE_REG_WRITE(addr, reg, field, (IXGBE_REG_READ(addr, reg) | IXGBE_REG_##reg##_##field))
 
 // PCI primitives (we do not write to PCI)
-#define _IXGBE_PCIREG_READ(addr, reg) tn_pci_read(addr, reg)
-
-
-// Macros that assume _READ and _WRITE primitives for the given type
-// TODO uniform representation for registers? i.e. even those with a single one could take an index...
-#define __IXGBE_WRITE6(type, addr, reg, index, field, value) \
-		_IXGBE_##type_WRITE(addr, IXGBE_##type_##reg(index), \
-				((_IXGBE_##type_READ(addr, IXGBE_##type_##reg(index)) & ~IXGBE_##type_##reg_##field) | ((value << TRAILING_ZEROES(IXGBE_##type_##reg_##field)) & IXGBE_##type_##reg_##field)))
-#define _IXGBE_WRITE6(type, addr, reg, index, field, value) __IXGBE_WRITE6(type, addr, reg, index, field, value)
-#define __IXGBE_WRITE5(type, addr, reg, field, value) \
-		_IXGBE_##type_WRITE(addr, _IXGBE_##type_##reg, \
-				((_IXGBE_##type_READ(addr, IXGBE_##type_##reg) & ~IXGBE_##type_##reg_##field) | ((value << TRAILING_ZEROES(IXGBE_##type_##reg_##field)) & IXGBE_##type_##reg_##field)))
-#define _IXGBE_WRITE5(type, addr, reg, field, value) __IXGBE_WRITE5(type, addr, reg, field, value)
-#define __IXGBE_CLEARED(type, addr, reg, field) (_IXGBE_##type_READ(addr, IXGBE_##type_##reg) & IXGBE_REG_##reg_##field) == 0
-#define _IXGBE_CLEARED(type, addr, reg, field) __IXGBE_CLEARED(type, addr, reg, field)
-#define __IXGBE_SET(type, addr, reg, field) _IXGBE_##type_WRITE(addr, IXGBE_##type_##reg, (_IXGBE_##type_READ(addr, IXGBE_##type_##reg) | IXGBE_##type_##reg_##field))
-#define _IXGBE_SET(type, addr, reg, field) __IXGBE_SET(type, addr, reg, field)
-#define __IXGBE_CLEAR(type, addr, reg, field) _IXGBE_##type_WRITE(addr, IXGBE_##type_##reg, (_IXGBE_##type_READ(addr, IXGBE_##type_##reg) & ~IXGBE_##type_##reg_##field))
-#define _IXGBE_CLEAR(type, addr, reg, field) __IXGBE_CLEAR(type, addr, reg, field)
-
-#define IXGBE_REG_WRITE5(addr, reg, index, field, value) _IXGBE_WRITE6(REG, addr, reg, index, field, value)
-#define IXGBE_REG_WRITE4(addr, reg, field, value) _IXGBE_WRITE5(REG, addr, reg, field, value)
-#define IXGBE_REG_WRITE3(addr, reg, value) _IXGBE_REG_WRITE(addr, reg, value)
-#define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
-#define IXGBE_REG_CLEARED(addr, reg, field) _IXGBE_CLEARED(REG, addr, reg, field)
-#define IXGBE_REG_SET(addr, reg, field) _IXGBE_SET(REG, addr, reg, field)
-#define IXGBE_REG_CLEAR3(addr, reg, field) _IXGBE_CLEAR(REG, addr, reg, field)
-#define IXGBE_REG_CLEAR2(addr, reg) IXGBE_REG_CLEAR3(addr, reg, 0xFFFFFFFF)
-#define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, _UNUSED, IXGBE_REG_CLEAR3, IXGBE_REG_CLEAR2, _UNUSED)(__VA_ARGS__)
-
-#define IXGBE_PCIREG_CLEARED(addr, reg, field) _IXGBE_CLEARED(PCIREG, addr, reg, field)
+#define IXGBE_PCIREG_READ(addr, reg) tn_pci_read(addr, reg)
+#define IXGBE_PCIREG_CLEARED(addr, reg, field) ((IXGBE_PCIREG_READ(addr, IXGBE_PCIREG_##reg) & IXGBE_PCIREG_##reg##_##field) == 0)
 
 
 // -------------------------------------------------------------
