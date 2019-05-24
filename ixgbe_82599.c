@@ -7,6 +7,10 @@
 
 // TODO find reference for this
 #define IXGBE_RECEIVE_QUEUES_COUNT 128
+// Section 8.2.3.10.13 DCB Transmit Descriptor Plane Queue Select:
+// "Field TXDQ_IDX, Bits 6:0" -> 128 pools
+// TODO find a better ref...
+#define IXGBE_TX_QUEUE_POOLS_COUNT 128
 // Section 7.3.1 Interrupts Registers:
 //	"These registers are extended to 64 bits by an additional set of two registers.
 //	 EICR has an additional two registers EICR(1)... EICR(2) and so on for the EICS, EIMS, EIMC, EIAM and EITR registers."
@@ -149,6 +153,25 @@
 // Section 8.2.3.27.16 PF VM VLAN Pool Filter Bitmap
 #define IXGBE_PFVLVFB_REGISTERS_COUNT 128
 #define IXGBE_REG_PFVLVFB(n) (0x0F200 + 4*n)
+
+// Section 8.2.3.10.6 DCB Receive Packet Plane T4 Config
+#define IXGBE_RTRPT4C_REGISTERS_COUNT 8
+#define IXGBE_REG_RTRPT4C(n) (0x02140 + 4*n)
+
+// Section 8.2.3.10.13 DCB Transmit Descriptor Plane Queue Select
+#define IXGBE_REG_RTTDQSEL 0x04904
+#define IXGBE_REG_RTTDQSEL_TXDQIDX BITS(0,6)
+
+// Section 8.2.3.10.14 DCB Transmit Descriptor Plane T1 Config
+#define IXGBE_REG_RTTDT1C 0x04908
+
+// Section 8.2.3.10.9 DCB Transmit Descriptor Plane T2 Config
+#define IXGBE_RTTDT2C_REGISTERS_COUNT 8
+#define IXGBE_REG_RTTDT2C(n) (0x04910 + 4*n)
+
+// Section 8.2.3.10.10 DCB Transmit Packet Plane T2 Config
+#define IXGBE_RTTPT2C_REGISTERS_COUNT 8
+#define IXGBE_REG_RTTPT2C(n) (0x0CD20 + 4*n)
 
 // Section 8.2.3.8.8 Receive DMA Control Register
 #define IXGBE_REG_RDRXCTL 0x02F00
@@ -617,7 +640,7 @@ static bool ixgbe_device_init(uint64_t addr)
 	//		"Bit 5, Init val 0b; RSC Disable. The default value is 0b (RSC feature is enabled)."
 	//		"Bit 6, Init val 0b; NFS Write disable."
 	//		"Bit 7, Init val 0b; NFS Read disable."
-	// ASSUMPTION: We want RSC since it makes software processing easier.
+	// ASSUMPTION: We do not care about RSC.
 	// ASSUMPTION: We do not care about NFS.
 	// INTERPRETATION: We do not need to write to RFCTL.
 	// We already initialized MPSAR earlier.
@@ -721,14 +744,39 @@ static bool ixgbe_device_init(uint64_t addr)
 	IXGBE_REG_WRITE(addr, FCCFG, TFCE, 1);
 	//		"Reset all arbiters:"
 	//		"- Clear RTTDT1C register, per each queue, via setting RTTDQSEL first"
+	for (int n = 0; n < IXGBE_TX_QUEUE_POOLS_COUNT; n++) {
+		IXGBE_REG_WRITE(addr, RTTDQSEL, TXDQIDX, n);
+		IXGBE_REG_CLEAR(addr, RTTDT1C);
+	}
 	//		"- Clear RTTDT2C[0-7] registers"
+	for (int n = 0; n < IXGBE_RTTDT2C_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(addr, RTTDT2C(n));
+	}
 	//		"- Clear RTTPT2C[0-7] registers"
+	for (int n = 0; n < IXGBE_RTTPT2C_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(addr, RTTPT2C(n));
+	}
 	//		"- Clear RTRPT4C[0-7] registers"
+	for (int n = 0; n < IXGBE_RTRPT4C_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(addr, RTRPT4C(n));
+	}
 	//		"Disable TC and VM arbitration layers:"
 	//		"- Tx Descriptor Plane Control and Status (RTTDCS), bits: TDPAC=0b, VMPAC=0b, TDRM=0b, BDPM=1b, BPBFSM=1b"
+	//		Section 8.2.3.10.2 DCB Transmit Descriptor Plane Control and Status (RTTDCS): the above values are the default ones
+	// Thus we do not need to modify RTTDCS.
 	//		"- Tx Packet Plane Control and Status (RTTPCS): TPPAC=0b, TPRM=0b, ARBD=0x224"
+	//		Section 8.2.3.10.3 DCB Transmit Packet Plane Control and Status (RTTPCS): the above values are the default ones
+	// Thus we do not need to modify RTTPCS.
 	//		"- Rx Packet Plane Control and Status (RTRPCS): RAC=0b, RRM=0b"
+	//		Section 8.2.3.10.1 DCB Receive Packet Plane Control and Status (RTRPCS): the above values are the default ones
+	// Thus we do not need to modify RTTPCS.
 	//		(from 4.6.11.3.1) "Set the SECTXMINIFG.SECTXDCB field to 0x1F."
+	//		Section 8.2.3.12.4 Security Tx Buffer Minimum IFG (SECTXMINIFG):
+	//			"If PFC is enabled, then the SECTXDCB field should be set to 0x1F.
+	//			 If PFC is not enabled, then the default value should be used (0x10)."
+	//		Section 8.2.3.22.34 MAC Flow Control Register:
+	//			"Note: PFC should be enabled in DCB mode only."
+	// INTERPRETATION: Despite the lack of an explicit exception, this part of Section 4.6.11.3.1 does not apply in this case.
 
 	//	"Enable jumbo reception by setting HLREG0.JUMBOEN in one of the following two cases:
 	//	 1. Jumbo packets are expected. Set the MAXFRS.MFS to expected max packet size.
@@ -737,6 +785,7 @@ static bool ixgbe_device_init(uint64_t addr)
 	// Thus we do not have anything to do here.
 
 	//	"Enable receive coalescing if required as described in Section 4.6.7.2."
+	// Since we do not require it, we do not need to do anything.
 
 	// We do not set queues up at this point.
 
