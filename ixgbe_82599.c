@@ -25,12 +25,12 @@
 // Utilities
 // ---------
 
-// Overload macros for up to 4 args, see https://stackoverflow.com/a/11763277/3311770
-#define GET_MACRO(_1, _2, _3, _4, NAME, ...) NAME
+// Overload macros for up to 5 args, see https://stackoverflow.com/a/11763277/3311770
+#define GET_MACRO(_1, _2, _3, _4, _5, NAME, ...) NAME
 
 // Bit tricks; note that we count bits starting from 0!
-#define BIT(n) (1 << (n + 1))
-#define BITS(start, end) (0xFFFFFFFF << (end + 1)) ^ (0xFFFFFFFF << start)
+#define BIT(n) (1 << n)
+#define BITS(start, end) ((end == 31 ? 0 : (0xFFFFFFFF << (end + 1))) ^ (0xFFFFFFFF << start))
 #define TRAILING_ZEROES(n) __builtin_ctzll(n)
 
 // Poll until the given condition holds, or the given timeout occurs; store whether a timeout occurred in result_name
@@ -41,7 +41,7 @@
 				result_name = false; \
 				break; \
 			} \
-			usec_delay(50); \
+			usleep(50); \
 		}
 
 
@@ -49,26 +49,27 @@
 // Operations on the NIC
 // ---------------------
 
+const int _ = 0;
+
 // Register primitives
-static uint32_t ixgbe_reg_read(uint32_t addr, uint32_t reg) { uint32_t val = *((volatile uint32_t*)((char*)addr + reg)); tn_read_barrier(); return tn_le_to_cpu(val); }
-// TODO: Why do we need this STATUS read? Intel's driver uses it to "flush" the read...
-static void ixgbe_reg_write(uint32_t addr, uint32_t reg, uint32_t value) { write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); IXGBE_REG_READ(addr, STATUS); }
-#define IXGBE_REG_READ2(addr, reg) ixgbe_reg_read(addr, IXGBE_REG_##_reg);
-#define IXGBE_REG_READ3(addr, reg, field) ((IXGBE_REG_READ(addr, reg) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
-#define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ3, IXGBE_REG_READ2)(__VA_ARGS__)
-#define IXGBE_REG_WRITE3(addr, reg, value) ixgbe_reg_write(addr, IXGBE_REG_##reg, value)
-#define IXGBE_REG_WRITE4(addr, reg, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg, ((IXGBE_REG_READ(addr, reg) & ~IXGBE_REG_##reg##_##field) | ((value << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
-#define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE4, IXGBE_REG_WRITE3)(__VA_ARGS__)
-#define IXGBE_REG_CLEARED(addr, reg, field) (IXGBE_REG_READ(addr, reg, field) == 0)
-#define IXGBE_REG_CLEAR2(addr, reg) IXGBE_REG_WRITE(addr, reg, 0)
-#define IXGBE_REG_CLEAR3(addr, reg, field) IXGBE_REG_WRITE(addr, reg, field, (IXGBE_REG_READ(addr, reg) & ~IXGBE_REG_##reg##_##field))
-#define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR3, IXGBE_REG_CLEAR2)(__VA_ARGS__)
+static uint32_t ixgbe_reg_read(uint64_t addr, uint32_t reg) { uint32_t val = *((volatile uint32_t*)((char*)addr + reg)); tn_read_barrier(); return tn_le_to_cpu(val); }
+static void ixgbe_reg_write(uint64_t addr, uint32_t reg, uint32_t value) { tn_write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); }
+#define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
+#define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
+#define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3)(__VA_ARGS__)
+#define IXGBE_REG_WRITE4(addr, reg, idx, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), value)
+#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | ((value << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
+#define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4)(__VA_ARGS__)
+#define IXGBE_REG_CLEARED(addr, reg, idx, field) (IXGBE_REG_READ(addr, reg, idx, field) == 0)
+#define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0)
+#define IXGBE_REG_CLEAR4(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, field, (IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field))
+#define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR4, IXGBE_REG_CLEAR3)(__VA_ARGS__)
 // TODO better name than "set", since set implies to a specific value? what's the opposite of clear?
-#define IXGBE_REG_SET(addr, reg, field) IXGBE_REG_WRITE(addr, reg, field, (IXGBE_REG_READ(addr, reg) | IXGBE_REG_##reg##_##field))
+#define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, field, (IXGBE_REG_READ(addr, reg, idx) | IXGBE_REG_##reg##_##field))
 
 // PCI primitives (we do not write to PCI)
-#define IXGBE_PCIREG_READ(addr, reg) tn_pci_read(addr, reg)
-#define IXGBE_PCIREG_CLEARED(addr, reg, field) ((IXGBE_PCIREG_READ(addr, IXGBE_PCIREG_##reg) & IXGBE_PCIREG_##reg##_##field) == 0)
+#define IXGBE_PCIREG_READ(addr, reg) tn_pci_read(addr, IXGBE_PCIREG_##reg)
+#define IXGBE_PCIREG_CLEARED(addr, reg, field) ((IXGBE_PCIREG_READ(addr, reg) & IXGBE_PCIREG_##reg##_##field) == 0)
 
 
 // -------------------------------------------------------------
@@ -85,16 +86,16 @@ static void ixgbe_reg_write(uint32_t addr, uint32_t reg, uint32_t value) { write
 
 // TODO eliminate all "count" variables, and express them in terms of primitive counts instead (#pools, #MACs, ...)
 
-#define IXGBE_REG_CTRL 0x00000
+#define IXGBE_REG_CTRL(_) 0x00000
 #define IXGBE_REG_CTRL_MASTERDISABLE BIT(2)
 #define IXGBE_REG_CTRL_LRST BIT(3)
 
 // Section 8.2.3.9.1 DMA Tx TCP Max Allow Size Requests
-#define IXGBE_REG_DTXMXSZRQ 0x08100
+#define IXGBE_REG_DTXMXSZRQ(_) 0x08100
 #define IXGBE_REG_DTXMXSZRQ_MAXBYTESNUMREQ BITS(0,11)
 
 // Section 8.2.3.2.1 EEPROM/Flash Control Register
-#define IXGBE_REG_EEC 0x10010
+#define IXGBE_REG_EEC(_) 0x10010
 #define IXGBE_REG_EEC_EEPRES BIT(8)
 #define IXGBE_REG_EEC_AUTORD BIT(9)
 
@@ -102,7 +103,8 @@ static void ixgbe_reg_write(uint32_t addr, uint32_t reg, uint32_t value) { write
 #define IXGBE_REG_EIMC_MASK BITS(0,31)
 
 // Section 8.2.3.3.7 Flow Control Configuration
-#define IXGBE_REG_FCCFG 0x03D00
+#define IXGBE_REG_FCCFG(_) 0x03D00
+#define IXGBE_REG_FCCFG_TFCE BITS(3,4)
 
 // Section 8.2.3.3.2 Flow Control Transmit Timer Value n
 #define IXGBE_FCTTV_REGISTERS_COUNT 4
@@ -117,26 +119,28 @@ static void ixgbe_reg_write(uint32_t addr, uint32_t reg, uint32_t value) { write
 #define IXGBE_REG_FCRTH(n) (0x03260 + 4*n)
 
 // Section 8.2.3.3.5 Flow Control Refresh Threshold Value
-#define IXGBE_REG_FCRTV 0x032A0
+#define IXGBE_REG_FCRTV(_) 0x032A0
 
 // Section 8.2.3.7.1 Filter Control Register (FCTRL)
-#define IXGBE_REG_FCTRL 0x05080
+#define IXGBE_REG_FCTRL(_) 0x05080
 
 // Section 8.2.3.7.19 Five tuple Queue Filter
 #define IXGBE_FTQF_REGISTERS_COUNT 128
 #define IXGBE_REG_FTQF(n) (0x0E600 + 4*n)
+#define IXGBE_REG_FTQF_MASK BITS(25,29)
+#define IXGBE_REG_FTQF_QUEUEENABLE BIT(31)
 
-#define IXGBE_REG_FWSM 0x10148
+#define IXGBE_REG_FWSM(_) 0x10148
 #define IXGBE_REG_FWSM_EXTERRIND BITS(19,24)
 
-#define IXGBE_REG_GCREXT 0x11050
+#define IXGBE_REG_GCREXT(_) 0x11050
 #define IXGBE_REG_GCREXT_BUFFERSCLEAR BIT(30)
 
-#define IXGBE_REG_HLREG0 0x04240
+#define IXGBE_REG_HLREG0(_) 0x04240
 #define IXGBE_REG_HLREG0_LPBK BIT(15)
 
 // Section 8.2.3.22.34 MAC Flow Control Register
-#define IXGBE_REG_MFLCN 0x04294
+#define IXGBE_REG_MFLCN(_) 0x04294
 #define IXGBE_REG_MFLCN_RFCE BIT(3)
 
 // Section 8.2.3.7.10 MAC Pool Select Array
@@ -164,11 +168,11 @@ static void ixgbe_reg_write(uint32_t addr, uint32_t reg, uint32_t value) { write
 #define IXGBE_REG_RTRPT4C(n) (0x02140 + 4*n)
 
 // Section 8.2.3.10.13 DCB Transmit Descriptor Plane Queue Select
-#define IXGBE_REG_RTTDQSEL 0x04904
+#define IXGBE_REG_RTTDQSEL(_) 0x04904
 #define IXGBE_REG_RTTDQSEL_TXDQIDX BITS(0,6)
 
 // Section 8.2.3.10.14 DCB Transmit Descriptor Plane T1 Config
-#define IXGBE_REG_RTTDT1C 0x04908
+#define IXGBE_REG_RTTDT1C(_) 0x04908
 
 // Section 8.2.3.10.9 DCB Transmit Descriptor Plane T2 Config
 #define IXGBE_RTTDT2C_REGISTERS_COUNT 8
@@ -179,10 +183,10 @@ static void ixgbe_reg_write(uint32_t addr, uint32_t reg, uint32_t value) { write
 #define IXGBE_REG_RTTPT2C(n) (0x0CD20 + 4*n)
 
 // Section 8.2.3.8.8 Receive DMA Control Register
-#define IXGBE_REG_RDRXCTL 0x02F00
+#define IXGBE_REG_RDRXCTL(_) 0x02F00
 #define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
 
-#define IXGBE_REG_RXCTRL 0x03000
+#define IXGBE_REG_RXCTRL(_) 0x03000
 #define IXGBE_REG_RXCTRL_RXEN BIT(0)
 
 #define IXGBE_REG_RXDCTL(n) (n <= 63 ? (0x01028 + 0x40*n) : (0x0D028 + 0x40*(n-64)))
@@ -193,14 +197,14 @@ static void ixgbe_reg_write(uint32_t addr, uint32_t reg, uint32_t value) { write
 #define IXGBE_REG_RXPBSIZE(n) (0x03C00 + 4*n)
 #define IXGBE_REG_RXPBSIZE_SIZE BITS(10,19)
 
-#define IXGBE_REG_STATUS 0x00008
+#define IXGBE_REG_STATUS(_) 0x00008
 #define IXGBE_REG_STATUS_MASTERENABLE BIT(19)
 
-#define IXGBE_REG_SWFWSYNC 0x10160
+#define IXGBE_REG_SWFWSYNC(_) 0x10160
 #define IXGBE_REG_SWFWSYNC_SW BITS(0,4)
 #define IXGBE_REG_SWFWSYNC_FW BITS(5,9)
 
-#define IXGBE_REG_SWSM 0x10140
+#define IXGBE_REG_SWSM(_) 0x10140
 #define IXGBE_REG_SWSM_SMBI    BIT(0)
 #define IXGBE_REG_SWSM_SWESMBI BIT(1)
 
@@ -228,30 +232,30 @@ static void ixgbe_lock_swsm(uint64_t addr, bool* out_sw_malfunction, bool* out_f
 	// "- Software polls the SWSM.SMBI bit until it is read as 0b or time expires (recommended expiration is ~10 ms+ expiration time used for the SWSM.SWESMBI)."
 	// "- If SWSM.SMBI is found at 0b, the semaphore is taken. Note that following this read cycle hardware auto sets the bit to 1b."
 	// "- If time expired, it is assumed that the software of the other function malfunctions. Software proceeds to the next steps checking SWESMBI for firmware use."
-	WAIT_WITH_TIMEOUT(*out_sw_malfunction, 10 + 3000, IXGBE_REG_CLEARED(addr, SWSM, SMBI));
+	WAIT_WITH_TIMEOUT(*out_sw_malfunction, 10 + 3000, IXGBE_REG_CLEARED(addr, SWSM, _, SMBI));
 
 
 	// "Software checks that the firmware does not use the software/firmware semaphore and then takes its control"
 
 	// "- Software writes a 1b to the SWSM.SWESMBI bit"
-	IXGBE_REG_SET(addr, SWSM, SWESMBI);
+	IXGBE_REG_SET(addr, SWSM, _, SWESMBI);
 
 	// "- Software polls the SWSM.SWESMBI bit until it is read as 1b or time expires (recommended expiration is ~3 sec).
 	//    If time has expired software assumes that the firmware malfunctioned and proceeds to the next step while ignoring the firmware bits in the SW_FW_SYNC register."
-	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000, IXGBE_REG_CLEARED(addr, SWSM, SWESMBI));
+	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000, IXGBE_REG_CLEARED(addr, SWSM, _, SWESMBI));
 }
 
 static void ixgbe_unlock_swsm(uint64_t addr)
 {
-	IXGBE_REG_CLEAR(addr, SWSM, SWESMBI);
-	IXGBE_REG_CLEAR(addr, SWSM, SMBI);
+	IXGBE_REG_CLEAR(addr, SWSM, _, SWESMBI);
+	IXGBE_REG_CLEAR(addr, SWSM, _, SMBI);
 }
 
 static bool ixgbe_lock_resources(uint64_t addr)
 {
 	uint32_t attempts = 0;
 
-start:
+start:;
 	bool sw_malfunction;
 	bool fw_malfunction;
 	ixgbe_lock_swsm(addr, &sw_malfunction, &fw_malfunction);
@@ -259,7 +263,7 @@ start:
 	// "Software takes control of the requested resource(s)"
 
 	// "- Software reads the firmware and software bit(s) of the requested resource(s) in the SW_FW_SYNC register."
-	uint32_t sync = IXGBE_REG_READ(addr, IXGBE_REG_SWFWSYNC);
+	uint32_t sync = IXGBE_REG_READ(addr, SWFWSYNC, _);
 	// "- If time has expired in the previous steps due to a malfunction firmware,
 	//    the software should clear the firmware bits in the SW_FW_SYNC register.
 	//    If time has expired in the previous steps due to malfunction software of the other LAN function,
@@ -276,7 +280,7 @@ start:
 	//    Then the SW clears the SWSM.SWESMBI and SWSM.SMBI bits (releasing the SW/FW semaphore register) and can use the specific resource(s)."
 	if ((sync & IXGBE_REG_SWFWSYNC_SW) == 0 && (sync & IXGBE_REG_SWFWSYNC_FW) == 0) {
 		sync |= IXGBE_REG_SWFWSYNC_SW;
-		IXGBE_WRITE_REG(addr, IXGBE_REG_SWFWSYNC, sync);
+		IXGBE_REG_WRITE(addr, SWFWSYNC, _, sync);
 
 		ixgbe_unlock_swsm(addr);
 
@@ -295,7 +299,7 @@ start:
 		}
 
 		if (attempts == 100) {
-			IXGBE_REG_CLEAR(addr, SWFWSYNC, SW);
+			IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
 			usleep(10 * 1000);
 			goto start;
 		}
@@ -310,10 +314,10 @@ static void ixgbe_unlock_resources(uint64_t addr)
 {
 	// "The software takes control over the software/firmware semaphore as previously described for gaining shared resources."
 	bool ignored;
-	ixgbe_lock_swfw(addr, &ignored, &ignored);
+	ixgbe_lock_swsm(addr, &ignored, &ignored);
 
 	// "Software clears the bit(s) of the released resource(s) in the SW_FW_SYNC register."
-	IXGBE_REG_CLEAR(addr, SWFWSYNC, SW);
+	IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
 
 	// "Software releases the software/firmware semaphore by clearing the SWSM.SWESMBI and SWSM.SMBI bits"
 	ixgbe_unlock_swsm(addr);
@@ -329,13 +333,13 @@ static void ixgbe_unlock_resources(uint64_t addr)
 static bool ixgbe_recv_disable(uint64_t addr, uint16_t queue)
 {
 	// "Disable the queue by clearing the RXDCTL.ENABLE bit."
-	IXGBE_REG_CLEAR(addr, RXDCTL(queue), ENABLE);
+	IXGBE_REG_CLEAR(addr, RXDCTL, queue, ENABLE);
 
 	// "The 82599 clears the RXDCTL.ENABLE bit only after all pending memory accesses to the descriptor ring are done.
 	//  The driver should poll this bit before releasing the memory allocated to this queue."
 	// INTERPRETATION: There is no mention of what to do if the 82599 never clears the bit; 1s seems like a decent timeout
 	bool timed_out;
-	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(addr, RXDCTL(queue), ENABLE));
+	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(addr, RXDCTL, queue, ENABLE));
 	if (timed_out) {
 		return false;
 	}
@@ -360,20 +364,20 @@ static bool ixgbe_device_master_disable(uint64_t addr)
 	}
 
 	// "Then the device driver sets the PCIe Master Disable bit [in the Device Status register] when notified of a pending master disable (or D3 entry)."
-	IXGBE_REG_SET(addr, CTRL, MASTERDISABLE);
+	IXGBE_REG_SET(addr, CTRL, _, MASTERDISABLE);
 
 	// "The 82599 then blocks new requests and proceeds to issue any pending requests by this function.
 	//  The driver then reads the change made to the PCIe Master Disable bit and then polls the PCIe Master Enable Status bit.
 	//  Once the bit is cleared, it is guaranteed that no requests are pending from this function."
 	// INTERPRETATION: The next sentence refers to "a given time"; let's say 1 second should be plenty...
 	bool timed_out;
-	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(addr, STATUS, MASTERENABLE));
+	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(addr, STATUS, _, MASTERENABLE));
 
 	// "The driver might time out if the PCIe Master Enable Status bit is not cleared within a given time."
 	if (timed_out) {
 		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
 		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
-		uint32_t devstatus = IXGBE_READ_PCIREG(addr, IXGBE_PCIREG_DEVICESTATUS);
+		uint32_t devstatus = IXGBE_PCIREG_READ(addr, DEVICESTATUS);
 		if (!IXGBE_PCIREG_CLEARED(addr, DEVICESTATUS, TRANSACTIONPENDING)) {
 			return false;
 		}
@@ -382,16 +386,16 @@ static bool ixgbe_device_master_disable(uint64_t addr)
 		//  The recommended method to flush the transmit data path is as follows:"
 		// "- Inhibit data transmission by setting the HLREG0.LPBK bit and clearing the RXCTRL.RXEN bit.
 		//    This configuration avoids transmission even if flow control or link down events are resumed."
-		IXGBE_REG_SET(addr, HLREG0, LPBK);
-		IXGBE_REG_CLEAR(addr, RXCTRL, RXEN);
+		IXGBE_REG_SET(addr, HLREG0, _, LPBK);
+		IXGBE_REG_CLEAR(addr, RXCTRL, _, RXEN);
 
 		// "- Set the GCR_EXT.Buffers_Clear_Func bit for 20 microseconds to flush internal buffers."
-		IXGBE_REG_SET(addr, GCREXT, BUFFERSCLEAR);
+		IXGBE_REG_SET(addr, GCREXT, _, BUFFERSCLEAR);
 		usleep(20);
 
 		// "- Clear the HLREG0.LPBK bit and the GCR_EXT.Buffers_Clear_Func"
-		IXGBE_REG_CLEAR(addr, HLREG0, LPBK);
-		IXGBE_REG_CLEAR(addr, GCREXT, BUFFERSCLEAR);
+		IXGBE_REG_CLEAR(addr, HLREG0, _, LPBK);
+		IXGBE_REG_CLEAR(addr, GCREXT, _, BUFFERSCLEAR);
 
 		// "- It is now safe to issue a software reset."
 	}
@@ -411,12 +415,12 @@ static void ixgbe_device_reset(uint64_t addr)
 	bool master_disabled = ixgbe_device_master_disable(addr);
 
 	// "Initiated by writing the Link Reset bit of the Device Control register (CTRL.LRST)."
-	IXGBE_REG_SET(addr, CTRL, LRST);
+	IXGBE_REG_SET(addr, CTRL, _, LRST);
 
 	// See quotes in ixgbe_device_master_disable
 	if (master_disabled) {
 		usleep(2);
-		IXGBE_REG_SET(addr, CTRL, LRST);
+		IXGBE_REG_SET(addr, CTRL, _, LRST);
 	}
 
 	// Section 8.2.3.1.1 Device Control Register
@@ -435,7 +439,7 @@ static void ixgbe_device_reset(uint64_t addr)
 static void ixgbe_device_disable_interrupts(uint64_t addr)
 {
 	for (int n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, EIMC(n), MASK);
+		IXGBE_REG_CLEAR(addr, EIMC, n, MASK);
 	}
 }
 
@@ -473,16 +477,16 @@ static bool ixgbe_device_init(uint64_t addr)
 	//	 FCEN should be set to 0b if flow control is not enabled as all the other registers previously indicated."
 	// INTERPRETATION: Sections 3.7.7.3.{2-5} are irrelevant here since we do not want flow control.
 	for (int n = 0; n < IXGBE_FCTTV_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, FCTTV(n));
+		IXGBE_REG_CLEAR(addr, FCTTV, n);
 	}
 	for (int n = 0; n < IXGBE_FCRTL_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, FCRTL(n));
+		IXGBE_REG_CLEAR(addr, FCRTL, n);
 	}
 	for (int n = 0; n < IXGBE_FCRTH_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, FCRTH(n));
+		IXGBE_REG_CLEAR(addr, FCRTH, n);
 	}
-	IXGBE_REG_CLEAR(addr, FCRTV);
-	IXGBE_REG_CLEAR(addr, FCCFG);
+	IXGBE_REG_CLEAR(addr, FCRTV, _);
+	IXGBE_REG_CLEAR(addr, FCCFG, _);
 	// Section 8.2.3.8.9 Receive Packet Buffer Size (RXPBSIZE[n])
 	//	"The size is defined in KB units and the default size of PB[0] is 512 KB."
 	// Section 8.2.3.3.4 Flow Control Receive Threshold High (FCRTH[n])
@@ -496,7 +500,7 @@ static bool ixgbe_device_init(uint64_t addr)
 	// INTERPRETATION: There is an obvious contradiction in the stated granularities (16 vs 32 bytes). We assume 32 is correct, and it refers to the 5 reserved bottom bits.
 	// INTERPRETATION: We assume that the "RXPBSIZE[n]-0x6000" calculation above refers to the RXPBSIZE in bytes (otherwise the size of FCRTH[n].RTH would be negative by default...)
 	//                 Thus we set FCRTH[0] = 512 * 1024 - 0x6000 = 0x7A000, which also disables flow control since bit 31 is unset.
-	IXGBE_REG_WRITE(addr, FCRTH(0), 0x7A000);
+	IXGBE_REG_WRITE(addr, FCRTH, 0, 0x7A000);
 
 	// "- Wait for EEPROM auto read completion."
 	// INTERPRETATION: This refers to Section 8.2.3.2.1 EEPROM/Flash Control Register (EEC), Bit 9 "EEPROM Auto-Read Done"
@@ -505,15 +509,15 @@ static bool ixgbe_device_init(uint64_t addr)
 	// INTERPRETATION: We also need to check whether the EEPROM has a valid checksum, using the FWSM's register EXT_ERR_IND, where "0x00 = No error"
 	// INTERPRETATION: No timeout is mentioned, so we use 1s.
 	bool eeprom_timed_out;
-	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, EEC, AUTORD));
-	if (eeprom_timed_out || IXGBE_REG_CLEARED(addr, EEC, EEPRES) || !IXGBE_REG_CLEARED(addr, FWSM, EXTERRIND)) {
+	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, EEC, _, AUTORD));
+	if (eeprom_timed_out || IXGBE_REG_CLEARED(addr, EEC, _, EEPRES) || !IXGBE_REG_CLEARED(addr, FWSM, _, EXTERRIND)) {
 		return false;
 	}
 
 	// "- Wait for DMA initialization done (RDRXCTL.DMAIDONE)."
 	// INTERPRETATION: Once again, no timeout mentioned, so we use 1s
 	bool dma_timed_out;
-	WAIT_WITH_TIMEOUT(dma_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, RDRXCTL, DMAIDONE));
+	WAIT_WITH_TIMEOUT(dma_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, RDRXCTL, _, DMAIDONE));
 	if (dma_timed_out) {
 		return false;
 	}
@@ -546,7 +550,7 @@ static bool ixgbe_device_init(uint64_t addr)
 	//	Section 8.2.3.27.12 PF Unicast Table Array (PFUTA[n]):
 	//		"This table should be zeroed by software before start of operation."
 	for (int n = 0; n < IXGBE_PFUTA_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, PFUTA(n));
+		IXGBE_REG_CLEAR(addr, PFUTA, n);
 	}
 
 	//	"- VLAN Filter Table Array (VFTA[n])."
@@ -561,7 +565,7 @@ static bool ixgbe_device_init(uint64_t addr)
 	// 	Section 8.2.3.27.15 PF VM VLAN Pool Filter (PFVLVF[n]):
 	//		"Software should initialize these registers before transmit and receive are enabled."
 	for (int n = 0; n < IXGBE_PFVLVF_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, PFVLVF(n));
+		IXGBE_REG_CLEAR(addr, PFVLVF, n);
 	}
 
 	//	"- MAC Pool Select Array (MPSAR[n])."
@@ -572,24 +576,24 @@ static bool ixgbe_device_init(uint64_t addr)
 	//		 Bit 'i' in register '2*n' is associated with POOL 'i'.
 	//		 Bit 'i' in register '2*n+1' is associated with POOL '32+i'."
 	// INTERPRETATION: We should enable all pools with address 0, just in case, and disable everything else since we only have 1 MAC address.
-	IXGBE_REG_WRITE(addr, MPSAR(0), 0xFFFFFFFF);
-	IXGBE_REG_WRITE(addr, MPSAR(1), 0xFFFFFFFF);
+	IXGBE_REG_WRITE(addr, MPSAR, 0, 0xFFFFFFFF);
+	IXGBE_REG_WRITE(addr, MPSAR, 1, 0xFFFFFFFF);
 	for (int n = 2; n < IXGBE_MPSAR_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, MPSAR(n));
+		IXGBE_REG_CLEAR(addr, MPSAR, n);
 	}
 
 	//	"- VLAN Pool Filter Bitmap (PFVLVFB[n])."
 	// INTERPRETATION: See above remark on PFVLVF
 	//	Section 8.2.3.27.16: PF VM VLAN Pool Filter Bitmap
 	for (int n = 0; n < IXGBE_PFVLVFB_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, PFVLVFB(n));
+		IXGBE_REG_CLEAR(addr, PFVLVFB, n);
 	}
 
 	//	"Set up the Multicast Table Array (MTA) registers.
 	//	 This entire table should be zeroed and only the desired multicast addresses should be permitted (by writing 0x1 to the corresponding bit location).
 	//	 Set the MCSTCTRL.MFE bit if multicast filtering is required."
 	for (int n = 0; n < IXGBE_MTA_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, MTA(n));
+		IXGBE_REG_CLEAR(addr, MTA, n);
 	}
 
 	//	"Initialize the flexible filters 0...5 — Flexible Host Filter Table registers (FHFT)."
@@ -620,7 +624,8 @@ static bool ixgbe_device_init(uint64_t addr)
 	//		"Bit 10, Broadcast Accept Mode. 1b = Accept broadcast packets to host."
 	//		all other bits are "Reserved"
 	// We want to receive all good packets, thus we disable bad packet store but enable promiscuous and broadcast accept.
-	IXGBE_REG_WRITE(addr, FCTRL, BITS(8,10));
+	// TODO should not use BITS here
+	IXGBE_REG_WRITE(addr, FCTRL, _, BITS(8,10));
 	//	Section 8.2.3.7.2 VLAN Control Register (VLNCTRL):
 	//		"Bit 30, VLAN Filter Enable, Init val 0b; 0b = Disabled."
 	// ASSUMPTION: We do not want VLAN handling.
@@ -659,8 +664,8 @@ static bool ixgbe_device_init(uint64_t addr)
 	// ASSUMPTION: We do not want 5-tuple filtering.
 	// INTERPRETATION: We clear Queue Enable, and set the mask to 0b11111 just in case. We then do not need to deal with SAQF, DAQF, SDPQF, SYNQF.
 	for (int n = 0; n < IXGBE_FTQF_REGISTERS_COUNT; n++) {
-		IXGBE_REG_SET(addr, FTQF(n), MASK);
-		IXGBE_REG_CLEAR(addr, FTQF(n), QUEUEENABLE);
+		IXGBE_REG_SET(addr, FTQF, n, MASK);
+		IXGBE_REG_CLEAR(addr, FTQF, n, QUEUEENABLE);
 	}
 	//	Section 7.1.2.3 L2 Ethertype Filters:
 	//		"The following flow is used by the Ethertype filters:
@@ -688,7 +693,7 @@ static bool ixgbe_device_init(uint64_t addr)
 	//			"The default size of PB[1-7] is also 512 KB but it is meaningless in non-DCB mode."
 	// INTERPRETATION: We do not need to change PB[0]. Let's stay on the safe side and clear PB[1-7] to 0 anyway.
 	for (int n = 1; n < IXGBE_RXPBSIZE_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, RXPBSIZE(0));
+		IXGBE_REG_CLEAR(addr, RXPBSIZE, 0);
 	}
 	//		"- TXPBSIZE[0].SIZE=0xA0, TXPBSIZE[1-7].SIZE=0x0"
 	//		Section 8.2.3.9.13 Transmit Packet Buffer Size (TXPBSIZE[n]):
@@ -696,7 +701,7 @@ static bool ixgbe_device_init(uint64_t addr)
 	//			"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
 	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
 	for (int n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, TXPBSIZE(0));
+		IXGBE_REG_CLEAR(addr, TXPBSIZE, 0);
 	}
 	//		"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
 	// INTERPRETATION: Typo in the spec; should be TXPBTHRESH[0].THRESH
@@ -730,7 +735,7 @@ static bool ixgbe_device_init(uint64_t addr)
 	//		Section 8.2.3.10.5 DCB Transmit User Priority to Traffic Class (RTTUP2TC): All init vals = 0
 	// Thus we do not need to modify RTTUP2TC.
 	//		"- DMA TX TCP Maximum Allowed Size Requests (DTXMXSZRQ) — set Max_byte_num_req = 0xFFF = 1 MB"
-	IXGBE_REG_WRITE(addr, DTXMXSZRQ, MAXBYTESNUMREQ, 0xFFF);
+	IXGBE_REG_WRITE(addr, DTXMXSZRQ, _, MAXBYTESNUMREQ, 0xFFF);
 	//		"Allow no-drop policy in Rx:"
 	//		"- PFQDE: The QDE bit should be set to 0b in the PFQDE register for all queues enabling per queue policy by the SRRCTL[n] setting."
 	//		Section 8.2.3.27.9 PF PF Queue Drop Enable Register (PFQDE): "QDE, Init val 0b"
@@ -744,26 +749,26 @@ static bool ixgbe_device_init(uint64_t addr)
 	//		Section 8.2.3.22.34 MAC Flow Control Register (MFLCN): "RPFCE, Init val 0b"
 	// Thus we do not need to modify MFLCN.
 	//		"- Enable receive legacy flow control via: MFLCN.RFCE=1b"
-	IXGBE_REG_WRITE(addr, MFLCN, RFCE, 1);
+	IXGBE_REG_WRITE(addr, MFLCN, _, RFCE, 1);
 	//		"- Enable transmit legacy flow control via: FCCFG.TFCE=01b"
-	IXGBE_REG_WRITE(addr, FCCFG, TFCE, 1);
+	IXGBE_REG_WRITE(addr, FCCFG, _, TFCE, 1);
 	//		"Reset all arbiters:"
 	//		"- Clear RTTDT1C register, per each queue, via setting RTTDQSEL first"
 	for (int n = 0; n < IXGBE_TX_QUEUE_POOLS_COUNT; n++) {
-		IXGBE_REG_WRITE(addr, RTTDQSEL, TXDQIDX, n);
-		IXGBE_REG_CLEAR(addr, RTTDT1C);
+		IXGBE_REG_WRITE(addr, RTTDQSEL, _, TXDQIDX, n);
+		IXGBE_REG_CLEAR(addr, RTTDT1C, _);
 	}
 	//		"- Clear RTTDT2C[0-7] registers"
 	for (int n = 0; n < IXGBE_RTTDT2C_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, RTTDT2C(n));
+		IXGBE_REG_CLEAR(addr, RTTDT2C, n);
 	}
 	//		"- Clear RTTPT2C[0-7] registers"
 	for (int n = 0; n < IXGBE_RTTPT2C_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, RTTPT2C(n));
+		IXGBE_REG_CLEAR(addr, RTTPT2C, n);
 	}
 	//		"- Clear RTRPT4C[0-7] registers"
 	for (int n = 0; n < IXGBE_RTRPT4C_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, RTRPT4C(n));
+		IXGBE_REG_CLEAR(addr, RTRPT4C, n);
 	}
 	//		"Disable TC and VM arbitration layers:"
 	//		"- Tx Descriptor Plane Control and Status (RTTDCS), bits: TDPAC=0b, VMPAC=0b, TDRM=0b, BDPM=1b, BPBFSM=1b"
