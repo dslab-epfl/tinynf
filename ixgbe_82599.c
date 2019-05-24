@@ -56,14 +56,14 @@ static uint32_t ixgbe_reg_read(uint64_t addr, uint32_t reg) { uint32_t val = *((
 static void ixgbe_reg_write(uint64_t addr, uint32_t reg, uint32_t value) { tn_write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); }
 #define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
 #define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
-#define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3)(__VA_ARGS__)
+#define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_WRITE4(addr, reg, idx, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), value)
 #define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | ((value << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
-#define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4)(__VA_ARGS__)
+#define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_CLEARED(addr, reg, idx, field) (IXGBE_REG_READ(addr, reg, idx, field) == 0)
 #define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0)
 #define IXGBE_REG_CLEAR4(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, field, (IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field))
-#define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR4, IXGBE_REG_CLEAR3)(__VA_ARGS__)
+#define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR4, IXGBE_REG_CLEAR3, _UNUSED)(__VA_ARGS__)
 // TODO better name than "set", since set implies to a specific value? what's the opposite of clear?
 #define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, field, (IXGBE_REG_READ(addr, reg, idx) | IXGBE_REG_##reg##_##field))
 
@@ -377,7 +377,6 @@ static bool ixgbe_device_master_disable(uint64_t addr)
 	if (timed_out) {
 		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
 		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
-		uint32_t devstatus = IXGBE_PCIREG_READ(addr, DEVICESTATUS);
 		if (!IXGBE_PCIREG_CLEARED(addr, DEVICESTATUS, TRANSACTIONPENDING)) {
 			return false;
 		}
@@ -399,6 +398,8 @@ static bool ixgbe_device_master_disable(uint64_t addr)
 
 		// "- It is now safe to issue a software reset."
 	}
+
+	return true;
 }
 
 
@@ -443,7 +444,7 @@ static void ixgbe_device_disable_interrupts(uint64_t addr)
 	}
 }
 
-static bool ixgbe_device_init(uint64_t addr)
+bool ixgbe_device_init(uint64_t addr)
 {
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"

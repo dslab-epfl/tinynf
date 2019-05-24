@@ -3,6 +3,7 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <sys/io.h>
 
@@ -36,7 +37,7 @@ uint64_t tn_pci_get_device(uint8_t bus, uint8_t device, uint8_t function, uint64
 
 	// Find which slot we'll save the memory-mapped address in
 	struct tn_pci_device* dev = NULL;
-	for (int n = 0; n < sizeof(tn_pci_known_devices)/sizeof(struct tn_pci_device); n++) {
+	for (size_t n = 0; n < sizeof(tn_pci_known_devices)/sizeof(struct tn_pci_device); n++) {
 		if (tn_pci_known_devices[n].address == 0) {
 			dev = &tn_pci_known_devices[n];
 		}
@@ -92,7 +93,7 @@ error:
 uint32_t tn_pci_read(uint64_t device_addr, uint8_t reg)
 {
 	struct tn_pci_device* dev = NULL;
-	for (int n = 0; n < sizeof(tn_pci_known_devices)/sizeof(struct tn_pci_device); n++) {
+	for (size_t n = 0; n < sizeof(tn_pci_known_devices)/sizeof(struct tn_pci_device); n++) {
 		if (tn_pci_known_devices[n].address == device_addr) {
 			dev = &tn_pci_known_devices[n];
 		}
