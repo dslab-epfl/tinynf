@@ -787,11 +787,51 @@ static bool ixgbe_device_init(uint64_t addr)
 	//	"Enable receive coalescing if required as described in Section 4.6.7.2."
 	// Since we do not require it, we do not need to do anything.
 
-	// We do not set queues up at this point.
+	// We do not set up receive queues at this point.
 
 
 	// "- Initialize transmit (see Section 4.6.8)."
-	//	Section 4.6.8
+	//	Section 4.6.8 Transmit Initialization:
+	//		"- Program the HLREG0 register according to the required MAC behavior."
+	//		Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0):
+	//			"TXCRCEN, Init val 1b; Tx CRC Enable, Enables a CRC to be appended by hardware to a Tx packet if requested by user."
+	// INTERPRETATION: We do not need to explicitly disable this, since it only allows the user to request it, but does not do it automatically.
+	//			"TXPADEN, Init val 1b; Tx Pad Frame Enable. Pad short Tx frames to 64 bytes if requested by user."
+	// INTERPRETATION: We do not need to explicitly disable this, since it only allows the user to request it, but does not do it automatically.
+	//			"LPBK, Init val 0b; LOOPBACK. Turn On Loopback Where Transmit Data Is Sent Back Through Receiver."
+	// ASSUMPTION: We do not want loopback.
+	// Thus we do not need to change this.
+	//			There are two more registers for MDC, and one for CRC, which we do not care about here. TODO be a bit more formal for this... too lazy right now...
+	//		"- Program TCP segmentation parameters via registers DMATXCTL (while maintaining TE bit cleared), DTXTCPFLGL, and DTXTCPFLGH; and DCA parameters via DCA_TXCTRL."
+	//			Section 8.2.3.9.2 DMA Tx Control (DMATXCTL):
+	//				There is only one field besides TE that the user should modify: "GDV, Init val 0b, Global Double VLAN Mode."
+	// ASSUMPTION: We do not want global double VLAN mode.
+	// Thus we do not need to change DMATXCTL for now.
+	//			Section 8.2.3.9.3 DMA Tx TCP Flags Control Low (DTXTCPFLGL),
+	//			Section 8.2.3.9.4 DMA Tx TCP Flags Control High (DTXTCPFLGH):
+	//				"This register holds the mask bits for the TCP flags in Tx segmentation."
+	// INTERPRETATION: The default values make sense for TCP.
+	// Thus we do not need to modify DTXTCPFLGL/H.
+	//			Section 8.2.3.11.2 Tc DCA Control Registers (DCA_TXCTRL[n]):
+	//				"Tx Descriptor DCA EN, Init val 0b; Descriptor DCA Enable. When set, hardware enables DCA for all Tx descriptors written back into memory.
+	//				 When cleared, hardware does not enable DCA for descriptor write-backs. This bit is cleared as a default and also applies to head write back when enabled."
+	//				"CPUID, Init val 0x0, Physical ID (see complete description in Section 3.1.3.1.2)
+	//				 Legacy DCA capable platforms — the device driver, upon discovery of the physical CPU ID and CPU bus ID, programs the CPUID field with the physical CPU and bus ID associated with this Tx queue.
+	//				 DCA 1.0 capable platforms — the device driver programs a value, based on the relevant APIC ID, associated with this Tx queue."
+	// ASSUMPTION: We want DCA, since it helps performance.
+	// TODO: Actually implement it.
+	// TODO: DCA for RX as well.
+	// TODO: Benchmark with DCA enabled and disabled.
+	//				There are fields dealing with relaxed ordering; Section 3.1.4.5.3 Relaxed Ordering states that it "enables the system to optimize performance", with no apparent correctness impact.
+	// INTERPRETATION: Relaxed ordering has no correctness issues, and thus should be enabled.
+	// TODO: Benchmark with relaxed ordering enabled and disabled.
+	//		"- Set RTTDCS.ARBDIS to 1b."
+	//		"- Program DTXMXSZRQ, TXPBSIZE, TXPBTHRESH, MTQC, and MNGTXMAP, according to the DCB and virtualization modes (see Section 4.6.11.3)."
+	//		"- Clear RTTDCS.ARBDIS to 0b"
+	// INTERPRETATION: The spec forgot to mention it earlier, but MTQC requires ARBDIS to be disabled (see Section 7.2.1.2.1 Tx Queues Assignment).
+	// We've already done DCB/VT config earlier, no need to do anything here.
+
+	// TODO: Look into Section 7.1.10 and the related errata about header splitting.
 
 	// "- Enable interrupts (see Section 4.6.3.1)."
 	// Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
