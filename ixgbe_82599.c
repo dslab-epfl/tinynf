@@ -2,7 +2,9 @@
 #include "pci.h"
 
 #include <stdbool.h>
-#include <unistd.h>
+#include <stdint.h>
+#include <time.h>
+//#include <unistd.h>
 
 
 // Fundamental constants
@@ -32,6 +34,10 @@
 #define BITS(start, end) ((end == 31 ? 0 : (0xFFFFFFFF << (end + 1))) ^ (0xFFFFFFFF << start))
 #define TRAILING_ZEROES(n) __builtin_ctzll(n)
 
+// Sleep for the given amount of microseconds; note that usleep was removed in POSIX-2008
+// TODO how do we deal with errors returned by that?
+#define USLEEP(n) nanosleep(&((struct timespec){.tv_sec = (n / 1000000), .tv_nsec = (n % 1000000) * 1000}), NULL)
+
 // Poll until the given condition holds, or the given timeout occurs; store whether a timeout occurred in result_name
 #define WAIT_WITH_TIMEOUT(result_name, timeout_in_ms, condition) \
 		result_name = true; \
@@ -40,7 +46,7 @@
 				result_name = false; \
 				break; \
 			} \
-			usleep(50); \
+			USLEEP(50); \
 		}
 
 
@@ -51,8 +57,8 @@
 const int _ = 0;
 
 // Register primitives
-static uint32_t ixgbe_reg_read(uint64_t addr, uint32_t reg) { uint32_t val = *((volatile uint32_t*)((char*)addr + reg)); tn_read_barrier(); return tn_le_to_cpu(val); }
-static void ixgbe_reg_write(uint64_t addr, uint32_t reg, uint32_t value) { tn_write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); }
+static uint32_t ixgbe_reg_read(void* addr, uint32_t reg) { uint32_t val = *((volatile uint32_t*)((char*)addr + reg)); tn_read_barrier(); return tn_le_to_cpu(val); }
+static void ixgbe_reg_write(void* addr, uint32_t reg, uint32_t value) { tn_write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); }
 #define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
 #define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
 #define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
@@ -224,7 +230,7 @@ static void ixgbe_reg_write(uint64_t addr, uint32_t reg, uint32_t value) { tn_wr
 // TODO: Do we really need this part?
 
 // "Gaining Control of Shared Resource by Software"
-static void ixgbe_lock_swsm(uint64_t addr, bool* out_sw_malfunction, bool* out_fw_malfunction)
+static void ixgbe_lock_swsm(void* addr, bool* out_sw_malfunction, bool* out_fw_malfunction)
 {
 	// "Software checks that the software on the other LAN function does not use the software/firmware semaphore"
 
@@ -244,13 +250,13 @@ static void ixgbe_lock_swsm(uint64_t addr, bool* out_sw_malfunction, bool* out_f
 	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000, IXGBE_REG_CLEARED(addr, SWSM, _, SWESMBI));
 }
 
-static void ixgbe_unlock_swsm(uint64_t addr)
+static void ixgbe_unlock_swsm(void* addr)
 {
 	IXGBE_REG_CLEAR(addr, SWSM, _, SWESMBI);
 	IXGBE_REG_CLEAR(addr, SWSM, _, SMBI);
 }
 
-static bool ixgbe_lock_resources(uint64_t addr)
+static bool ixgbe_lock_resources(void* addr)
 {
 	uint32_t attempts = 0;
 
@@ -299,17 +305,17 @@ start:;
 
 		if (attempts == 100) {
 			IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
-			usleep(10 * 1000);
+			USLEEP(10 * 1000);
 			goto start;
 		}
 
-		usleep(10 * 1000);
+		USLEEP(10 * 1000);
 		goto start;
 	}
 }
 
 // "Releasing a Shared Resource by Software"
-static void ixgbe_unlock_resources(uint64_t addr)
+static void ixgbe_unlock_resources(void* addr)
 {
 	// "The software takes control over the software/firmware semaphore as previously described for gaining shared resources."
 	bool ignored;
@@ -322,14 +328,14 @@ static void ixgbe_unlock_resources(uint64_t addr)
 	ixgbe_unlock_swsm(addr);
 
 	// "Software should wait a minimum delay (recommended 5-10 ms) before trying to gain the semaphore again"
-	usleep(10 * 1000);
+	USLEEP(10 * 1000);
 }
 
 // ---------------------------------------------------------
 // Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
 // ---------------------------------------------------------
 
-static bool ixgbe_recv_disable(uint64_t addr, uint16_t queue)
+static bool ixgbe_recv_disable(void* addr, uint16_t queue)
 {
 	// "Disable the queue by clearing the RXDCTL.ENABLE bit."
 	IXGBE_REG_CLEAR(addr, RXDCTL, queue, ENABLE);
@@ -344,7 +350,7 @@ static bool ixgbe_recv_disable(uint64_t addr, uint16_t queue)
 	}
 
 	// "Once the RXDCTL.ENABLE bit is cleared the driver should wait additional amount of time (~100 us) before releasing the memory allocated to this queue."
-	usleep(100);
+	USLEEP(100);
 
 	return true;
 }
@@ -355,7 +361,7 @@ static bool ixgbe_recv_disable(uint64_t addr, uint16_t queue)
 // --------------------------------
 
 // See quotes inside to understand the meaning of the return value
-static bool ixgbe_device_master_disable(uint64_t addr)
+static bool ixgbe_device_master_disable(void* addr)
 {
 	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
 	for (uint16_t queue; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
@@ -389,7 +395,7 @@ static bool ixgbe_device_master_disable(uint64_t addr)
 
 		// "- Set the GCR_EXT.Buffers_Clear_Func bit for 20 microseconds to flush internal buffers."
 		IXGBE_REG_SET(addr, GCREXT, _, BUFFERSCLEAR);
-		usleep(20);
+		USLEEP(20);
 
 		// "- Clear the HLREG0.LPBK bit and the GCR_EXT.Buffers_Clear_Func"
 		IXGBE_REG_CLEAR(addr, HLREG0, _, LPBK);
@@ -409,7 +415,7 @@ static bool ixgbe_device_master_disable(uint64_t addr)
 // INTERPRETATION: The spec has a circular dependency here - resets need master disable, but master disable asks for two resets if it fails!
 //                 We assume that if the master disable fails, the resets do not need to go through the master disable step.
 
-static void ixgbe_device_reset(uint64_t addr)
+static void ixgbe_device_reset(void* addr)
 {
 	// "Prior to issuing link reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
 	bool master_disabled = ixgbe_device_master_disable(addr);
@@ -419,7 +425,7 @@ static void ixgbe_device_reset(uint64_t addr)
 
 	// See quotes in ixgbe_device_master_disable
 	if (master_disabled) {
-		usleep(2);
+		USLEEP(2);
 		IXGBE_REG_SET(addr, CTRL, _, LRST);
 	}
 
@@ -428,7 +434,7 @@ static void ixgbe_device_reset(uint64_t addr)
 	//  programmers must wait approximately 1 ms after setting before attempting to check if the bit has cleared or to access (read or write) any other device register."
 	// INTERPRETATION: It's OK to access the CTRL register itself to double-reset it as above without waiting a full second,
 	//                 and thus this does not contradict the "at least 1 us" rule of the double-reset.
-	usleep(1000);
+	USLEEP(1000);
 }
 
 
@@ -436,14 +442,14 @@ static void ixgbe_device_reset(uint64_t addr)
 // Section 4.6.3 Initialization Sequence
 // -------------------------------------
 
-static void ixgbe_device_disable_interrupts(uint64_t addr)
+static void ixgbe_device_disable_interrupts(void* addr)
 {
 	for (int n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, EIMC, n, MASK);
 	}
 }
 
-bool ixgbe_device_init(uint64_t addr)
+bool ixgbe_device_init(void* addr)
 {
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
@@ -465,7 +471,7 @@ bool ixgbe_device_init(uint64_t addr)
 	//	 Following a Global Reset the Software driver should wait at least 10msec to enable smooth initialization flow."
 	ixgbe_device_disable_interrupts(addr);
 	ixgbe_device_reset(addr);
-	usleep(10 * 1000);
+	USLEEP(10 * 1000);
 	ixgbe_device_disable_interrupts(addr);
 
 	//	"To enable flow control, program the FCTTV, FCRTL, FCRTH, FCRTV and FCCFG registers.

@@ -2,6 +2,9 @@
 
 #include <sys/mman.h>
 
+#include <linux/mman.h>
+
+
 void* tn_hp_allocate(size_t size)
 {
 	// We only support 2MB hugepages

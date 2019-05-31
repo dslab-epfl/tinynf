@@ -64,7 +64,7 @@ int tn_dev_init(void)
 
 	for (int n = 0; n < 2; n++) {
 		// TODO hardcoded addrs...
-		uint64_t dev_base_addr = tn_pci_get_device(0x85, 0x00, n, 0x7FFFF); // length comes from manually checking
+		uint64_t dev_base_addr = tn_pci_get_device(0x85, 0x00, n, 512 * 1024); // length comes from manually checking
 printf("dev base addr %lu\n", dev_base_addr);
 printf("dev base reg %u\n", *((uint32_t*)dev_base_addr));
 		if (dev_base_addr == 0) {
