@@ -1,5 +1,4 @@
 #include "device.h"
-#include "filesystem.h"
 #include "hugepage.h"
 #include "ixgbe_82599.h"
 #include "pci.h"
@@ -8,10 +7,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
-
-
-static int ret_;
-#define DO_OR_RET(call) ret_ = call; if (ret_ != 0) return ret_;
 
 
 struct tn_device {
@@ -37,22 +32,6 @@ void** tn_packets;
 size_t tn_packet_index;
 uint16_t tn_packet_length;
 
-/*static int tn_dev_init(struct tn_device* device)
-{
-}*/
-
-static int tn_dev_init_recv(struct tn_device* device, void** packets_base_addr, uint16_t packets_count)
-{
-}
-
-static int tn_dev_init_send(struct tn_device* device, void** packets_base_addr, uint16_t packets_count)
-{
-}
-
-static int tn_dev_start(struct tn_device* device)
-{
-}
-
 // Initialization; returns 0 or error code.
 int tn_dev_init(void)
 {
@@ -64,10 +43,8 @@ int tn_dev_init(void)
 
 	for (int n = 0; n < 2; n++) {
 		// TODO hardcoded addrs...
-		uint64_t dev_base_addr = tn_pci_get_device(0x85, 0x00, n, 512 * 1024); // length comes from manually checking
-printf("dev base addr %lu\n", dev_base_addr);
-printf("dev base reg %u\n", *((uint32_t*)dev_base_addr));
-		if (dev_base_addr == 0) {
+		void* dev_base_addr = tn_pci_get_device_address(0x85, 0x00, n, 512 * 1024); // length comes from manually checking
+		if (dev_base_addr == NULL) {
 			return EINVAL;
 		}
 
@@ -75,9 +52,6 @@ printf("dev base reg %u\n", *((uint32_t*)dev_base_addr));
 		if (!ixgbe_device_init(dev_base_addr)) {
 			return EINVAL;
 		}
-//		DO_OR_RET(tn_dev_init(&tn_devices[n]));
-//		DO_OR_RET(tn_dev_init_recv(&tn_devices[n], hugepage, 128));
-//		DO_OR_RET(tn_dev_init_send(&tn_devices[n], hugepage, 128));
 	}
 	// Detect the NICs
 	// read the 1st memory line in /resource; then any reg is just the memory addr + reg

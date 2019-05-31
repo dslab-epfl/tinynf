@@ -29,12 +29,13 @@ bool tn_pci_got_ioperm;
 // TODO uniformize naming
 void* tn_pci_get_device_address(uint8_t bus, uint8_t device, uint8_t function, uint64_t min_length)
 {
-	void* dev_addr;
+	void* dev_addr = NULL;
+	char* dev_resource_line = NULL;
 
 	// Make sure we can talk to the devices
 	if (!tn_pci_got_ioperm) {
 		if (ioperm(PCI_CONFIG_ADDR, 1, 1) < 0 || ioperm(PCI_CONFIG_DATA, 1, 1) < 0) {
-			return 0;
+			goto error;
 		}
 		tn_pci_got_ioperm = true;
 	}
@@ -48,11 +49,11 @@ void* tn_pci_get_device_address(uint8_t bus, uint8_t device, uint8_t function, u
 	}
 	if (dev == NULL) {
 		// No more space!
-		return 0;
+		goto error;
 	}
 
 	// Read the first line of the PCI /resource file, as a sanity check + indication of the length of the resource
-	char* dev_resource_line = tn_fs_readline("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource", bus, device, function);
+	dev_resource_line = tn_fs_readline("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource", bus, device, function);
 	if (dev_resource_line == NULL) {
 		goto error;
 	}

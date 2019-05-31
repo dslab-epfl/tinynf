@@ -1,8 +1,10 @@
 #include "arch.h"
+#include "memory.h"
 #include "pci.h"
 
 #include <stdbool.h>
 #include <stdint.h>
+// TODO nanosleep should be abstracted in the PAL
 #include <time.h>
 
 // Fundamental constants
@@ -853,4 +855,54 @@ bool ixgbe_device_init(void* addr)
 	// INTERPRETATION: We don't need to do anything here.
 
 	return true;
+}
+
+bool ixgbe_device_init_receive(void* addr, uint8_t queue)
+{
+	// Section 4.6.7.1 Dynamic Enabling and Disabling of Receive Queues:
+	// "Receive queues can be enabled or disabled dynamically using the following procedure."
+	// Section 4.6.7.1.1 Enabling:
+	// "Follow the per queue initialization described in the previous section."
+
+	// Section 4.6.7 Receive Initialization:
+	// "The following should be done per each receive queue:"
+	// "- Allocate a region of memory for the receive descriptor list."
+	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
+	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
+	// INTERPRETATION: This is a typo, the second "RDBAL" should read "RDBAH".
+	// "- Set the length register to the size of the descriptor ring (register RDLEN)."
+	// "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
+	// "- If header split is required for this queue, program the appropriate PSRTYPE for the appropriate headers."
+	// "- Program RSC mode for the queue via the RSCCTL register."
+	// "- Program RXDCTL with appropriate values including the queue Enable bit. Note that packets directed to a disabled queue are dropped."
+	// "- Poll the RXDCTL register until the Enable bit is set. The tail should not be bumped before this bit was read as 1b."
+	// "- Bump the tail pointer (RDT) to enable descriptors fetching by setting it to the ring length minus one."
+	// "- Enable the receive path by setting RXCTRL.RXEN. This should be done only after all other settings are done following the steps below."
+	//	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
+	//	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
+	//	"- Set RXCTRL.RXEN"
+	//	"- Clear the SECRXCTRL.SECRX_DIS bits to enable receive data path"
+	//	"- If software uses the receive descriptor minimum threshold Interrupt, that value should be set."
+	// "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
+}
+
+bool ixgbe_device_init_send(void* addr, uint8_t queue)
+{
+	// Section 4.6.8.1 Dynamic Enabling and Disabling of Transmit Queues:
+	// "Transmit queues can be enabled or disabled dynamically if the following procedure is followed."
+	// Section 4.6.8.1.1 Enabling:
+	// "Follow the per queue initialization described in the previous section."
+
+	// Section 4.6.8 Transmit Initialization:
+	// "The following steps should be done once per transmit queue:"
+	// "- Allocate a region of memory for the transmit descriptor list."
+	// "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
+	// "- Set the length register to the size of the descriptor ring (TDLEN)."
+	// "- Program the TXDCTL register with the desired TX descriptor write back policy (see Section 8.2.3.9.10 for recommended values)."
+	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
+	// "- Enable transmit path by setting DMATXCTL.TE.
+	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
+	// "- Enable the queue using TXDCTL.ENABLE.
+	//    Poll the TXDCTL register until the Enable bit is set."
+	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
 }
