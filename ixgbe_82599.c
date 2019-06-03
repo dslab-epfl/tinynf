@@ -101,6 +101,15 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_w
 #define IXGBE_REG_CTRL_MASTERDISABLE BIT(2)
 #define IXGBE_REG_CTRL_LRST BIT(3)
 
+// Section 8.2.3.1.3 Extended Device Control Register
+#define IXGBE_REG_CTRLEXT(_) 0x00018u
+#define IXGBE_REG_CTRLEXT_NSDIS BIT(16)
+
+// Section 8.2.3.11.1 Rx DCA Control Register
+#define IXGBE_REG_DCARXCTRL(n) (n <= 63u ? (0x0100Cu + 0x40u*n) : (0x0D00Cu + 0x40u*(n-64u)))
+// This bit is reserved has no name, but must be cleared by software anyway.
+#define IXGBE_REG_DCARXCTRL_UNKNOWN BIT(12)
+
 // Section 8.2.3.9.1 DMA Tx TCP Max Allow Size Requests
 #define IXGBE_REG_DTXMXSZRQ(_) 0x08100u
 #define IXGBE_REG_DTXMXSZRQ_MAXBYTESNUMREQ BITS(0,11)
@@ -220,6 +229,14 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_w
 #define IXGBE_RXPBSIZE_REGISTERS_COUNT 8u
 #define IXGBE_REG_RXPBSIZE(n) (0x03C00u + 4u*n)
 #define IXGBE_REG_RXPBSIZE_SIZE BITS(10,19)
+
+// Section 8.2.3.12.5 Security Rx Control
+#define IXGBE_REG_SECRXCTRL(_) 0x08D00u
+#define IXGBE_REG_SECRXCTRL_RXDIS BIT(1)
+
+// Section 8.2.3.12.6 Security Rx Status
+#define IXGBE_REG_SECRXSTAT(_) 0x08D04u
+#define IXGBE_REG_SECRXSTAT_SECRXRDY BIT(0)
 
 // Section 8.2.3.8.7 Split Receive Control Registers
 #define IXGBE_SRRCTL_REGISTERS_COUNT 128u
@@ -961,11 +978,29 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_add
 
 	// "- Enable the receive path by setting RXCTRL.RXEN. This should be done only after all other settings are done following the steps below."
 	//	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
+	IXGBE_REG_SET(addr, SECRXCTRL, _, RXDIS);
 	//	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
+	// INTERPRETATION: Another undefined timeout, assuming 1s as usual
+	bool sec_timed_out;
+	WAIT_WITH_TIMEOUT(sec_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, SECRXSTAT, _, SECRXRDY));
+	if (sec_timed_out) {
+		return false;
+	}
 	//	"- Set RXCTRL.RXEN"
+	IXGBE_REG_SET(addr, RXCTRL, _, RXEN);
 	//	"- Clear the SECRXCTRL.SECRX_DIS bits to enable receive data path"
+	// INTERPRETATION: This refers to RX_DIS, not SECRX_DIS, since it's RX_DIS being cleared that enables the receive data path.
+	IXGBE_REG_CLEAR(addr, SECRXCTRL, _, RXDIS);
 	//	"- If software uses the receive descriptor minimum threshold Interrupt, that value should be set."
+	// ASSUMPTION: We don't want interrupts.
+	// Nothing to do.
 	// "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
+	// Section 8.2.3.1.3 Extended Device Control Register (CTRL_EXT): Bit 16 == "NS_DIS, No Snoop Disable"
+	IXGBE_REG_SET(addr, CTRLEXT, _, NSDIS);
+	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
+	IXGBE_REG_SET(addr, DCARXCTRL, queue, UNKNOWN);
+	// ... and now we can set RXCTRL.RXEN as stated above
+	IXGBE_REG_SET(addr, RXCTRL, _, RXEN);
 
 	return true;
 }
