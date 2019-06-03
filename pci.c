@@ -1,5 +1,7 @@
 #include "pci.h"
+
 #include "filesystem.h"
+#include "log.h"
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -110,7 +112,10 @@ uint32_t tn_pci_read(const uintptr_t device_address, const uint8_t reg)
 		return 0xFFFFFFFF;
 	}
 
-	const uint32_t value = 0x80000000 | ((uint32_t)dev->bus << 16) | ((uint32_t)dev->device << 11) | ((uint32_t)dev->function << 8) | reg;
-	outl_p(value, PCI_CONFIG_ADDR);
-	return inl_p(PCI_CONFIG_DATA);
+	const uint32_t address = 0x80000000 | ((uint32_t)dev->bus << 16) | ((uint32_t)dev->device << 11) | ((uint32_t)dev->function << 8) | reg;
+	outl_p(address, PCI_CONFIG_ADDR);
+	const uint32_t result = inl_p(PCI_CONFIG_DATA);
+	TN_DEBUG("PCI read: 0x%08" PRIx32 " -> 0x%08" PRIx32, address, result);
+
+	return result;
 }

@@ -1,6 +1,7 @@
 #include "ixgbe_82599.h"
 
 #include "arch.h"
+#include "log.h"
 #include "memory.h"
 #include "pci.h"
 
@@ -61,11 +62,25 @@ const uint16_t IXGBE_RECEIVE_PACKET_SIZE_MAX = 16 * 1024;
 // Operations on the NIC
 // ---------------------
 
+// To facilitate writing code that operates on queue-independent registers
 const int _ = 0;
 
 // Register primitives
-static uint32_t ixgbe_reg_read(uintptr_t addr, uint32_t reg) { uint32_t val = *((volatile uint32_t*)((char*)addr + reg)); tn_read_barrier(); return tn_le_to_cpu(val); }
-static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); }
+static uint32_t ixgbe_reg_read(uintptr_t addr, uint32_t reg)
+{
+	uint32_t val_le = *((volatile uint32_t*)((char*)addr + reg));
+	tn_read_barrier();
+	uint32_t result = tn_le_to_cpu(val_le);
+	TN_DEBUG("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
+	return result;
+}
+static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
+{
+	tn_write_barrier();
+	*((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value);
+	TN_DEBUG("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, value);
+}
+
 #define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
 #define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
 #define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
@@ -344,6 +359,7 @@ start:;
 		attempts++;
 
 		if (attempts == 200U) {
+			TN_INFO("Max attempts for SWSM reached");
 			return false;
 		}
 
@@ -390,6 +406,7 @@ static bool ixgbe_recv_disable(uintptr_t addr, uint8_t queue)
 	bool timed_out;
 	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(addr, RXDCTL, queue, ENABLE));
 	if (timed_out) {
+		TN_INFO("RXDCTL.ENABLE did not clear, cannot disable receive");
 		return false;
 	}
 
@@ -427,6 +444,8 @@ static bool ixgbe_device_master_disable(uintptr_t addr)
 		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
 		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
 		if (!IXGBE_PCIREG_CLEARED(addr, DEVICESTATUS, TRANSACTIONPENDING)) {
+			// Because this is recoverable, we log it as DEBUG rather than INFO
+			TN_DEBUG("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable");
 			return false;
 		}
 
@@ -561,6 +580,7 @@ bool ixgbe_device_init(uintptr_t addr)
 	bool eeprom_timed_out;
 	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, EEC, _, AUTORD));
 	if (eeprom_timed_out || IXGBE_REG_CLEARED(addr, EEC, _, EEPRES) || !IXGBE_REG_CLEARED(addr, FWSM, _, EXTERRIND)) {
+		TN_INFO("EEPROM auto read timed out");
 		return false;
 	}
 
@@ -569,6 +589,7 @@ bool ixgbe_device_init(uintptr_t addr)
 	bool dma_timed_out;
 	WAIT_WITH_TIMEOUT(dma_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, RDRXCTL, _, DMAIDONE));
 	if (dma_timed_out) {
+		TN_INFO("DMA init timed out");
 		return false;
 	}
 
@@ -905,6 +926,7 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_add
 {
 	// At this point we need to write 64-bit memory values, so pointers better be 64 bits!
 	if (UINTPTR_MAX != UINT64_MAX) {
+		TN_INFO("Wrong size of uintptr_t");
 		return false;
 	}
 
@@ -940,6 +962,7 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_add
 	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer. It must be 128-byte aligned"
 	// INTERPRETATION: Since each descriptor takes 16 bytes, the size of the ring must be a multiple of 8.
 	if (ring_size % 8u != 0u) {
+		TN_INFO("Ring size is not a multiple of 8");
 		return false;
 	}
 	IXGBE_REG_WRITE(addr, RDLEN, queue, ring_size * 16u);
@@ -971,6 +994,7 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_add
 	bool queue_timed_out;
 	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, RXDCTL, queue, ENABLE));
 	if (queue_timed_out) {
+		TN_INFO("RXDCTL.ENABLE did not set, cannot enable queue");
 		return false;
 	}
 
@@ -985,6 +1009,7 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_add
 	bool sec_timed_out;
 	WAIT_WITH_TIMEOUT(sec_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, SECRXSTAT, _, SECRXRDY));
 	if (sec_timed_out) {
+		TN_INFO("SECRXSTAT.SECRXRDY timed out, cannot enable queue");
 		return false;
 	}
 	//	"- Set RXCTRL.RXEN"

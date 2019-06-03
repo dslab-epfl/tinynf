@@ -14,7 +14,7 @@ CFLAGS += -pedantic -pedantic-errors
 # Signed/unsigned conversion issues, as well as narrowing conversion issues
 CFLAGS += -Wconversion
 # Debug flags
-CFLAGS += -O0 -g -rdynamic
+CFLAGS += -O0 -g -rdynamic -DLOG_LEVEL=2
 
 OUTPUT := tinynf
 
