@@ -45,14 +45,15 @@ const uint16_t IXGBE_RECEIVE_PACKET_SIZE_MAX = 16 * 1024;
 #define USLEEP(n) nanosleep(&((struct timespec){.tv_sec = (n / 1000000), .tv_nsec = (n % 1000000) * 1000}), NULL)
 
 // Poll until the given condition holds, or the given timeout occurs; store whether a timeout occurred in result_name
-#define WAIT_WITH_TIMEOUT(result_name, timeout_in_ms, condition) \
+#define WAIT_WITH_TIMEOUT(result_name, timeout_in_us, condition) \
 		result_name = true; \
-		for (int i = 0; i < ((timeout_in_ms) * 20); i++) { \
+		USLEEP(timeout_in_us % 10); \
+		for (uint8_t i = 0; i < 10; i++) { \
 			if (condition) { \
 				result_name = false; \
 				break; \
 			} \
-			USLEEP(50); \
+			USLEEP(timeout_in_us / 10); \
 		}
 
 
@@ -280,7 +281,7 @@ static void ixgbe_lock_swsm(uintptr_t addr, bool* out_sw_malfunction, bool* out_
 	// "- Software polls the SWSM.SMBI bit until it is read as 0b or time expires (recommended expiration is ~10 ms+ expiration time used for the SWSM.SWESMBI)."
 	// "- If SWSM.SMBI is found at 0b, the semaphore is taken. Note that following this read cycle hardware auto sets the bit to 1b."
 	// "- If time expired, it is assumed that the software of the other function malfunctions. Software proceeds to the next steps checking SWESMBI for firmware use."
-	WAIT_WITH_TIMEOUT(*out_sw_malfunction, 10 + 3000, IXGBE_REG_CLEARED(addr, SWSM, _, SMBI));
+	WAIT_WITH_TIMEOUT(*out_sw_malfunction, 10 * 1000 + 3000 * 1000, IXGBE_REG_CLEARED(addr, SWSM, _, SMBI));
 
 
 	// "Software checks that the firmware does not use the software/firmware semaphore and then takes its control"
@@ -290,7 +291,7 @@ static void ixgbe_lock_swsm(uintptr_t addr, bool* out_sw_malfunction, bool* out_
 
 	// "- Software polls the SWSM.SWESMBI bit until it is read as 1b or time expires (recommended expiration is ~3 sec).
 	//    If time has expired software assumes that the firmware malfunctioned and proceeds to the next step while ignoring the firmware bits in the SW_FW_SYNC register."
-	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000, IXGBE_REG_CLEARED(addr, SWSM, _, SWESMBI));
+	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000 * 1000, IXGBE_REG_CLEARED(addr, SWSM, _, SWESMBI));
 }
 
 static void ixgbe_unlock_swsm(uintptr_t addr)

@@ -33,8 +33,10 @@ uintptr_t tn_pci_get_device_address(const uint8_t bus, const uint8_t device, con
 	const char* dev_resource_line = NULL;
 
 	// Make sure we can talk to the devices
+	// Note that we need access to port 0x80 in order to use the _p version of inl/outl
+	// Also note that since reading an int32 is 4 bytes, we need to access 4 consecutive ports for PCI config/data.
 	if (!tn_pci_got_ioperm) {
-		if (ioperm(PCI_CONFIG_ADDR, 1, 1) < 0 || ioperm(PCI_CONFIG_DATA, 1, 1) < 0) {
+		if (ioperm(0x80, 1, 1) < 0 || ioperm(PCI_CONFIG_ADDR, 4, 1) < 0 || ioperm(PCI_CONFIG_DATA, 4, 1) < 0) {
 			goto error;
 		}
 		tn_pci_got_ioperm = true;
@@ -109,6 +111,6 @@ uint32_t tn_pci_read(const uintptr_t device_address, const uint8_t reg)
 	}
 
 	const uint32_t value = 0x80000000 | ((uint32_t)dev->bus << 16) | ((uint32_t)dev->device << 11) | ((uint32_t)dev->function << 8) | reg;
-	outl(value, PCI_CONFIG_ADDR);
-	return inl(PCI_CONFIG_DATA);
+	outl_p(value, PCI_CONFIG_ADDR);
+	return inl_p(PCI_CONFIG_DATA);
 }

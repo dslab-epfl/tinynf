@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 
-
 int tn_dev_init(void);
 
 void tn_dev_receive(void);
