@@ -62,7 +62,12 @@ uintptr_t tn_fs_mmap(const char* path_format, ...)
 	}
 
 	// TODO: See whether perf differs by mmapping this to a hugepage, or to a page right after the end of hugepages
-	const void* addr = mmap(NULL, stat.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	// Note that st_size is off_t, which is signed; let's make sure we don't accidentally convert a negative value to an unsigned...
+	if (stat.st_size < 0) {
+		close(fd);
+		return (uintptr_t) -1;
+	}
+	const void* addr = mmap(NULL, (size_t) stat.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	close(fd);
 	if (addr == MAP_FAILED) {
 		return (uintptr_t) -1;

@@ -9,17 +9,23 @@
 
 // Fundamental constants
 
+// Section 8.2.3.8.3 Receive Descriptor Length: "Validated lengths up to 128 K (8 K descriptors)."
+const uint16_t IXGBE_RECEIVE_RING_SIZE_MAX = 8 * 1024;
+
+// Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
+const uint16_t IXGBE_RECEIVE_PACKET_SIZE_MAX = 16 * 1024;
+
 // TODO find reference for this
-#define IXGBE_RECEIVE_QUEUES_COUNT 128
+#define IXGBE_RECEIVE_QUEUES_COUNT 128u
 // Section 8.2.3.10.13 DCB Transmit Descriptor Plane Queue Select:
 // "Field TXDQ_IDX, Bits 6:0" -> 128 pools
 // TODO find a better ref...
-#define IXGBE_TX_QUEUE_POOLS_COUNT 128
+#define IXGBE_TX_QUEUE_POOLS_COUNT 128u
 // Section 7.3.1 Interrupts Registers:
 //	"These registers are extended to 64 bits by an additional set of two registers.
 //	 EICR has an additional two registers EICR(1)... EICR(2) and so on for the EICS, EIMS, EIMC, EIAM and EITR registers."
 // TODO move this to the registers section
-#define IXGBE_INTERRUPT_REGISTERS_COUNT 3
+#define IXGBE_INTERRUPT_REGISTERS_COUNT 3u
 
 
 // ---------
@@ -30,8 +36,8 @@
 #define GET_MACRO(_1, _2, _3, _4, _5, NAME, ...) NAME
 
 // Bit tricks; note that we count bits starting from 0!
-#define BIT(n) (1 << n)
-#define BITS(start, end) ((end == 31 ? 0 : (0xFFFFFFFF << (end + 1))) ^ (0xFFFFFFFF << start))
+#define BIT(n) (1u << n)
+#define BITS(start, end) ((end == 31 ? 0u : (0xFFFFFFFFu << (end + 1))) ^ (0xFFFFFFFFu << start))
 #define TRAILING_ZEROES(n) __builtin_ctzll(n)
 
 // Sleep for the given amount of microseconds; note that usleep was removed in POSIX-2008
@@ -65,8 +71,8 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_w
 #define IXGBE_REG_WRITE4(addr, reg, idx, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), value)
 #define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | ((value << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
 #define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
-#define IXGBE_REG_CLEARED(addr, reg, idx, field) (IXGBE_REG_READ(addr, reg, idx, field) == 0)
-#define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0)
+#define IXGBE_REG_CLEARED(addr, reg, idx, field) (IXGBE_REG_READ(addr, reg, idx, field) == 0u)
+#define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0U)
 #define IXGBE_REG_CLEAR4(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, field, (IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field))
 #define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR4, IXGBE_REG_CLEAR3, _UNUSED)(__VA_ARGS__)
 // TODO better name than "set", since set implies to a specific value? what's the opposite of clear?
@@ -74,14 +80,14 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_w
 
 // PCI primitives (we do not write to PCI)
 #define IXGBE_PCIREG_READ(addr, reg) tn_pci_read(addr, IXGBE_PCIREG_##reg)
-#define IXGBE_PCIREG_CLEARED(addr, reg, field) ((IXGBE_PCIREG_READ(addr, reg) & IXGBE_PCIREG_##reg##_##field) == 0)
+#define IXGBE_PCIREG_CLEARED(addr, reg, field) ((IXGBE_PCIREG_READ(addr, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
 
 
 // -------------------------------------------------------------
 // PCI registers, in alphabetical order, along with their fields
 // -------------------------------------------------------------
 
-#define IXGBE_PCIREG_DEVICESTATUS 0xAA
+#define IXGBE_PCIREG_DEVICESTATUS 0xAAu
 #define IXGBE_PCIREG_DEVICESTATUS_TRANSACTIONPENDING BIT(5)
 
 
@@ -91,155 +97,155 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_w
 
 // TODO eliminate all "count" variables, and express them in terms of primitive counts instead (#pools, #MACs, ...)
 
-#define IXGBE_REG_CTRL(_) 0x00000
+#define IXGBE_REG_CTRL(_) 0x00000u
 #define IXGBE_REG_CTRL_MASTERDISABLE BIT(2)
 #define IXGBE_REG_CTRL_LRST BIT(3)
 
 // Section 8.2.3.9.1 DMA Tx TCP Max Allow Size Requests
-#define IXGBE_REG_DTXMXSZRQ(_) 0x08100
+#define IXGBE_REG_DTXMXSZRQ(_) 0x08100u
 #define IXGBE_REG_DTXMXSZRQ_MAXBYTESNUMREQ BITS(0,11)
 
 // Section 8.2.3.2.1 EEPROM/Flash Control Register
-#define IXGBE_REG_EEC(_) 0x10010
+#define IXGBE_REG_EEC(_) 0x10010u
 #define IXGBE_REG_EEC_EEPRES BIT(8)
 #define IXGBE_REG_EEC_AUTORD BIT(9)
 
-#define IXGBE_REG_EIMC(n) (n == 0 ? 0x00888 : (0x00AB0 + 4*(n-1)))
+#define IXGBE_REG_EIMC(n) (n == 0 ? 0x00888u : (0x00AB0u + 4u*(n-1u)))
 #define IXGBE_REG_EIMC_MASK BITS(0,31)
 
 // Section 8.2.3.3.7 Flow Control Configuration
-#define IXGBE_REG_FCCFG(_) 0x03D00
+#define IXGBE_REG_FCCFG(_) 0x03D00u
 #define IXGBE_REG_FCCFG_TFCE BITS(3,4)
 
 // Section 8.2.3.3.2 Flow Control Transmit Timer Value n
-#define IXGBE_FCTTV_REGISTERS_COUNT 4
-#define IXGBE_REG_FCTTV(n) (0x03200 + 4*n)
+#define IXGBE_FCTTV_REGISTERS_COUNT 4u
+#define IXGBE_REG_FCTTV(n) (0x03200u + 4u*n)
 
 // Section 8.2.3.3.3 Flow Control Receive Threshold Low
-#define IXGBE_FCRTL_REGISTERS_COUNT 8
-#define IXGBE_REG_FCRTL(n) (0x03220 + 4*n)
+#define IXGBE_FCRTL_REGISTERS_COUNT 8u
+#define IXGBE_REG_FCRTL(n) (0x03220u + 4u*n)
 
 // Section 8.2.3.3.4 Flow Control Receive Threshold High
-#define IXGBE_FCRTH_REGISTERS_COUNT 8
-#define IXGBE_REG_FCRTH(n) (0x03260 + 4*n)
+#define IXGBE_FCRTH_REGISTERS_COUNT 8u
+#define IXGBE_REG_FCRTH(n) (0x03260u + 4u*n)
 
 // Section 8.2.3.3.5 Flow Control Refresh Threshold Value
-#define IXGBE_REG_FCRTV(_) 0x032A0
+#define IXGBE_REG_FCRTV(_) 0x032A0u
 
 // Section 8.2.3.7.1 Filter Control Register (FCTRL)
-#define IXGBE_REG_FCTRL(_) 0x05080
+#define IXGBE_REG_FCTRL(_) 0x05080u
 
 // Section 8.2.3.7.19 Five tuple Queue Filter
-#define IXGBE_FTQF_REGISTERS_COUNT 128
-#define IXGBE_REG_FTQF(n) (0x0E600 + 4*n)
+#define IXGBE_FTQF_REGISTERS_COUNT 128u
+#define IXGBE_REG_FTQF(n) (0x0E600u + 4u*n)
 #define IXGBE_REG_FTQF_MASK BITS(25,29)
 #define IXGBE_REG_FTQF_QUEUEENABLE BIT(31)
 
-#define IXGBE_REG_FWSM(_) 0x10148
+#define IXGBE_REG_FWSM(_) 0x10148u
 #define IXGBE_REG_FWSM_EXTERRIND BITS(19,24)
 
-#define IXGBE_REG_GCREXT(_) 0x11050
+#define IXGBE_REG_GCREXT(_) 0x11050u
 #define IXGBE_REG_GCREXT_BUFFERSCLEAR BIT(30)
 
-#define IXGBE_REG_HLREG0(_) 0x04240
+#define IXGBE_REG_HLREG0(_) 0x04240u
 #define IXGBE_REG_HLREG0_LPBK BIT(15)
 
 // Section 8.2.3.22.34 MAC Flow Control Register
-#define IXGBE_REG_MFLCN(_) 0x04294
+#define IXGBE_REG_MFLCN(_) 0x04294u
 #define IXGBE_REG_MFLCN_RFCE BIT(3)
 
 // Section 8.2.3.7.10 MAC Pool Select Array
-#define IXGBE_MPSAR_REGISTERS_COUNT 256
-#define IXGBE_REG_MPSAR(n) (0x0A600 + 4*n)
+#define IXGBE_MPSAR_REGISTERS_COUNT 256u
+#define IXGBE_REG_MPSAR(n) (0x0A600u + 4u*n)
 
 // Section 8.2.3.7.7 Multicast Table Array
 #define IXGBE_MTA_REGISTERS_COUNT 128
-#define IXGBE_REG_MTA(n) (0x05200 + 4*n)
+#define IXGBE_REG_MTA(n) (0x05200u + 4u*n)
 
 // Section 8.2.3.27.17 PF Unicast Table Array
-#define IXGBE_PFUTA_REGISTERS_COUNT 128
-#define IXGBE_REG_PFUTA(n) (0x0F400 + 4*n)
+#define IXGBE_PFUTA_REGISTERS_COUNT 128u
+#define IXGBE_REG_PFUTA(n) (0x0F400u + 4u*n)
 
 // Section 8.2.3.27.15 PF VM VLAN Pool Filter
-#define IXGBE_PFVLVF_REGISTERS_COUNT 64
-#define IXGBE_REG_PFVLVF(n) (0x0F100 + 4*n)
+#define IXGBE_PFVLVF_REGISTERS_COUNT 64u
+#define IXGBE_REG_PFVLVF(n) (0x0F100u + 4u*n)
 
 // Section 8.2.3.27.16 PF VM VLAN Pool Filter Bitmap
-#define IXGBE_PFVLVFB_REGISTERS_COUNT 128
-#define IXGBE_REG_PFVLVFB(n) (0x0F200 + 4*n)
+#define IXGBE_PFVLVFB_REGISTERS_COUNT 128u
+#define IXGBE_REG_PFVLVFB(n) (0x0F200u + 4u*n)
 
 // Section 8.2.3.8.2 Receive Descriptor Base Address High
-#define IXGBE_REG_RDBAH(n) (n <= 63 ? (0x01004 + 0x40*n) : (0x0D004 + 0x40*(n-64)))
+#define IXGBE_REG_RDBAH(n) (n <= 63u ? (0x01004u + 0x40u*n) : (0x0D004u + 0x40u*(n-64u)))
 
 // Section 8.2.3.8.1 Receive Descriptor Base Address Low
-#define IXGBE_REG_RDBAL(n) (n <= 63 ? (0x01000 + 0x40*n) : (0x0D000 + 0x40*(n-64)))
+#define IXGBE_REG_RDBAL(n) (n <= 63u ? (0x01000u + 0x40u*n) : (0x0D000u + 0x40u*(n-64u)))
 
 // Section 8.2.3.8.3 Receive Descriptor Length
-#define IXGBE_REG_RDLEN(n) (n <= 63 ? (0x01008 + 0x40*n) : (0x0D008 + 0x40*(n-64)))
+#define IXGBE_REG_RDLEN(n) (n <= 63u ? (0x01008u + 0x40u*n) : (0x0D008 + 0x40u*(n-64u)))
 
 // Section 8.2.3.8.8 Receive DMA Control Register
-#define IXGBE_REG_RDRXCTL(_) 0x02F00
+#define IXGBE_REG_RDRXCTL(_) 0x02F00u
 #define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
 
 // Section 8.2.3.8.5 Receive Descriptor Tail
-#define IXGBE_REG_RDT(n) (n <= 63 ? (0x01018 + 0x40*n) : (0x0D018 + 0x40*(n-64)))
+#define IXGBE_REG_RDT(n) (n <= 63u ? (0x01018u + 0x40u*n) : (0x0D018u + 0x40u*(n-64u)))
 
 // Section 8.2.3.10.6 DCB Receive Packet Plane T4 Config
-#define IXGBE_RTRPT4C_REGISTERS_COUNT 8
-#define IXGBE_REG_RTRPT4C(n) (0x02140 + 4*n)
+#define IXGBE_RTRPT4C_REGISTERS_COUNT 8u
+#define IXGBE_REG_RTRPT4C(n) (0x02140u + 4u*n)
 
 // Section 8.2.3.10.13 DCB Transmit Descriptor Plane Queue Select
-#define IXGBE_REG_RTTDQSEL(_) 0x04904
+#define IXGBE_REG_RTTDQSEL(_) 0x04904u
 #define IXGBE_REG_RTTDQSEL_TXDQIDX BITS(0,6)
 
 // Section 8.2.3.10.14 DCB Transmit Descriptor Plane T1 Config
-#define IXGBE_REG_RTTDT1C(_) 0x04908
+#define IXGBE_REG_RTTDT1C(_) 0x04908u
 
 // Section 8.2.3.10.9 DCB Transmit Descriptor Plane T2 Config
-#define IXGBE_RTTDT2C_REGISTERS_COUNT 8
-#define IXGBE_REG_RTTDT2C(n) (0x04910 + 4*n)
+#define IXGBE_RTTDT2C_REGISTERS_COUNT 8u
+#define IXGBE_REG_RTTDT2C(n) (0x04910u + 4u*n)
 
 // Section 8.2.3.10.10 DCB Transmit Packet Plane T2 Config
-#define IXGBE_RTTPT2C_REGISTERS_COUNT 8
-#define IXGBE_REG_RTTPT2C(n) (0x0CD20 + 4*n)
+#define IXGBE_RTTPT2C_REGISTERS_COUNT 8U
+#define IXGBE_REG_RTTPT2C(n) (0x0CD20u + 4u*n)
 
-#define IXGBE_REG_RXCTRL(_) 0x03000
+#define IXGBE_REG_RXCTRL(_) 0x03000u
 #define IXGBE_REG_RXCTRL_RXEN BIT(0)
 
 // Section 8.2.3.8.6 Receive Descriptor Control
-#define IXGBE_REG_RXDCTL(n) (n <= 63 ? (0x01028 + 0x40*n) : (0x0D028 + 0x40*(n-64)))
+#define IXGBE_REG_RXDCTL(n) (n <= 63u ? (0x01028u + 0x40u*n) : (0x0D028u + 0x40u*(n-64u)))
 #define IXGBE_REG_RXDCTL_ENABLE BIT(25)
 
 // Section 8.2.3.8.9 Receive Packe Buffer Size
-#define IXGBE_RXPBSIZE_REGISTERS_COUNT 8
-#define IXGBE_REG_RXPBSIZE(n) (0x03C00 + 4*n)
+#define IXGBE_RXPBSIZE_REGISTERS_COUNT 8u
+#define IXGBE_REG_RXPBSIZE(n) (0x03C00u + 4u*n)
 #define IXGBE_REG_RXPBSIZE_SIZE BITS(10,19)
 
 // Section 8.2.3.8.7 Split Receive Control Registers
-#define IXGBE_SRRCTL_REGISTERS_COUNT 128
-#define IXGBE_REG_SRRCTL(n) (n <= 63 ? (0x01014 + 0x40*n) : (0x0D014 + 0x40*(n-64)))
+#define IXGBE_SRRCTL_REGISTERS_COUNT 128u
+#define IXGBE_REG_SRRCTL(n) (n <= 63u ? (0x01014u + 0x40u*n) : (0x0D014u + 0x40u*(n-64u)))
 #define IXGBE_REG_SRRCTL_BSIZEPACKET BITS(0,4)
 #define IXGBE_REG_SRRCTL_DESCTYPE BITS(25,27)
 #define IXGBE_REG_SRRCTL_DROPEN BIT(28)
 
-#define IXGBE_REG_STATUS(_) 0x00008
+#define IXGBE_REG_STATUS(_) 0x00008u
 #define IXGBE_REG_STATUS_MASTERENABLE BIT(19)
 
-#define IXGBE_REG_SWFWSYNC(_) 0x10160
+#define IXGBE_REG_SWFWSYNC(_) 0x10160u
 #define IXGBE_REG_SWFWSYNC_SW BITS(0,4)
 #define IXGBE_REG_SWFWSYNC_FW BITS(5,9)
 
-#define IXGBE_REG_SWSM(_) 0x10140
+#define IXGBE_REG_SWSM(_) 0x10140u
 #define IXGBE_REG_SWSM_SMBI    BIT(0)
 #define IXGBE_REG_SWSM_SWESMBI BIT(1)
 
-#define IXGBE_TXPBSIZE_REGISTERS_COUNT 8
-#define IXGBE_REG_TXPBSIZE(n) (0x0CC00 + 4*n)
+#define IXGBE_TXPBSIZE_REGISTERS_COUNT 8u
+#define IXGBE_REG_TXPBSIZE(n) (0x0CC00u + 4u*n)
 #define IXGBE_REG_TXPBSIZE_SIZE BITS(10,19)
 
 // Section 8.2.3.9.16 Tx Packet Buffer Threshold
-#define IXGBE_TXPBTHRESH_REGISTERS_COUNT 8
-#define IXGBE_REG_TXPBTHRESH(n) (0x04950 + 4*n)
+#define IXGBE_TXPBTHRESH_REGISTERS_COUNT 8u
+#define IXGBE_REG_TXPBTHRESH(n) (0x04950u + 4u*n)
 #define IXGBE_REG_TXPBTHRESH_THRESH BITS(0,9)
 
 // ----------------------------------------------------
@@ -319,11 +325,11 @@ start:;
 
 		attempts++;
 
-		if (attempts == 200) {
+		if (attempts == 200U) {
 			return false;
 		}
 
-		if (attempts == 100) {
+		if (attempts == 100U) {
 			IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
 			USLEEP(10 * 1000);
 			goto start;
@@ -355,7 +361,7 @@ static void ixgbe_unlock_resources(uintptr_t addr)
 // Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
 // ---------------------------------------------------------
 
-static bool ixgbe_recv_disable(uintptr_t addr, uint16_t queue)
+static bool ixgbe_recv_disable(uintptr_t addr, uint8_t queue)
 {
 	// "Disable the queue by clearing the RXDCTL.ENABLE bit."
 	IXGBE_REG_CLEAR(addr, RXDCTL, queue, ENABLE);
@@ -384,7 +390,7 @@ static bool ixgbe_recv_disable(uintptr_t addr, uint16_t queue)
 static bool ixgbe_device_master_disable(uintptr_t addr)
 {
 	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
-	for (uint16_t queue; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
+	for (uint8_t queue; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
 		ixgbe_recv_disable(addr, queue);
 	}
 
@@ -464,7 +470,7 @@ static void ixgbe_device_reset(uintptr_t addr)
 
 static void ixgbe_device_disable_interrupts(uintptr_t addr)
 {
-	for (size_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, EIMC, n, MASK);
 	}
 }
@@ -502,13 +508,13 @@ bool ixgbe_device_init(uintptr_t addr)
 	//	 Typically, FCRTH[n] default value should be equal to RXPBSIZE[n]-0x6000. FCRTH[n].
 	//	 FCEN should be set to 0b if flow control is not enabled as all the other registers previously indicated."
 	// INTERPRETATION: Sections 3.7.7.3.{2-5} are irrelevant here since we do not want flow control.
-	for (size_t n = 0; n < IXGBE_FCTTV_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_FCTTV_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, FCTTV, n);
 	}
-	for (size_t n = 0; n < IXGBE_FCRTL_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_FCRTL_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, FCRTL, n);
 	}
-	for (size_t n = 0; n < IXGBE_FCRTH_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_FCRTH_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, FCRTH, n);
 	}
 	IXGBE_REG_CLEAR(addr, FCRTV, _);
@@ -575,7 +581,7 @@ bool ixgbe_device_init(uintptr_t addr)
 	//	"- Unicast Table Array (PFUTA)."
 	//	Section 8.2.3.27.12 PF Unicast Table Array (PFUTA[n]):
 	//		"This table should be zeroed by software before start of operation."
-	for (size_t n = 0; n < IXGBE_PFUTA_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_PFUTA_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, PFUTA, n);
 	}
 
@@ -590,7 +596,7 @@ bool ixgbe_device_init(uintptr_t addr)
 	// INTERPRETATION: While the spec appears to mention PFVLVF only in conjunction with VLNCTRL.VFE being enabled, let's be conservative and initialize them anyway.
 	// 	Section 8.2.3.27.15 PF VM VLAN Pool Filter (PFVLVF[n]):
 	//		"Software should initialize these registers before transmit and receive are enabled."
-	for (size_t n = 0; n < IXGBE_PFVLVF_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_PFVLVF_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, PFVLVF, n);
 	}
 
@@ -604,21 +610,21 @@ bool ixgbe_device_init(uintptr_t addr)
 	// INTERPRETATION: We should enable all pools with address 0, just in case, and disable everything else since we only have 1 MAC address.
 	IXGBE_REG_WRITE(addr, MPSAR, 0, 0xFFFFFFFF);
 	IXGBE_REG_WRITE(addr, MPSAR, 1, 0xFFFFFFFF);
-	for (size_t n = 2; n < IXGBE_MPSAR_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 2; n < IXGBE_MPSAR_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, MPSAR, n);
 	}
 
 	//	"- VLAN Pool Filter Bitmap (PFVLVFB[n])."
 	// INTERPRETATION: See above remark on PFVLVF
 	//	Section 8.2.3.27.16: PF VM VLAN Pool Filter Bitmap
-	for (size_t n = 0; n < IXGBE_PFVLVFB_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_PFVLVFB_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, PFVLVFB, n);
 	}
 
 	//	"Set up the Multicast Table Array (MTA) registers.
 	//	 This entire table should be zeroed and only the desired multicast addresses should be permitted (by writing 0x1 to the corresponding bit location).
 	//	 Set the MCSTCTRL.MFE bit if multicast filtering is required."
-	for (size_t n = 0; n < IXGBE_MTA_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_MTA_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, MTA, n);
 	}
 
@@ -689,7 +695,7 @@ bool ixgbe_device_init(uintptr_t addr)
 	//		"Queue Enable, bit 31; When set, enables filtering of Rx packets by the 5-tuple defined in this filter to the queue indicated in register L34TIMIR."
 	// ASSUMPTION: We do not want 5-tuple filtering.
 	// INTERPRETATION: We clear Queue Enable, and set the mask to 0b11111 just in case. We then do not need to deal with SAQF, DAQF, SDPQF, SYNQF.
-	for (size_t n = 0; n < IXGBE_FTQF_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_FTQF_REGISTERS_COUNT; n++) {
 		IXGBE_REG_SET(addr, FTQF, n, MASK);
 		IXGBE_REG_CLEAR(addr, FTQF, n, QUEUEENABLE);
 	}
@@ -718,7 +724,7 @@ bool ixgbe_device_init(uintptr_t addr)
 	//			"SIZE, Init val 0x200"
 	//			"The default size of PB[1-7] is also 512 KB but it is meaningless in non-DCB mode."
 	// INTERPRETATION: We do not need to change PB[0]. Let's stay on the safe side and clear PB[1-7] to 0 anyway.
-	for (size_t n = 1; n < IXGBE_RXPBSIZE_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 1; n < IXGBE_RXPBSIZE_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, RXPBSIZE, 0);
 	}
 	//		"- TXPBSIZE[0].SIZE=0xA0, TXPBSIZE[1-7].SIZE=0x0"
@@ -726,7 +732,7 @@ bool ixgbe_device_init(uintptr_t addr)
 	//			"SIZE, Init val 0xA0"
 	//			"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
 	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
-	for (size_t n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, TXPBSIZE, 0);
 	}
 	//		"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
@@ -735,7 +741,7 @@ bool ixgbe_device_init(uintptr_t addr)
 	//			"Default values: 0x96 for TXPBSIZE0, 0x0 for TXPBSIZE1-7."
 	// INTERPRETATION: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
 	// Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
-	IXGBE_REG_WRITE(addr, TXPBTHRESH, 0, THRESH, 0xA0);
+	IXGBE_REG_WRITE(addr, TXPBTHRESH, 0, THRESH, 0xA0u);
 	//		"- MRQC and MTQC"
 	//			"- Set MRQE to 0xxxb, with the three least significant bits set according to the RSS mode"
 	// 			Section 8.2.3.7.12 Multiple Receive Queues Command Register (MRQC): "MRQE, Init Val 0x0; 0000b = RSS disabled"
@@ -780,20 +786,20 @@ bool ixgbe_device_init(uintptr_t addr)
 	IXGBE_REG_WRITE(addr, FCCFG, _, TFCE, 1);
 	//		"Reset all arbiters:"
 	//		"- Clear RTTDT1C register, per each queue, via setting RTTDQSEL first"
-	for (size_t n = 0; n < IXGBE_TX_QUEUE_POOLS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_TX_QUEUE_POOLS_COUNT; n++) {
 		IXGBE_REG_WRITE(addr, RTTDQSEL, _, TXDQIDX, n);
 		IXGBE_REG_CLEAR(addr, RTTDT1C, _);
 	}
 	//		"- Clear RTTDT2C[0-7] registers"
-	for (size_t n = 0; n < IXGBE_RTTDT2C_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_RTTDT2C_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, RTTDT2C, n);
 	}
 	//		"- Clear RTTPT2C[0-7] registers"
-	for (size_t n = 0; n < IXGBE_RTTPT2C_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_RTTPT2C_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, RTTPT2C, n);
 	}
 	//		"- Clear RTRPT4C[0-7] registers"
-	for (size_t n = 0; n < IXGBE_RTRPT4C_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < IXGBE_RTRPT4C_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, RTRPT4C, n);
 	}
 	//		"Disable TC and VM arbitration layers:"
@@ -879,6 +885,11 @@ bool ixgbe_device_init(uintptr_t addr)
 
 bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_addr, uint16_t ring_size, uintptr_t buffer_addr)
 {
+	// At this point we need to write 64-bit memory values, so pointers better be 64 bits!
+	if (UINTPTR_MAX != UINT64_MAX) {
+		return false;
+	}
+
 	// Section 4.6.7.1 Dynamic Enabling and Disabling of Receive Queues:
 	// "Receive queues can be enabled or disabled dynamically using the following procedure."
 	// Section 4.6.7.1.1 Enabling:
@@ -896,35 +907,35 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_add
 	for(uint16_t n = 0; n < ring_size; n++) {
 		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
 		// Line 0 - Packet Buffer Address
-		ring[n * 2] = buffer_addr + n * IXGBE_RECEIVE_PACKET_SIZE_MAX;
+		ring[n * 2u] = buffer_addr + (uint64_t) (n * IXGBE_RECEIVE_PACKET_SIZE_MAX);
 		// Line 1 - Header Buffer Address (63:1), Descriptor Done (0)
-		ring[n * 2 + 1] = 0;
+		ring[n * 2u + 1u] = 0u;
 	}
 
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
 	// INTERPRETATION: This is a typo, the second "RDBAL" should read "RDBAH".
-	IXGBE_REG_SET(addr, RDBAH, queue, ring_addr & 0xFFFFFFFF00000000);
-	IXGBE_REG_SET(addr, RDBAL, queue, ring_addr & 0x00000000FFFFFFFF);
+	IXGBE_REG_WRITE(addr, RDBAH, queue, (uint32_t) ((ring_addr & 0xFFFFFFFF00000000u) >> 32));
+	IXGBE_REG_WRITE(addr, RDBAL, queue, (uint32_t) (ring_addr & 0x00000000FFFFFFFFu));
 
 	// "- Set the length register to the size of the descriptor ring (register RDLEN)."
 	// Section 8.2.3.8.3 Receive DEscriptor Length (RDLEN[n]):
 	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer. It must be 128-byte aligned"
 	// INTERPRETATION: Since each descriptor takes 16 bytes, the size of the ring must be a multiple of 8.
-	if (ring_size % 8 != 0) {
+	if (ring_size % 8u != 0u) {
 		return false;
 	}
-	IXGBE_REG_SET(addr, RDLEN, queue, ring_size * 16);
+	IXGBE_REG_WRITE(addr, RDLEN, queue, ring_size * 16u);
 
 	// "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
 	//	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
 	//		"BSIZEPACKET, Receive Buffer Size for Packet Buffer. The value is in 1 KB resolution. Value can be from 1 KB to 16 KB."
 	// TODO: Play with PACKET_SIZE_MAX, see if it changes perf in any way.
-	IXGBE_REG_SET(addr, SRRCTL, queue, BSIZEPACKET, IXGBE_RECEIVE_PACKET_SIZE_MAX / 1024);
+	IXGBE_REG_WRITE(addr, SRRCTL, queue, BSIZEPACKET, IXGBE_RECEIVE_PACKET_SIZE_MAX / 1024u);
 	//		"DESCTYPE, Define the descriptor type in Rx: [...] 001b = Advanced descriptor one buffer."
-	IXGBE_REG_SET(addr, SRRCTL, queue, DESCTYPE, 0b001);
+	IXGBE_REG_WRITE(addr, SRRCTL, queue, DESCTYPE, 1);
 	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
 	// ASSUMPTION: We want to drop packets if we can't process them fast enough, to have predictable behavior.
-	IXGBE_REG_SET(addr, SRRCTL, queue, DROPEN, 1);
+	IXGBE_REG_SET(addr, SRRCTL, queue, DROPEN);
 
 	// "- If header split is required for this queue, program the appropriate PSRTYPE for the appropriate headers."
 	// Section 7.1.10 Header Splitting: "Header Splitting mode might cause unpredictable behavior and should not be used with the 82599."
@@ -934,7 +945,7 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_add
 	// TODO: Write all assumptions in a single place, then refer to them by ID or something.
 
 	// "- Program RXDCTL with appropriate values including the queue Enable bit. Note that packets directed to a disabled queue are dropped."
-	IXGBE_REG_SET(addr, RXDCTL, queue, ENABLE, 1);
+	IXGBE_REG_SET(addr, RXDCTL, queue, ENABLE);
 
 	// "- Poll the RXDCTL register until the Enable bit is set. The tail should not be bumped before this bit was read as 1b."
 	// INTERPRETATION: No timeout is mentioned here, let's say 1s to be safe.
@@ -946,7 +957,7 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_add
 	}
 
 	// "- Bump the tail pointer (RDT) to enable descriptors fetching by setting it to the ring length minus one."
-	IXGBE_REG_SET(addr, RDT, queue, ring_size - 1);
+	IXGBE_REG_WRITE(addr, RDT, queue, ring_size - 1u);
 
 	// "- Enable the receive path by setting RXCTRL.RXEN. This should be done only after all other settings are done following the steps below."
 	//	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
@@ -955,6 +966,8 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_add
 	//	"- Clear the SECRXCTRL.SECRX_DIS bits to enable receive data path"
 	//	"- If software uses the receive descriptor minimum threshold Interrupt, that value should be set."
 	// "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
+
+	return true;
 }
 
 bool ixgbe_device_init_send(uintptr_t addr, uint8_t queue)
@@ -976,4 +989,9 @@ bool ixgbe_device_init_send(uintptr_t addr, uint8_t queue)
 	// "- Enable the queue using TXDCTL.ENABLE.
 	//    Poll the TXDCTL register until the Enable bit is set."
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
+
+	// TODO
+	(void)addr;
+	(void)queue;
+	return false;
 }

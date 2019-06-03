@@ -41,7 +41,7 @@ int tn_dev_init(void)
 		return ENOMEM;
 	}
 
-	for (size_t n = 0; n < 2; n++) {
+	for (uint8_t n = 0; n < 2; n++) {
 		// TODO hardcoded addrs...
 		const uintptr_t dev_base_addr = tn_pci_get_device_address(0x85, 0x00, n, 512 * 1024); // length comes from manually checking
 		if (dev_base_addr == (uintptr_t) -1) {

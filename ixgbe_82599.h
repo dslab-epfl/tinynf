@@ -4,11 +4,8 @@
 #include <stdint.h>
 
 
-// Section 8.2.3.8.3 Receive Descriptor Length: "Validated lengths up to 128 K (8 K descriptors)."
-const uint16_t IXGBE_RECEIVE_RING_SIZE_MAX = 8 * 1024;
-
-// Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
-const uint16_t IXGBE_RECEIVE_PACKET_SIZE_MAX = 16 * 1024;
+extern const uint16_t IXGBE_RECEIVE_RING_SIZE_MAX;
+extern const uint16_t IXGBE_RECEIVE_PACKET_SIZE_MAX;
 
 
 bool ixgbe_device_init(uintptr_t addr);

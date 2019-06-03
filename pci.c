@@ -108,7 +108,7 @@ uint32_t tn_pci_read(const uintptr_t device_address, const uint8_t reg)
 		return 0xFFFFFFFF;
 	}
 
-	const uint32_t value = 0x80000000 | (dev->bus << 16) | (dev->device << 11) | (dev->function << 8) | reg;
+	const uint32_t value = 0x80000000 | ((uint32_t)dev->bus << 16) | ((uint32_t)dev->device << 11) | ((uint32_t)dev->function << 8) | reg;
 	outl(value, PCI_CONFIG_ADDR);
 	return inl(PCI_CONFIG_DATA);
 }

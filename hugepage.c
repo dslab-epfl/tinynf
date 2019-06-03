@@ -8,8 +8,8 @@
 uintptr_t tn_hp_allocate(const size_t size)
 {
 	// We only support 2MB hugepages
-	const size_t HUGEPAGE_SIZE_POWER = 10 + 10 + 1;
-	const size_t HUGEPAGE_SIZE = 1 << HUGEPAGE_SIZE_POWER;
+	const int HUGEPAGE_SIZE_POWER = 10 + 10 + 1;
+	const size_t HUGEPAGE_SIZE = 1U << HUGEPAGE_SIZE_POWER;
 
 	if (size != HUGEPAGE_SIZE) {
 		return (uintptr_t) -1;

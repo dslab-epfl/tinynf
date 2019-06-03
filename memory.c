@@ -4,13 +4,26 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+
+// From https://stackoverflow.com/a/5761398/3311770
+// ASSUMPTION: We use uint64_t because if off_t happened to have a bigger max, we wouldn't care
+// ASSUMPTION: We are on an implementation that will not generate a signal
+static uint64_t max_off_t(void)
+{
+	int64_t x;
+	for (x = INTMAX_MAX; (off_t) x != x; x = x/2) {}
+	return (uint64_t) x; // cast is safe because division by 2 cannot cause x to be negative.
+}
+
 // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
 uintptr_t tn_mem_virtual_to_physical_address(const uintptr_t address)
 {
-	const long page_size = sysconf(_SC_PAGESIZE);
-	if (page_size == -1) {
+	// sysconf is documented to return -1 on error; let's check all negative cases along the way, to make sure the conversion to unsigned is sound
+	const long page_size_long = sysconf(_SC_PAGESIZE);
+	if (page_size_long < 0) {
 		return (uintptr_t) -1;
 	}
+	const uintptr_t page_size = (uintptr_t) page_size_long;
 
 	const uintptr_t virtual_address = address;
 	const uintptr_t page = virtual_address / page_size;
@@ -20,8 +33,12 @@ uintptr_t tn_mem_virtual_to_physical_address(const uintptr_t address)
 		return (uintptr_t) -1;
 	}
 
-	const uint64_t map_offset = page * sizeof(uint64_t);
-	if (lseek(map_fd, map_offset, SEEK_SET) == (off_t) -1) {
+	const uintptr_t map_offset = page * sizeof(uint64_t);
+	if (map_offset > max_off_t()) {
+		close(map_fd);
+		return (uintptr_t) -1;
+	}
+	if (lseek(map_fd, (off_t) map_offset, SEEK_SET) == (off_t) -1) {
 		close(map_fd);
 		return (uintptr_t) -1;
 	}
