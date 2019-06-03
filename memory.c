@@ -34,11 +34,11 @@ uintptr_t tn_mem_virtual_to_physical_address(const uintptr_t address)
 	}
 
 	// We want the PFN, but it's only meaningful if the page is present; bit 63 indicates whether it is
-	if ((metadata & 0x8000000000000000ULL) == 0) {
+	if ((metadata & 0x8000000000000000) == 0) {
 		return (uintptr_t) -1;
 	}
 	// PFN = bits 0-54
-	const uint64_t pfn = metadata & 0x7FFFFFFFFFFFFFULL;
+	const uint64_t pfn = metadata & 0x7FFFFFFFFFFFFF;
 	if (pfn == 0) {
 		// Page is unmapped
 		return (uintptr_t) -1;

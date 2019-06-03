@@ -168,6 +168,22 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_w
 #define IXGBE_PFVLVFB_REGISTERS_COUNT 128
 #define IXGBE_REG_PFVLVFB(n) (0x0F200 + 4*n)
 
+// Section 8.2.3.8.2 Receive Descriptor Base Address High
+#define IXGBE_REG_RDBAH(n) (n <= 63 ? (0x01004 + 0x40*n) : (0x0D004 + 0x40*(n-64)))
+
+// Section 8.2.3.8.1 Receive Descriptor Base Address Low
+#define IXGBE_REG_RDBAL(n) (n <= 63 ? (0x01000 + 0x40*n) : (0x0D000 + 0x40*(n-64)))
+
+// Section 8.2.3.8.3 Receive Descriptor Length
+#define IXGBE_REG_RDLEN(n) (n <= 63 ? (0x01008 + 0x40*n) : (0x0D008 + 0x40*(n-64)))
+
+// Section 8.2.3.8.8 Receive DMA Control Register
+#define IXGBE_REG_RDRXCTL(_) 0x02F00
+#define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
+
+// Section 8.2.3.8.5 Receive Descriptor Tail
+#define IXGBE_REG_RDT(n) (n <= 63 ? (0x01018 + 0x40*n) : (0x0D018 + 0x40*(n-64)))
+
 // Section 8.2.3.10.6 DCB Receive Packet Plane T4 Config
 #define IXGBE_RTRPT4C_REGISTERS_COUNT 8
 #define IXGBE_REG_RTRPT4C(n) (0x02140 + 4*n)
@@ -187,13 +203,10 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_w
 #define IXGBE_RTTPT2C_REGISTERS_COUNT 8
 #define IXGBE_REG_RTTPT2C(n) (0x0CD20 + 4*n)
 
-// Section 8.2.3.8.8 Receive DMA Control Register
-#define IXGBE_REG_RDRXCTL(_) 0x02F00
-#define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
-
 #define IXGBE_REG_RXCTRL(_) 0x03000
 #define IXGBE_REG_RXCTRL_RXEN BIT(0)
 
+// Section 8.2.3.8.6 Receive Descriptor Control
 #define IXGBE_REG_RXDCTL(n) (n <= 63 ? (0x01028 + 0x40*n) : (0x0D028 + 0x40*(n-64)))
 #define IXGBE_REG_RXDCTL_ENABLE BIT(25)
 
@@ -201,6 +214,13 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_w
 #define IXGBE_RXPBSIZE_REGISTERS_COUNT 8
 #define IXGBE_REG_RXPBSIZE(n) (0x03C00 + 4*n)
 #define IXGBE_REG_RXPBSIZE_SIZE BITS(10,19)
+
+// Section 8.2.3.8.7 Split Receive Control Registers
+#define IXGBE_SRRCTL_REGISTERS_COUNT 128
+#define IXGBE_REG_SRRCTL(n) (n <= 63 ? (0x01014 + 0x40*n) : (0x0D014 + 0x40*(n-64)))
+#define IXGBE_REG_SRRCTL_BSIZEPACKET BITS(0,4)
+#define IXGBE_REG_SRRCTL_DESCTYPE BITS(25,27)
+#define IXGBE_REG_SRRCTL_DROPEN BIT(28)
 
 #define IXGBE_REG_STATUS(_) 0x00008
 #define IXGBE_REG_STATUS_MASTERENABLE BIT(19)
@@ -857,7 +877,7 @@ bool ixgbe_device_init(uintptr_t addr)
 	return true;
 }
 
-bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue)
+bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_addr, uint16_t ring_size, uintptr_t buffer_addr)
 {
 	// Section 4.6.7.1 Dynamic Enabling and Disabling of Receive Queues:
 	// "Receive queues can be enabled or disabled dynamically using the following procedure."
@@ -866,17 +886,68 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue)
 
 	// Section 4.6.7 Receive Initialization:
 	// "The following should be done per each receive queue:"
+
 	// "- Allocate a region of memory for the receive descriptor list."
+	// Given to us as 'ring_addr'
+
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
+	// The buffers are given to us as 'buffer_addr'
+	uint64_t* ring = (uint64_t*) ring_addr;
+	for(uint16_t n = 0; n < ring_size; n++) {
+		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
+		// Line 0 - Packet Buffer Address
+		ring[n * 2] = buffer_addr + n * IXGBE_RECEIVE_PACKET_SIZE_MAX;
+		// Line 1 - Header Buffer Address (63:1), Descriptor Done (0)
+		ring[n * 2 + 1] = 0;
+	}
+
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
 	// INTERPRETATION: This is a typo, the second "RDBAL" should read "RDBAH".
+	IXGBE_REG_SET(addr, RDBAH, queue, ring_addr & 0xFFFFFFFF00000000);
+	IXGBE_REG_SET(addr, RDBAL, queue, ring_addr & 0x00000000FFFFFFFF);
+
 	// "- Set the length register to the size of the descriptor ring (register RDLEN)."
+	// Section 8.2.3.8.3 Receive DEscriptor Length (RDLEN[n]):
+	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer. It must be 128-byte aligned"
+	// INTERPRETATION: Since each descriptor takes 16 bytes, the size of the ring must be a multiple of 8.
+	if (ring_size % 8 != 0) {
+		return false;
+	}
+	IXGBE_REG_SET(addr, RDLEN, queue, ring_size * 16);
+
 	// "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
+	//	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
+	//		"BSIZEPACKET, Receive Buffer Size for Packet Buffer. The value is in 1 KB resolution. Value can be from 1 KB to 16 KB."
+	// TODO: Play with PACKET_SIZE_MAX, see if it changes perf in any way.
+	IXGBE_REG_SET(addr, SRRCTL, queue, BSIZEPACKET, IXGBE_RECEIVE_PACKET_SIZE_MAX / 1024);
+	//		"DESCTYPE, Define the descriptor type in Rx: [...] 001b = Advanced descriptor one buffer."
+	IXGBE_REG_SET(addr, SRRCTL, queue, DESCTYPE, 0b001);
+	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
+	// ASSUMPTION: We want to drop packets if we can't process them fast enough, to have predictable behavior.
+	IXGBE_REG_SET(addr, SRRCTL, queue, DROPEN, 1);
+
 	// "- If header split is required for this queue, program the appropriate PSRTYPE for the appropriate headers."
+	// Section 7.1.10 Header Splitting: "Header Splitting mode might cause unpredictable behavior and should not be used with the 82599."
+
 	// "- Program RSC mode for the queue via the RSCCTL register."
+	// Nothing to do, we do not want RSC.
+	// TODO: Write all assumptions in a single place, then refer to them by ID or something.
+
 	// "- Program RXDCTL with appropriate values including the queue Enable bit. Note that packets directed to a disabled queue are dropped."
+	IXGBE_REG_SET(addr, RXDCTL, queue, ENABLE, 1);
+
 	// "- Poll the RXDCTL register until the Enable bit is set. The tail should not be bumped before this bit was read as 1b."
+	// INTERPRETATION: No timeout is mentioned here, let's say 1s to be safe.
+	// TODO: Categorize all interpretations (e.g. "no timeout", "clear typo", ...)
+	bool queue_timed_out;
+	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, RXDCTL, queue, ENABLE));
+	if (queue_timed_out) {
+		return false;
+	}
+
 	// "- Bump the tail pointer (RDT) to enable descriptors fetching by setting it to the ring length minus one."
+	IXGBE_REG_SET(addr, RDT, queue, ring_size - 1);
+
 	// "- Enable the receive path by setting RXCTRL.RXEN. This should be done only after all other settings are done following the steps below."
 	//	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
 	//	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
