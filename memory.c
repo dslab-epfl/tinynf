@@ -1,53 +1,49 @@
 #include "memory.h"
 
+#include <fcntl.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-uint64_t tn_mem_virtual_to_physical_address(void* address)
+// See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
+uintptr_t tn_mem_virtual_to_physical_address(void* address)
 {
-	uint64_t virtual_address = (uint64_t) address;
-	// TODO translate the following
-	
-        /* standard page size */
-        page_size = getpagesize();
+	long page_size = sysconf(_SC_PAGESIZE);
+	if (page_size == -1) {
+		return TN_MEM_BAD_PHYSICAL_ADDRESS;
+	}
 
-        fd = open("/proc/self/pagemap", O_RDONLY);
-        if (fd < 0) {
-                RTE_LOG(ERR, EAL, "%s(): cannot open /proc/self/pagemap: %s\n",
-                        __func__, strerror(errno));
-                return RTE_BAD_IOVA;
-        }
+	uintptr_t virtual_address = (uintptr_t) address;
+	uintptr_t page = virtual_address / page_size;
 
-        virt_pfn = (unsigned long)virtaddr / page_size;
-        offset = sizeof(uint64_t) * virt_pfn;
-        if (lseek(fd, offset, SEEK_SET) == (off_t) -1) {
-                RTE_LOG(ERR, EAL, "%s(): seek error in /proc/self/pagemap: %s\n",
-                                __func__, strerror(errno));
-                close(fd);
-                return RTE_BAD_IOVA;
-        }
+	int map_fd = open("/proc/self/pagemap", O_RDONLY);
+	if (map_fd < 0) {
+		return TN_MEM_BAD_PHYSICAL_ADDRESS;
+	}
 
-        retval = read(fd, &page, PFN_MASK_SIZE);
-        close(fd);
-        if (retval < 0) {
-                RTE_LOG(ERR, EAL, "%s(): cannot read /proc/self/pagemap: %s\n",
-                                __func__, strerror(errno));
-                return RTE_BAD_IOVA;
-        } else if (retval != PFN_MASK_SIZE) {
-                RTE_LOG(ERR, EAL, "%s(): read %d bytes from /proc/self/pagemap "
-                                "but expected %d:\n",
-                                __func__, retval, PFN_MASK_SIZE);
-                return RTE_BAD_IOVA;
-        }
+	uint64_t map_offset = page * sizeof(uint64_t);
+	if (lseek(map_fd, map_offset, SEEK_SET) == (off_t) -1) {
+		close(map_fd);
+		return TN_MEM_BAD_PHYSICAL_ADDRESS;
+	}
 
-        /*
-         * the pfn (page frame number) are bits 0-54 (see
-         * pagemap.txt in linux Documentation)
-         */
-        if ((page & 0x7fffffffffffffULL) == 0)
-                return RTE_BAD_IOVA;
+	uint64_t metadata;
+	ssize_t read_result = read(map_fd, &metadata, sizeof(uint64_t));
+	close(map_fd);
+	if (read_result != sizeof(uint64_t)) {
+		return TN_MEM_BAD_PHYSICAL_ADDRESS;
+	}
 
-        physaddr = ((page & 0x7fffffffffffffULL) * page_size)
-                + ((unsigned long)virtaddr % page_size);
+	// We want the PFN, but it's only meaningful if the page is present; bit 63 indicates whether it is
+	if ((metadata & 0x8000000000000000ULL) == 0) {
+		return TN_MEM_BAD_PHYSICAL_ADDRESS;
+	}
+	// PFN = bits 0-54
+	uint64_t pfn = metadata & 0x7FFFFFFFFFFFFFULL;
+	if (pfn == 0) {
+		// Page is unmapped
+		return TN_MEM_BAD_PHYSICAL_ADDRESS;
+	}
 
-        return physaddr;
-	
+	uintptr_t address_offset = virtual_address % page_size;
+	return pfn * page_size + address_offset;
 }

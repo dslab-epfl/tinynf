@@ -1,0 +1,4 @@
+- Use C17
+- uintptr_t instead of void*
+- const correctness
+- clang?

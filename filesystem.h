@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdint.h>
 
 // Reads a single line from the file at the given path, or returns NULL if this is not possible.
