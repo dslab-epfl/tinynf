@@ -39,6 +39,7 @@ uintptr_t tn_pci_get_device_address(const uint8_t bus, const uint8_t device, con
 	// Also note that since reading an int32 is 4 bytes, we need to access 4 consecutive ports for PCI config/data.
 	if (!tn_pci_got_ioperm) {
 		if (ioperm(0x80, 1, 1) < 0 || ioperm(PCI_CONFIG_ADDR, 4, 1) < 0 || ioperm(PCI_CONFIG_DATA, 4, 1) < 0) {
+			TN_DEBUG("PCI ioperms failed");
 			goto error;
 		}
 		tn_pci_got_ioperm = true;
@@ -52,19 +53,20 @@ uintptr_t tn_pci_get_device_address(const uint8_t bus, const uint8_t device, con
 		}
 	}
 	if (dev == NULL) {
-		// No more space!
+		TN_DEBUG("Too many PCI devices");
 		goto error;
 	}
 
 	// Read the first line of the PCI /resource file, as a sanity check + indication of the length of the resource
 	dev_resource_line = tn_fs_readline("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource", bus, device, function);
 	if (dev_resource_line == NULL) {
+		TN_DEBUG("Could not read PCI resource line");
 		goto error;
 	}
 	// We expect 3 64-bit hex numbers (2 chars prefix, 16 chars number), 2 spaces, 1 newline, 1 NULL char == 58
 	// e.g. 0x00003800ffa80000 0x00003800ffafffff 0x000000000014220c
 	if (dev_resource_line[56] != '\n') {
-		// Somehow we didn't read exactly the line format we were expecting
+		TN_DEBUG("Unexpected PCI resource line format");
 		goto error;
 	}
 	const uint64_t dev_phys_addr = strtoull(dev_resource_line, NULL, 16);
@@ -72,19 +74,20 @@ uintptr_t tn_pci_get_device_address(const uint8_t bus, const uint8_t device, con
 	const uint64_t dev_phys_addr_end = strtoull(dev_resource_line + 18 + 1, NULL, 16);
 	const uint64_t dev_phys_length = (dev_phys_addr_end - dev_phys_addr + 1);
 	if (dev_phys_length < min_length) {
-		// Not enough memory given what was expected
+		TN_DEBUG("Not enough PCI memory, expected at least %" PRIu64 " but got %" PRIu64, min_length, dev_phys_length);
 		goto error;
 	}
 	// Offset to 3rd number: 2 * (18-char number + 1 space)
 	const uint64_t dev_resource_flags = strtoull(dev_resource_line + 2 * (18 + 1), NULL, 16);
 	if ((dev_resource_flags & 0x200) == 0) {
-		// For some reason the first line is not a memory one; just abort...
+		TN_DEBUG("First PCI line is not memory");
 		goto error;
 	}
 
 	// Now map the /resource0 file so we can access it
 	dev_addr = tn_fs_mmap("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource0", bus, device, function);
 	if (dev_addr == (uintptr_t) -1) {
+		TN_DEBUG("PCI mmap failed");
 		goto error;
 	}
 
@@ -93,6 +96,7 @@ uintptr_t tn_pci_get_device_address(const uint8_t bus, const uint8_t device, con
 	dev->device = device;
 	dev->function = function;
 	dev->address = dev_addr;
+	TN_INFO("PCI device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, bus, device, function, dev_addr);
 
 error:
 	free((void*) dev_resource_line);

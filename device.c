@@ -51,12 +51,16 @@ int tn_dev_init(void)
 	}
 
 	for (uint8_t n = 0; n < 2; n++) {
+	
+	
+if (n == 0) {
+	
+	
 		// TODO hardcoded addrs...
 		const uintptr_t dev_base_addr = tn_pci_get_device_address(0x83, 0x00, n, 512 * 1024); // length comes from manually checking
 		if (dev_base_addr == (uintptr_t) -1) {
 			return EINVAL;
 		}
-
 		if (!ixgbe_device_init(dev_base_addr)) {
 			return EINVAL;
 		}
@@ -64,9 +68,13 @@ int tn_dev_init(void)
 		if (!ixgbe_device_init_receive(dev_base_addr, 0, receive_ring, 128, packet_buffers)) {
 			return EINVAL;
 		}
-
 		tn_devices[n].base_addr = dev_base_addr;
 		tn_devices[n].recv_base = (uint64_t*) receive_ring;
+	
+	
+}
+	
+	
 	}
 
 	// HACK
