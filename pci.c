@@ -18,8 +18,8 @@ struct tn_pci_device {
 	uint8_t bus;
 	uint8_t device;
 	uint8_t function;
-	// We assume that a correct memory address is never NULL
-	void* address;
+	// We assume that a correct memory address is never 0
+	uintptr_t address;
 };
 // 16 known devices should be more than enough
 struct tn_pci_device tn_pci_known_devices[16];
@@ -27,10 +27,10 @@ bool tn_pci_got_ioperm;
 
 
 // TODO uniformize naming
-void* tn_pci_get_device_address(uint8_t bus, uint8_t device, uint8_t function, uint64_t min_length)
+uintptr_t tn_pci_get_device_address(const uint8_t bus, const uint8_t device, const uint8_t function, const uint64_t min_length)
 {
-	void* dev_addr = NULL;
-	char* dev_resource_line = NULL;
+	uintptr_t dev_addr = 0;
+	const char* dev_resource_line = NULL;
 
 	// Make sure we can talk to the devices
 	if (!tn_pci_got_ioperm) {
@@ -63,16 +63,16 @@ void* tn_pci_get_device_address(uint8_t bus, uint8_t device, uint8_t function, u
 		// Somehow we didn't read exactly the line format we were expecting
 		goto error;
 	}
-	uint64_t dev_phys_addr = strtoull(dev_resource_line, NULL, 16);
+	const uint64_t dev_phys_addr = strtoull(dev_resource_line, NULL, 16);
 	// Offset to 2nd number: 18-char number + 1 space
-	uint64_t dev_phys_addr_end = strtoull(dev_resource_line + 18 + 1, NULL, 16);
-	uint64_t dev_phys_length = (dev_phys_addr_end - dev_phys_addr + 1);
+	const uint64_t dev_phys_addr_end = strtoull(dev_resource_line + 18 + 1, NULL, 16);
+	const uint64_t dev_phys_length = (dev_phys_addr_end - dev_phys_addr + 1);
 	if (dev_phys_length < min_length) {
 		// Not enough memory given what was expected
 		goto error;
 	}
 	// Offset to 3rd number: 2 * (18-char number + 1 space)
-	uint64_t dev_resource_flags = strtoull(dev_resource_line + 2 * (18 + 1), NULL, 16);
+	const uint64_t dev_resource_flags = strtoull(dev_resource_line + 2 * (18 + 1), NULL, 16);
 	if ((dev_resource_flags & 0x200) == 0) {
 		// For some reason the first line is not a memory one; just abort...
 		goto error;
@@ -80,7 +80,7 @@ void* tn_pci_get_device_address(uint8_t bus, uint8_t device, uint8_t function, u
 
 	// Now map the /resource0 file so we can access it
 	dev_addr = tn_fs_mmap("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource0", bus, device, function);
-	if (dev_addr == NULL) {
+	if (dev_addr == (uintptr_t) -1) {
 		goto error;
 	}
 
@@ -91,13 +91,13 @@ void* tn_pci_get_device_address(uint8_t bus, uint8_t device, uint8_t function, u
 	dev->address = dev_addr;
 
 error:
-	free(dev_resource_line);
+	free((void*) dev_resource_line);
 	return dev_addr;
 }
 
-uint32_t tn_pci_read(void* device_address, uint8_t reg)
+uint32_t tn_pci_read(const uintptr_t device_address, const uint8_t reg)
 {
-	struct tn_pci_device* dev = NULL;
+	const struct tn_pci_device* dev = NULL;
 	for (size_t n = 0; n < sizeof(tn_pci_known_devices)/sizeof(struct tn_pci_device); n++) {
 		if (tn_pci_known_devices[n].address == device_address) {
 			dev = &tn_pci_known_devices[n];
@@ -108,7 +108,7 @@ uint32_t tn_pci_read(void* device_address, uint8_t reg)
 		return 0xFFFFFFFF;
 	}
 
-	uint32_t value = 0x80000000 | (dev->bus << 16) | (dev->device << 11) | (dev->function << 8) | reg;
+	const uint32_t value = 0x80000000 | (dev->bus << 16) | (dev->device << 11) | (dev->function << 8) | reg;
 	outl(value, PCI_CONFIG_ADDR);
 	return inl(PCI_CONFIG_DATA);
 }

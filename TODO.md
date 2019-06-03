@@ -1,4 +1,3 @@
 - Use C17
-- uintptr_t instead of void*
-- const correctness
 - clang?
+- enable as many warnings as possible

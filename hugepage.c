@@ -5,18 +5,18 @@
 #include <linux/mman.h>
 
 
-void* tn_hp_allocate(size_t size)
+uintptr_t tn_hp_allocate(const size_t size)
 {
 	// We only support 2MB hugepages
 	const size_t HUGEPAGE_SIZE_POWER = 10 + 10 + 1;
 	const size_t HUGEPAGE_SIZE = 1 << HUGEPAGE_SIZE_POWER;
 
 	if (size != HUGEPAGE_SIZE) {
-		return NULL;
+		return (uintptr_t) -1;
 	}
 
 	// http://man7.org/linux/man-pages//man2/munmap.2.html
-	void* page = mmap(
+	const void* page = mmap(
 		// No specific address
 		NULL,
 		// Size of the mapping
@@ -31,15 +31,9 @@ void* tn_hp_allocate(size_t size)
 		0
 	);
 
-	if (page == NULL) {
-		// This is an extremely unlikely case, but the mmap interface technically allows it...
-		munmap(page, HUGEPAGE_SIZE);
-		return NULL;
-	}
-
 	if (page == MAP_FAILED) {
-		return NULL;
+		return (uintptr_t) -1;
 	}
 
-	return page;
+	return (uintptr_t) page;
 }

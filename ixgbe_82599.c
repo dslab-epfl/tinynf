@@ -1,9 +1,9 @@
+#include "ixgbe_82599.h"
+
 #include "arch.h"
 #include "memory.h"
 #include "pci.h"
 
-#include <stdbool.h>
-#include <stdint.h>
 // TODO nanosleep should be abstracted in the PAL
 #include <time.h>
 
@@ -57,8 +57,8 @@
 const int _ = 0;
 
 // Register primitives
-static uint32_t ixgbe_reg_read(void* addr, uint32_t reg) { uint32_t val = *((volatile uint32_t*)((char*)addr + reg)); tn_read_barrier(); return tn_le_to_cpu(val); }
-static void ixgbe_reg_write(void* addr, uint32_t reg, uint32_t value) { tn_write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); }
+static uint32_t ixgbe_reg_read(uintptr_t addr, uint32_t reg) { uint32_t val = *((volatile uint32_t*)((char*)addr + reg)); tn_read_barrier(); return tn_le_to_cpu(val); }
+static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); }
 #define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
 #define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
 #define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
@@ -230,7 +230,7 @@ static void ixgbe_reg_write(void* addr, uint32_t reg, uint32_t value) { tn_write
 // TODO: Do we really need this part?
 
 // "Gaining Control of Shared Resource by Software"
-static void ixgbe_lock_swsm(void* addr, bool* out_sw_malfunction, bool* out_fw_malfunction)
+static void ixgbe_lock_swsm(uintptr_t addr, bool* out_sw_malfunction, bool* out_fw_malfunction)
 {
 	// "Software checks that the software on the other LAN function does not use the software/firmware semaphore"
 
@@ -250,13 +250,13 @@ static void ixgbe_lock_swsm(void* addr, bool* out_sw_malfunction, bool* out_fw_m
 	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000, IXGBE_REG_CLEARED(addr, SWSM, _, SWESMBI));
 }
 
-static void ixgbe_unlock_swsm(void* addr)
+static void ixgbe_unlock_swsm(uintptr_t addr)
 {
 	IXGBE_REG_CLEAR(addr, SWSM, _, SWESMBI);
 	IXGBE_REG_CLEAR(addr, SWSM, _, SMBI);
 }
 
-static bool ixgbe_lock_resources(void* addr)
+static bool ixgbe_lock_resources(uintptr_t addr)
 {
 	uint32_t attempts = 0;
 
@@ -315,7 +315,7 @@ start:;
 }
 
 // "Releasing a Shared Resource by Software"
-static void ixgbe_unlock_resources(void* addr)
+static void ixgbe_unlock_resources(uintptr_t addr)
 {
 	// "The software takes control over the software/firmware semaphore as previously described for gaining shared resources."
 	bool ignored;
@@ -335,7 +335,7 @@ static void ixgbe_unlock_resources(void* addr)
 // Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
 // ---------------------------------------------------------
 
-static bool ixgbe_recv_disable(void* addr, uint16_t queue)
+static bool ixgbe_recv_disable(uintptr_t addr, uint16_t queue)
 {
 	// "Disable the queue by clearing the RXDCTL.ENABLE bit."
 	IXGBE_REG_CLEAR(addr, RXDCTL, queue, ENABLE);
@@ -361,7 +361,7 @@ static bool ixgbe_recv_disable(void* addr, uint16_t queue)
 // --------------------------------
 
 // See quotes inside to understand the meaning of the return value
-static bool ixgbe_device_master_disable(void* addr)
+static bool ixgbe_device_master_disable(uintptr_t addr)
 {
 	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
 	for (uint16_t queue; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
@@ -415,7 +415,7 @@ static bool ixgbe_device_master_disable(void* addr)
 // INTERPRETATION: The spec has a circular dependency here - resets need master disable, but master disable asks for two resets if it fails!
 //                 We assume that if the master disable fails, the resets do not need to go through the master disable step.
 
-static void ixgbe_device_reset(void* addr)
+static void ixgbe_device_reset(uintptr_t addr)
 {
 	// "Prior to issuing link reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
 	bool master_disabled = ixgbe_device_master_disable(addr);
@@ -442,14 +442,14 @@ static void ixgbe_device_reset(void* addr)
 // Section 4.6.3 Initialization Sequence
 // -------------------------------------
 
-static void ixgbe_device_disable_interrupts(void* addr)
+static void ixgbe_device_disable_interrupts(uintptr_t addr)
 {
-	for (int n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, EIMC, n, MASK);
 	}
 }
 
-bool ixgbe_device_init(void* addr)
+bool ixgbe_device_init(uintptr_t addr)
 {
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
@@ -482,13 +482,13 @@ bool ixgbe_device_init(void* addr)
 	//	 Typically, FCRTH[n] default value should be equal to RXPBSIZE[n]-0x6000. FCRTH[n].
 	//	 FCEN should be set to 0b if flow control is not enabled as all the other registers previously indicated."
 	// INTERPRETATION: Sections 3.7.7.3.{2-5} are irrelevant here since we do not want flow control.
-	for (int n = 0; n < IXGBE_FCTTV_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_FCTTV_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, FCTTV, n);
 	}
-	for (int n = 0; n < IXGBE_FCRTL_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_FCRTL_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, FCRTL, n);
 	}
-	for (int n = 0; n < IXGBE_FCRTH_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_FCRTH_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, FCRTH, n);
 	}
 	IXGBE_REG_CLEAR(addr, FCRTV, _);
@@ -555,7 +555,7 @@ bool ixgbe_device_init(void* addr)
 	//	"- Unicast Table Array (PFUTA)."
 	//	Section 8.2.3.27.12 PF Unicast Table Array (PFUTA[n]):
 	//		"This table should be zeroed by software before start of operation."
-	for (int n = 0; n < IXGBE_PFUTA_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_PFUTA_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, PFUTA, n);
 	}
 
@@ -570,7 +570,7 @@ bool ixgbe_device_init(void* addr)
 	// INTERPRETATION: While the spec appears to mention PFVLVF only in conjunction with VLNCTRL.VFE being enabled, let's be conservative and initialize them anyway.
 	// 	Section 8.2.3.27.15 PF VM VLAN Pool Filter (PFVLVF[n]):
 	//		"Software should initialize these registers before transmit and receive are enabled."
-	for (int n = 0; n < IXGBE_PFVLVF_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_PFVLVF_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, PFVLVF, n);
 	}
 
@@ -584,21 +584,21 @@ bool ixgbe_device_init(void* addr)
 	// INTERPRETATION: We should enable all pools with address 0, just in case, and disable everything else since we only have 1 MAC address.
 	IXGBE_REG_WRITE(addr, MPSAR, 0, 0xFFFFFFFF);
 	IXGBE_REG_WRITE(addr, MPSAR, 1, 0xFFFFFFFF);
-	for (int n = 2; n < IXGBE_MPSAR_REGISTERS_COUNT; n++) {
+	for (size_t n = 2; n < IXGBE_MPSAR_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, MPSAR, n);
 	}
 
 	//	"- VLAN Pool Filter Bitmap (PFVLVFB[n])."
 	// INTERPRETATION: See above remark on PFVLVF
 	//	Section 8.2.3.27.16: PF VM VLAN Pool Filter Bitmap
-	for (int n = 0; n < IXGBE_PFVLVFB_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_PFVLVFB_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, PFVLVFB, n);
 	}
 
 	//	"Set up the Multicast Table Array (MTA) registers.
 	//	 This entire table should be zeroed and only the desired multicast addresses should be permitted (by writing 0x1 to the corresponding bit location).
 	//	 Set the MCSTCTRL.MFE bit if multicast filtering is required."
-	for (int n = 0; n < IXGBE_MTA_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_MTA_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, MTA, n);
 	}
 
@@ -669,7 +669,7 @@ bool ixgbe_device_init(void* addr)
 	//		"Queue Enable, bit 31; When set, enables filtering of Rx packets by the 5-tuple defined in this filter to the queue indicated in register L34TIMIR."
 	// ASSUMPTION: We do not want 5-tuple filtering.
 	// INTERPRETATION: We clear Queue Enable, and set the mask to 0b11111 just in case. We then do not need to deal with SAQF, DAQF, SDPQF, SYNQF.
-	for (int n = 0; n < IXGBE_FTQF_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_FTQF_REGISTERS_COUNT; n++) {
 		IXGBE_REG_SET(addr, FTQF, n, MASK);
 		IXGBE_REG_CLEAR(addr, FTQF, n, QUEUEENABLE);
 	}
@@ -698,7 +698,7 @@ bool ixgbe_device_init(void* addr)
 	//			"SIZE, Init val 0x200"
 	//			"The default size of PB[1-7] is also 512 KB but it is meaningless in non-DCB mode."
 	// INTERPRETATION: We do not need to change PB[0]. Let's stay on the safe side and clear PB[1-7] to 0 anyway.
-	for (int n = 1; n < IXGBE_RXPBSIZE_REGISTERS_COUNT; n++) {
+	for (size_t n = 1; n < IXGBE_RXPBSIZE_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, RXPBSIZE, 0);
 	}
 	//		"- TXPBSIZE[0].SIZE=0xA0, TXPBSIZE[1-7].SIZE=0x0"
@@ -706,7 +706,7 @@ bool ixgbe_device_init(void* addr)
 	//			"SIZE, Init val 0xA0"
 	//			"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
 	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
-	for (int n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
+	for (size_t n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, TXPBSIZE, 0);
 	}
 	//		"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
@@ -760,20 +760,20 @@ bool ixgbe_device_init(void* addr)
 	IXGBE_REG_WRITE(addr, FCCFG, _, TFCE, 1);
 	//		"Reset all arbiters:"
 	//		"- Clear RTTDT1C register, per each queue, via setting RTTDQSEL first"
-	for (int n = 0; n < IXGBE_TX_QUEUE_POOLS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_TX_QUEUE_POOLS_COUNT; n++) {
 		IXGBE_REG_WRITE(addr, RTTDQSEL, _, TXDQIDX, n);
 		IXGBE_REG_CLEAR(addr, RTTDT1C, _);
 	}
 	//		"- Clear RTTDT2C[0-7] registers"
-	for (int n = 0; n < IXGBE_RTTDT2C_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_RTTDT2C_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, RTTDT2C, n);
 	}
 	//		"- Clear RTTPT2C[0-7] registers"
-	for (int n = 0; n < IXGBE_RTTPT2C_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_RTTPT2C_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, RTTPT2C, n);
 	}
 	//		"- Clear RTRPT4C[0-7] registers"
-	for (int n = 0; n < IXGBE_RTRPT4C_REGISTERS_COUNT; n++) {
+	for (size_t n = 0; n < IXGBE_RTRPT4C_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, RTRPT4C, n);
 	}
 	//		"Disable TC and VM arbitration layers:"
@@ -857,7 +857,7 @@ bool ixgbe_device_init(void* addr)
 	return true;
 }
 
-bool ixgbe_device_init_receive(void* addr, uint8_t queue)
+bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue)
 {
 	// Section 4.6.7.1 Dynamic Enabling and Disabling of Receive Queues:
 	// "Receive queues can be enabled or disabled dynamically using the following procedure."
@@ -886,7 +886,7 @@ bool ixgbe_device_init_receive(void* addr, uint8_t queue)
 	// "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
 }
 
-bool ixgbe_device_init_send(void* addr, uint8_t queue)
+bool ixgbe_device_init_send(uintptr_t addr, uint8_t queue)
 {
 	// Section 4.6.8.1 Dynamic Enabling and Disabling of Transmit Queues:
 	// "Transmit queues can be enabled or disabled dynamically if the following procedure is followed."

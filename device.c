@@ -36,15 +36,15 @@ uint16_t tn_packet_length;
 int tn_dev_init(void)
 {
 	// Allocate a 2MB hugepage, enough for 128 16KB buffers
-	void* hugepage = tn_hp_allocate(128 * 16 * 1024);
-	if (hugepage == NULL) {
+	const uintptr_t hugepage = tn_hp_allocate(128 * 16 * 1024);
+	if (hugepage == (uintptr_t) -1) {
 		return ENOMEM;
 	}
 
-	for (int n = 0; n < 2; n++) {
+	for (size_t n = 0; n < 2; n++) {
 		// TODO hardcoded addrs...
-		void* dev_base_addr = tn_pci_get_device_address(0x85, 0x00, n, 512 * 1024); // length comes from manually checking
-		if (dev_base_addr == NULL) {
+		const uintptr_t dev_base_addr = tn_pci_get_device_address(0x85, 0x00, n, 512 * 1024); // length comes from manually checking
+		if (dev_base_addr == (uintptr_t) -1) {
 			return EINVAL;
 		}
 
@@ -78,12 +78,12 @@ void tn_dev_transmit(void)
 
 // TODO: tn_dev_drop(void);
 
-void* tn_dev_get_packet(void)
+uintptr_t tn_dev_get_packet(void)
 {
-	return NULL;
+	return 0;
 }
 
-int16_t tn_dev_get_packet_length(void)
+uint16_t tn_dev_get_packet_length(void)
 {
 	return 0;
 }

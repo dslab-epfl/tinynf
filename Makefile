@@ -8,6 +8,7 @@ CFLAGS += -D_POSIX_C_SOURCE=200809
 CFLAGS += -Wall
 CFLAGS += -Wextra
 CFLAGS += -Wpedantic
+CFLAGS += -pedantic-errors
 
 # Files
 FILES := *.c
