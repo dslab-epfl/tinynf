@@ -1,6 +1,6 @@
-#include "pci.h"
+#include "os/pci.h"
 
-#include "filesystem.h"
+#include "os/filesystem.h"
 #include "log.h"
 
 #include <inttypes.h>

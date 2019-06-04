@@ -45,11 +45,13 @@ CFLAGS += -O2
 
 OUTPUT := tinynf
 
+# Relative paths
+CFLAGS += -I.
 # Files
-FILES := *.c
+FILES := *.c os/linux/*.c
 
 all:
-	$(CC) $(CFLAGS) $(FILES) -o $(OUTPUT)
+	@$(CC) $(CFLAGS) $(FILES) -o $(OUTPUT)
 
 clean:
-	rm -f *.gch $(OUTPUT)
+	@rm -f *.gch $(OUTPUT)

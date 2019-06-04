@@ -1,9 +1,11 @@
+#include "device.h"
+
+#include "os/hugepage.h"
+#include "os/pci.h"
 //#include "arch.h"
 // TODO remove above once we include stuff in ixgbe instead
-#include "device.h"
-#include "hugepage.h"
+
 #include "ixgbe_82599.h"
-#include "pci.h"
 
 // TODO none of those should be here
 #include <errno.h>

@@ -1,9 +1,9 @@
 #include "ixgbe_82599.h"
 
-#include "arch.h"
+#include "os/arch.h"
+#include "os/memory.h"
+#include "os/pci.h"
 #include "log.h"
-#include "memory.h"
-#include "pci.h"
 
 // TODO nanosleep should be abstracted in the PAL
 #include <time.h>
