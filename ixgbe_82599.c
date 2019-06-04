@@ -3,10 +3,8 @@
 #include "os/arch.h"
 #include "os/memory.h"
 #include "os/pci.h"
+#include "os/time.h"
 #include "log.h"
-
-// TODO nanosleep should be abstracted in the PAL
-#include <time.h>
 
 // Fundamental constants
 
@@ -41,20 +39,16 @@ const uint16_t IXGBE_RECEIVE_PACKET_SIZE_MAX = 16 * 1024;
 #define BITS(start, end) ((end == 31 ? 0u : (0xFFFFFFFFu << (end + 1))) ^ (0xFFFFFFFFu << start))
 #define TRAILING_ZEROES(n) __builtin_ctzll(n)
 
-// Sleep for the given amount of microseconds; note that usleep was removed in POSIX-2008
-// TODO how do we deal with errors returned by that?
-#define USLEEP(n) nanosleep(&((struct timespec){.tv_sec = (n / 1000000), .tv_nsec = (n % 1000000) * 1000}), NULL)
-
 // Poll until the given condition holds, or the given timeout occurs; store whether a timeout occurred in result_name
 #define WAIT_WITH_TIMEOUT(result_name, timeout_in_us, condition) \
 		result_name = true; \
-		USLEEP(timeout_in_us % 10); \
+		tn_sleep_us(timeout_in_us % 10); \
 		for (uint8_t i = 0; i < 10; i++) { \
 			if (condition) { \
 				result_name = false; \
 				break; \
 			} \
-			USLEEP(timeout_in_us / 10); \
+			tn_sleep_us(timeout_in_us / 10); \
 		}
 
 
@@ -365,11 +359,11 @@ start:;
 
 		if (attempts == 100U) {
 			IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
-			USLEEP(10 * 1000);
+			tn_sleep_us(10 * 1000);
 			goto start;
 		}
 
-		USLEEP(10 * 1000);
+		tn_sleep_us(10 * 1000);
 		goto start;
 	}
 }
@@ -388,7 +382,7 @@ static void ixgbe_unlock_resources(const uintptr_t addr)
 	ixgbe_unlock_swsm(addr);
 
 	// "Software should wait a minimum delay (recommended 5-10 ms) before trying to gain the semaphore again"
-	USLEEP(10 * 1000);
+	tn_sleep_us(10 * 1000);
 }
 
 // ---------------------------------------------------------
@@ -411,7 +405,7 @@ static bool ixgbe_recv_disable(const uintptr_t addr, const uint8_t queue)
 	}
 
 	// "Once the RXDCTL.ENABLE bit is cleared the driver should wait additional amount of time (~100 us) before releasing the memory allocated to this queue."
-	USLEEP(100);
+	tn_sleep_us(100);
 
 	return true;
 }
@@ -458,7 +452,7 @@ static bool ixgbe_device_master_disable(const uintptr_t addr)
 
 		// "- Set the GCR_EXT.Buffers_Clear_Func bit for 20 microseconds to flush internal buffers."
 		IXGBE_REG_SET(addr, GCREXT, _, BUFFERSCLEAR);
-		USLEEP(20);
+		tn_sleep_us(20);
 
 		// "- Clear the HLREG0.LPBK bit and the GCR_EXT.Buffers_Clear_Func"
 		IXGBE_REG_CLEAR(addr, HLREG0, _, LPBK);
@@ -488,7 +482,7 @@ static void ixgbe_device_reset(const uintptr_t addr)
 
 	// See quotes in ixgbe_device_master_disable
 	if (master_disabled) {
-		USLEEP(2);
+		tn_sleep_us(2);
 		IXGBE_REG_SET(addr, CTRL, _, LRST);
 	}
 
@@ -497,7 +491,7 @@ static void ixgbe_device_reset(const uintptr_t addr)
 	//  programmers must wait approximately 1 ms after setting before attempting to check if the bit has cleared or to access (read or write) any other device register."
 	// INTERPRETATION: It's OK to access the CTRL register itself to double-reset it as above without waiting a full second,
 	//                 and thus this does not contradict the "at least 1 us" rule of the double-reset.
-	USLEEP(1000);
+	tn_sleep_us(1000);
 }
 
 
@@ -534,7 +528,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//	 Following a Global Reset the Software driver should wait at least 10msec to enable smooth initialization flow."
 	ixgbe_device_disable_interrupts(addr);
 	ixgbe_device_reset(addr);
-	USLEEP(10 * 1000);
+	tn_sleep_us(10 * 1000);
 	ixgbe_device_disable_interrupts(addr);
 
 	//	"To enable flow control, program the FCTTV, FCRTL, FCRTH, FCRTV and FCCFG registers.
