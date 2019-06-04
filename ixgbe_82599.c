@@ -289,7 +289,7 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
 // TODO: Do we really need this part?
 
 // "Gaining Control of Shared Resource by Software"
-static void ixgbe_lock_swsm(uintptr_t addr, bool* out_sw_malfunction, bool* out_fw_malfunction)
+static void ixgbe_lock_swsm(const uintptr_t addr, bool* out_sw_malfunction, bool* out_fw_malfunction)
 {
 	// "Software checks that the software on the other LAN function does not use the software/firmware semaphore"
 
@@ -309,13 +309,13 @@ static void ixgbe_lock_swsm(uintptr_t addr, bool* out_sw_malfunction, bool* out_
 	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000 * 1000, IXGBE_REG_CLEARED(addr, SWSM, _, SWESMBI));
 }
 
-static void ixgbe_unlock_swsm(uintptr_t addr)
+static void ixgbe_unlock_swsm(const uintptr_t addr)
 {
 	IXGBE_REG_CLEAR(addr, SWSM, _, SWESMBI);
 	IXGBE_REG_CLEAR(addr, SWSM, _, SMBI);
 }
 
-static bool ixgbe_lock_resources(uintptr_t addr)
+static bool ixgbe_lock_resources(const uintptr_t addr)
 {
 	uint32_t attempts = 0;
 
@@ -375,7 +375,7 @@ start:;
 }
 
 // "Releasing a Shared Resource by Software"
-static void ixgbe_unlock_resources(uintptr_t addr)
+static void ixgbe_unlock_resources(const uintptr_t addr)
 {
 	// "The software takes control over the software/firmware semaphore as previously described for gaining shared resources."
 	bool ignored;
@@ -395,7 +395,7 @@ static void ixgbe_unlock_resources(uintptr_t addr)
 // Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
 // ---------------------------------------------------------
 
-static bool ixgbe_recv_disable(uintptr_t addr, uint8_t queue)
+static bool ixgbe_recv_disable(const uintptr_t addr, const uint8_t queue)
 {
 	// "Disable the queue by clearing the RXDCTL.ENABLE bit."
 	IXGBE_REG_CLEAR(addr, RXDCTL, queue, ENABLE);
@@ -422,10 +422,10 @@ static bool ixgbe_recv_disable(uintptr_t addr, uint8_t queue)
 // --------------------------------
 
 // See quotes inside to understand the meaning of the return value
-static bool ixgbe_device_master_disable(uintptr_t addr)
+static bool ixgbe_device_master_disable(const uintptr_t addr)
 {
 	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
-	for (uint8_t queue; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
+	for (uint8_t queue = 0; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
 		ixgbe_recv_disable(addr, queue);
 	}
 
@@ -478,7 +478,7 @@ static bool ixgbe_device_master_disable(uintptr_t addr)
 // INTERPRETATION: The spec has a circular dependency here - resets need master disable, but master disable asks for two resets if it fails!
 //                 We assume that if the master disable fails, the resets do not need to go through the master disable step.
 
-static void ixgbe_device_reset(uintptr_t addr)
+static void ixgbe_device_reset(const uintptr_t addr)
 {
 	// "Prior to issuing link reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
 	bool master_disabled = ixgbe_device_master_disable(addr);
@@ -505,14 +505,14 @@ static void ixgbe_device_reset(uintptr_t addr)
 // Section 4.6.3 Initialization Sequence
 // -------------------------------------
 
-static void ixgbe_device_disable_interrupts(uintptr_t addr)
+static void ixgbe_device_disable_interrupts(const uintptr_t addr)
 {
 	for (uint32_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(addr, EIMC, n, MASK);
 	}
 }
 
-bool ixgbe_device_init(uintptr_t addr)
+bool ixgbe_device_init(const uintptr_t addr)
 {
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
@@ -922,7 +922,7 @@ bool ixgbe_device_init(uintptr_t addr)
 	return true;
 }
 
-bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_addr, uint16_t ring_size, uintptr_t buffer_addr)
+bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uint16_t ring_size, const uintptr_t buffer_addr)
 {
 	// At this point we need to write 64-bit memory values, so pointers better be 64 bits!
 	if (UINTPTR_MAX != UINT64_MAX) {
@@ -1031,7 +1031,7 @@ bool ixgbe_device_init_receive(uintptr_t addr, uint8_t queue, uintptr_t ring_add
 	return true;
 }
 
-bool ixgbe_device_init_send(uintptr_t addr, uint8_t queue)
+bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uint16_t ring_size, const uintptr_t buffer_addr)
 {
 	// Section 4.6.8.1 Dynamic Enabling and Disabling of Transmit Queues:
 	// "Transmit queues can be enabled or disabled dynamically if the following procedure is followed."
@@ -1054,5 +1054,8 @@ bool ixgbe_device_init_send(uintptr_t addr, uint8_t queue)
 	// TODO
 	(void)addr;
 	(void)queue;
+	(void)ring_addr;
+	(void)ring_size;
+	(void)buffer_addr;
 	return false;
 }

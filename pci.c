@@ -17,11 +17,14 @@
 
 // We store known PCI devices so that we can implement the tn_pci_read function since it refers to devices by their memory-mapped address.
 struct tn_pci_device {
+	// We assume that a correct memory address is never 0
+	uintptr_t address;
+
 	uint8_t bus;
 	uint8_t device;
 	uint8_t function;
-	// We assume that a correct memory address is never 0
-	uintptr_t address;
+
+	uint8_t _padding[5]; // silence warning
 };
 // 16 known devices should be more than enough
 struct tn_pci_device tn_pci_known_devices[16];
@@ -99,7 +102,8 @@ uintptr_t tn_pci_get_device_address(const uint8_t bus, const uint8_t device, con
 	TN_INFO("PCI device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, bus, device, function, dev_addr);
 
 error:
-	free((void*) dev_resource_line);
+	// This odd casting is required to free a const pointer without warnings
+	free((void*)(uintptr_t)dev_resource_line);
 	return dev_addr;
 }
 

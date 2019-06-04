@@ -22,9 +22,9 @@ struct tn_device {
 	uint16_t recv_tail;
 
 	// Send state
-	uint64_t* send_base;
 	uint16_t send_head;
 	uint16_t send_tail;
+	uint64_t* send_base;
 };
 
 // Known devices
