@@ -603,7 +603,7 @@ printf("no sfp data\n");
 	}
 #define IXGBE_REG_CORECTL(_) 0x014F00u
 	while (sfp_data != 0xFFFFu) {
-	printf("i haz read %"PRIu16"\n", sfp_data);fflush(stdout);
+//	printf("i haz read %"PRIu16"\n", sfp_data);fflush(stdout);
 		IXGBE_REG_WRITE(addr, CORECTL, _, sfp_data);
 		sfp_data_offset = (uint16_t) (sfp_data_offset + 1u);
 		if (!ixgbe_eeprom_read(addr, sfp_data_offset, &sfp_data)) {
@@ -1091,7 +1091,7 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
 	// INTERPRETATION: This is a typo, the second "RDBAL" should read "RDBAH".
-	uint64_t phys_ring_addr = tn_mem_virtual_to_physical_address(ring_addr);
+	uintptr_t phys_ring_addr = tn_mem_virtual_to_physical_address(ring_addr);
 	IXGBE_REG_WRITE(addr, RDBAH, queue, (uint32_t) (phys_ring_addr >> 32));
 	IXGBE_REG_WRITE(addr, RDBAL, queue, (uint32_t) (phys_ring_addr & 0xFFFFFFFFu));
 

@@ -16,28 +16,26 @@ static uint64_t max_off_t(void)
 }
 
 // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
-uintptr_t tn_mem_virtual_to_physical_address(const uintptr_t address)
+uintptr_t tn_mem_virtual_to_physical_address(const uintptr_t virtual_address)
 {
 	// sysconf is documented to return -1 on error; let's check all negative cases along the way, to make sure the conversion to unsigned is sound
 	const long page_size_long = sysconf(_SC_PAGESIZE);
 	if (page_size_long < 0) {
 		return (uintptr_t) -1;
 	}
-	const uintptr_t page_size = (uintptr_t) page_size_long;
 
-	const uintptr_t virtual_address = address;
+	const uintptr_t page_size = (uintptr_t) page_size_long;
 	const uintptr_t page = virtual_address / page_size;
+	const uintptr_t map_offset = page * sizeof(uint64_t);
+	if (map_offset > max_off_t()) {
+		return (uintptr_t) -1;
+	}
 
 	const int map_fd = open("/proc/self/pagemap", O_RDONLY);
 	if (map_fd < 0) {
 		return (uintptr_t) -1;
 	}
 
-	const uintptr_t map_offset = page * sizeof(uint64_t);
-	if (map_offset > max_off_t()) {
-		close(map_fd);
-		return (uintptr_t) -1;
-	}
 	if (lseek(map_fd, (off_t) map_offset, SEEK_SET) == (off_t) -1) {
 		close(map_fd);
 		return (uintptr_t) -1;
