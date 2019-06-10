@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#define MY_DEV 0
 
 struct tn_device {
 	// Base address to access memory
@@ -55,7 +56,7 @@ int tn_dev_init(void)
 	for (uint8_t n = 0; n < 2; n++) {
 	
 	
-if (n == 0) {
+if (n == MY_DEV) {
 	
 	
 		// TODO hardcoded addrs...
@@ -70,6 +71,12 @@ if (n == 0) {
 		if (!ixgbe_device_init_receive(dev_base_addr, 0, receive_ring, 128, packet_buffers)) {
 			return EINVAL;
 		}
+		if (!ixgbe_device_set_promiscuous(dev_base_addr)) {
+			return EINVAL;
+		}
+
+ixgbe_sanity_check(dev_base_addr);
+
 		tn_devices[n].base_addr = dev_base_addr;
 		tn_devices[n].recv_base = (uint64_t*) receive_ring;
 	
@@ -100,17 +107,17 @@ if (n == 0) {
 //static void tn_dev_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); }
 void tn_dev_receive(void)
 {
-	tn_packet_index = tn_devices[0].recv_head & 255; // 128 buffers, 2 lines each -> 256 addresses
+	tn_packet_index = tn_devices[MY_DEV].recv_head & 255; // 128 buffers, 2 lines each -> 256 addresses
 	uint64_t packet_metadata;
 	do {
-		packet_metadata = *(tn_devices[0].recv_base + tn_packet_index + 1);
+		packet_metadata = *(tn_devices[MY_DEV].recv_base + tn_packet_index + 1);
 	} while((packet_metadata & 1) == 0);
 	tn_packet_length = (packet_metadata >> 32) & 0xFFFFu;
-	tn_devices[0].recv_head = (uint16_t) (tn_devices[0].recv_head + 2u);
+	tn_devices[MY_DEV].recv_head = (uint16_t) (tn_devices[MY_DEV].recv_head + 2u);
 	// TODO do this at TX time! otherwise RX might overwrite it.
-//	tn_devices[0].recv_tail = 2;
+//	tn_devices[1].recv_tail = 2;
 	// TODO in fact we don't need recv tail, it should be head at this point
-	//tn_dev_reg_write(tn_devices[0].base_addr, 0x06018u, tn_devices[0].recv_tail & 255);
+	//tn_dev_reg_write(tn_devices[1].base_addr, 0x06018u, tn_devices[1].recv_tail & 255);
 }
 
 void tn_dev_transmit(void)

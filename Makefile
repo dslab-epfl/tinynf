@@ -11,8 +11,10 @@ CFLAGS += -D_POSIX_C_SOURCE=200809
 CFLAGS += -Wall -Wextra
 # ISO compliance
 CFLAGS += -pedantic -pedantic-errors
-# Signed/unsigned conversion issues, as well as narrowing conversion issues
+# Warn on signed/unsigned conversion issues, as well as narrowing conversion issues
 CFLAGS += -Wconversion
+# Warn on unused macros
+CFLAGS += -Wunused-macros
 # Warn on unsafe pointer casts
 CFLAGS += -Wcast-qual
 # Warn on pointer casts that require alignment changes
@@ -39,9 +41,16 @@ CFLAGS += -Wdisabled-optimization
 # Warn on code that wouldn't compile under C++
 CFLAGS += -Wc++-compat
 # Debug flags
-#CFLAGS += -O0 -g -rdynamic -DLOG_LEVEL=2
+#CFLAGS += -O0 -g -rdynamic
+#CFLAGS += -DLOG_LEVEL=2
 # Release flags
 CFLAGS += -O2
+
+# TODO try the following for binary size (from https://stackoverflow.com/a/15314861/3311770)
+# and check for impact on perf (esp. -Os)
+# CFLAGS += -Os -ffunction-sections -fdata-sections -Wl,--gc-sections
+# strip -s -R .comment -R .gnu.version --strip-unneeded
+# and take a look at https://software.intel.com/en-us/blogs/2013/01/17/x86-gcc-code-size-optimizations
 
 OUTPUT := tinynf
 
@@ -50,8 +59,6 @@ CFLAGS += -I.
 # Files
 FILES := *.c os/linux/*.c
 
-all:
-	@$(CC) $(CFLAGS) $(FILES) -o $(OUTPUT)
-
-clean:
+$(OUTPUT): Makefile $(FILES)
 	@rm -f *.gch $(OUTPUT)
+	@$(CC) $(CFLAGS) $(FILES) -o $(OUTPUT)

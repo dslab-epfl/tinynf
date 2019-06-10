@@ -62,24 +62,31 @@ const int _ = 0;
 // Register primitives
 static uint32_t ixgbe_reg_read(uintptr_t addr, uint32_t reg)
 {
-	uint32_t val_le = *((volatile uint32_t*)((char*)addr + reg));
+	uint32_t val_le = *((uint32_t*)((char*)addr + reg));
 	tn_read_barrier();
 	uint32_t result = tn_le_to_cpu(val_le);
 	TN_DEBUG("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;
 }
+static void ixgbe_reg_force_read(uintptr_t addr, uint32_t reg)
+{
+	// See https://stackoverflow.com/a/13824124/3311770
+	uint32_t* ptr = (uint32_t*)((char*)addr + reg);
+	__asm__ volatile ("" : "=m" (*ptr) : "r" (*ptr));
+}
 static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
 {
 	tn_write_barrier();
-	*((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value);
+	*((uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value);
 	TN_DEBUG("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
 
 #define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
 #define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
 #define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
+#define IXGBE_REG_FORCE_READ(addr, reg, idx) ixgbe_reg_force_read(addr, IXGBE_REG_##reg(idx))
 #define IXGBE_REG_WRITE4(addr, reg, idx, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), value)
-#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | ((value << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
+#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | (((value) << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
 #define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_CLEARED(addr, reg, idx, field) (IXGBE_REG_READ(addr, reg, idx, field) == 0u)
 #define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0U)
@@ -106,6 +113,10 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
 // ---------------------------------------------------------
 
 // TODO eliminate all "count" variables, and express them in terms of primitive counts instead (#pools, #MACs, ...)
+
+// Section 8.2.3.22.19 Auto Negotiation Control Register
+#define IXGBE_REG_AUTOC(_) 0x042A0
+#define IXGBE_REG_AUTOC_LMS BITS(13,15)
 
 #define IXGBE_REG_CTRL(_) 0x00000u
 #define IXGBE_REG_CTRL_MASTERDISABLE BIT(2)
@@ -147,12 +158,16 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
 // Section 8.2.3.3.4 Flow Control Receive Threshold High
 #define IXGBE_FCRTH_REGISTERS_COUNT 8u
 #define IXGBE_REG_FCRTH(n) (0x03260u + 4u*n)
+#define IXGBE_REG_FCRTH_RTH BITS(5,18)
 
 // Section 8.2.3.3.5 Flow Control Refresh Threshold Value
 #define IXGBE_REG_FCRTV(_) 0x032A0u
 
 // Section 8.2.3.7.1 Filter Control Register (FCTRL)
 #define IXGBE_REG_FCTRL(_) 0x05080u
+#define IXGBE_REG_FCTRL_MPE BIT(8)
+#define IXGBE_REG_FCTRL_UPE BIT(9)
+#define IXGBE_REG_FCTRL_BAM BIT(10)
 
 // Section 8.2.3.7.19 Five tuple Queue Filter
 #define IXGBE_FTQF_REGISTERS_COUNT 128u
@@ -238,7 +253,6 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
 // Section 8.2.3.8.9 Receive Packe Buffer Size
 #define IXGBE_RXPBSIZE_REGISTERS_COUNT 8u
 #define IXGBE_REG_RXPBSIZE(n) (0x03C00u + 4u*n)
-#define IXGBE_REG_RXPBSIZE_SIZE BITS(10,19)
 
 // Section 8.2.3.12.5 Security Rx Control
 #define IXGBE_REG_SECRXCTRL(_) 0x08D00u
@@ -249,7 +263,6 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
 #define IXGBE_REG_SECRXSTAT_SECRXRDY BIT(0)
 
 // Section 8.2.3.8.7 Split Receive Control Registers
-#define IXGBE_SRRCTL_REGISTERS_COUNT 128u
 #define IXGBE_REG_SRRCTL(n) (n <= 63u ? (0x01014u + 0x40u*n) : (0x0D014u + 0x40u*(n-64u)))
 #define IXGBE_REG_SRRCTL_BSIZEPACKET BITS(0,4)
 #define IXGBE_REG_SRRCTL_DESCTYPE BITS(25,27)
@@ -268,10 +281,8 @@ static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
 
 #define IXGBE_TXPBSIZE_REGISTERS_COUNT 8u
 #define IXGBE_REG_TXPBSIZE(n) (0x0CC00u + 4u*n)
-#define IXGBE_REG_TXPBSIZE_SIZE BITS(10,19)
 
 // Section 8.2.3.9.16 Tx Packet Buffer Threshold
-#define IXGBE_TXPBTHRESH_REGISTERS_COUNT 8u
 #define IXGBE_REG_TXPBTHRESH(n) (0x04950u + 4u*n)
 #define IXGBE_REG_TXPBTHRESH_THRESH BITS(0,9)
 
@@ -560,10 +571,10 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//	"This register contains the receive threshold used to determine when to send an XOFF packet and counts in units of bytes.
 	//	 This value must be at least eight bytes less than the maximum number of bytes allocated to the receive packet buffer and the lower four bits must be programmed to 0x0 (16-byte granularity).
 	//	 Each time the receive FIFO reaches the fullness indicated by RTH, hardware transmits a pause frame if the transmission of flow control frames is enabled."
-	// INTERPRETATION: There is an obvious contradiction in the stated granularities (16 vs 32 bytes). We assume 32 is correct, and it refers to the 5 reserved bottom bits.
+	// INTERPRETATION: There is an obvious contradiction in the stated granularities (16 vs 32 bytes). We assume 32 is correct, since the DPDK ixgbe driver treats it that way..
 	// INTERPRETATION: We assume that the "RXPBSIZE[n]-0x6000" calculation above refers to the RXPBSIZE in bytes (otherwise the size of FCRTH[n].RTH would be negative by default...)
-	//                 Thus we set FCRTH[0] = 512 * 1024 - 0x6000 = 0x7A000, which also disables flow control since bit 31 is unset.
-	IXGBE_REG_WRITE(addr, FCRTH, 0, 0x7A000);
+	//                 Thus we set FCRTH[0].RTH = 512 * 1024 - 0x6000, which importantly has the 5 lowest bits unset.
+	IXGBE_REG_WRITE(addr, FCRTH, 0, RTH, 512 * 1024 - 0x6000);
 
 	// "- Wait for EEPROM auto read completion."
 	// INTERPRETATION: This refers to Section 8.2.3.2.1 EEPROM/Flash Control Register (EEC), Bit 9 "EEPROM Auto-Read Done"
@@ -682,15 +693,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 
 	//	"Program the different Rx filters and Rx offloads via registers FCTRL, VLNCTRL, MCSTCTRL, RXCSUM, RQTC, RFCTL, MPSAR, RSSRK, RETA, SAQF, DAQF, SDPQF, FTQF, SYNQF, ETQF, ETQS, RDRXCTL, RSCDBU."
 	//	"Note that RDRXCTL.CRCStrip and HLREG0.RXCRCSTRP must be set to the same value. At the same time the RDRXCTL.RSCFRSTSIZE should be set to 0x0 as opposed to its hardware default."
-	//	Section 8.2.3.7.1 Filter Control Register (FCTRL):
-	//		"Bit 1, Store Bad Bacpets; 0b = Do not store."
-	//		"Bit 8, Multicast Promiscuous Enable. 1b = Enabled."
-	//		"Bit 9, Unicast Promiscuous Enable. 1b = Enabled."
-	//		"Bit 10, Broadcast Accept Mode. 1b = Accept broadcast packets to host."
-	//		all other bits are "Reserved"
-	// We want to receive all good packets, thus we disable bad packet store but enable promiscuous and broadcast accept.
-	// TODO should not use BITS here
-	IXGBE_REG_WRITE(addr, FCTRL, _, BITS(8,10));
+	// We do not touch FCTRL here, if the user wants promiscuous mode they will call the appropriate function.
 	//	Section 8.2.3.7.2 VLAN Control Register (VLNCTRL):
 	//		"Bit 30, VLAN Filter Enable, Init val 0b; 0b = Disabled."
 	// ASSUMPTION: We do not want VLAN handling.
@@ -758,7 +761,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//			"The default size of PB[1-7] is also 512 KB but it is meaningless in non-DCB mode."
 	// INTERPRETATION: We do not need to change PB[0]. Let's stay on the safe side and clear PB[1-7] to 0 anyway.
 	for (uint32_t n = 1; n < IXGBE_RXPBSIZE_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, RXPBSIZE, 0);
+		IXGBE_REG_CLEAR(addr, RXPBSIZE, n);
 	}
 	//		"- TXPBSIZE[0].SIZE=0xA0, TXPBSIZE[1-7].SIZE=0x0"
 	//		Section 8.2.3.9.13 Transmit Packet Buffer Size (TXPBSIZE[n]):
@@ -766,7 +769,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//			"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
 	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
 	for (uint32_t n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, TXPBSIZE, 0);
+		IXGBE_REG_CLEAR(addr, TXPBSIZE, n);
 	}
 	//		"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
 	// INTERPRETATION: Typo in the spec; should be TXPBTHRESH[0].THRESH
@@ -916,6 +919,31 @@ bool ixgbe_device_init(const uintptr_t addr)
 	return true;
 }
 
+bool ixgbe_device_set_promiscuous(const uintptr_t addr)
+{
+	// Section 8.2.3.7.1 Filter Control Register:
+	// "Before receive filters are updated/modified the RXCTRL.RXEN bit should be set to 0b.
+	// After the proper filters have been set the RXCTRL.RXEN bit can be set to 1b to re-enable the receiver."
+	bool was_rx_enabled = !IXGBE_REG_CLEARED(addr, RXCTRL, _, RXEN);
+	if (was_rx_enabled) {
+		IXGBE_REG_CLEAR(addr, RXCTRL, _, RXEN);
+	}
+
+	// "Multicast Promiscuous Enable. 1b = Enabled."
+	IXGBE_REG_SET(addr, FCTRL, _, MPE);
+	// "Unicast Promiscuous Enable. 1b = Enabled.
+	IXGBE_REG_SET(addr, FCTRL, _, UPE);
+	// "Broadcast Accept Mode. 1b = Accept broadcast packets to host."
+	IXGBE_REG_SET(addr, FCTRL, _, BAM);
+
+	if (was_rx_enabled) {
+		IXGBE_REG_SET(addr, RXCTRL, _, RXEN);
+	}
+
+	// This function cannot fail (for now?)
+	return true;
+}
+
 bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uint16_t ring_size, const uintptr_t buffer_addr)
 {
 	// At this point we need to write 64-bit memory values, so pointers better be 64 bits!
@@ -948,8 +976,8 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
 	// INTERPRETATION: This is a typo, the second "RDBAL" should read "RDBAH".
-	IXGBE_REG_WRITE(addr, RDBAH, queue, (uint32_t) ((ring_addr & 0xFFFFFFFF00000000u) >> 32));
-	IXGBE_REG_WRITE(addr, RDBAL, queue, (uint32_t) (ring_addr & 0x00000000FFFFFFFFu));
+	IXGBE_REG_WRITE(addr, RDBAH, queue, (uint32_t) (ring_addr >> 32));
+	IXGBE_REG_WRITE(addr, RDBAL, queue, (uint32_t) (ring_addr & 0xFFFFFFFFu));
 
 	// "- Set the length register to the size of the descriptor ring (register RDLEN)."
 	// Section 8.2.3.8.3 Receive DEscriptor Length (RDLEN[n]):
@@ -1022,6 +1050,14 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	// ... and now we can set RXCTRL.RXEN as stated above
 	IXGBE_REG_SET(addr, RXCTRL, _, RXEN);
 
+	
+	// TODO document
+	// Section 8.2.3.22.19 Auto Negotiation Control Register
+	ixgbe_lock_resources(addr);
+	// "Link Mode Select. Selects the active link mode: [...] 011b = 10 GbE serial link (SFI – no backplane auto-negotiation)."
+	IXGBE_REG_WRITE(addr, AUTOC, _, LMS, 3);
+	ixgbe_unlock_resources(addr);
+
 	return true;
 }
 
@@ -1052,4 +1088,57 @@ bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uin
 	(void)ring_size;
 	(void)buffer_addr;
 	return false;
+}
+
+#include <stdio.h>
+#include <inttypes.h>
+#define IXGBE_REG_RAL(n) (0x0A200u + 8u*n)
+#define IXGBE_REG_RAH(n) (0x0A204u + 8u*n)
+#define IXGBE_REG_RDH(n) (n <= 63u ? (0x01010u + 0x40u*n) : (0x0D010u + 0x40u*(n-64u)))
+#define IXGBE_REG_LINKS(_) 0x042A4u
+#define IXGBE_REG_LINKS2(_) 0x04324u
+#define IXGBE_REG_AUTOC2(_) 0x042A8u
+void ixgbe_sanity_check(const uintptr_t addr)
+{
+	if (IXGBE_REG_CLEARED(addr, RXCTRL, _, RXEN)) {
+		printf("RXEN is cleared!\n");
+	}
+
+	if (IXGBE_REG_CLEARED(addr, RXDCTL, 0, ENABLE)) {
+		printf("QUEUE ENABLE is cleared!\n");
+	}
+
+	uint32_t status = IXGBE_REG_READ(addr,STATUS,_);
+	printf("status = 0x%08"PRIx32"\n",status);
+
+
+	uint32_t links = IXGBE_REG_READ(addr,LINKS,_);
+	printf("links = 0x%08"PRIx32"\n",links);
+	uint32_t links2 = IXGBE_REG_READ(addr,LINKS2,_);
+	printf("links2 = 0x%08"PRIx32"\n",links2);
+
+
+	IXGBE_REG_FORCE_READ(addr, AUTOC, _);
+	uint32_t autoc = IXGBE_REG_READ(addr,AUTOC,_);
+	printf("autoc = 0x%08"PRIx32"\n",autoc);
+	IXGBE_REG_FORCE_READ(addr, AUTOC2, _);
+	uint32_t autoc2 = IXGBE_REG_READ(addr,AUTOC2,_);
+	printf("autoc2 = 0x%08"PRIx32"\n",autoc2);
+
+	uint32_t rdbah = IXGBE_REG_READ(addr, RDBAH, 0);
+	uint32_t rdbal = IXGBE_REG_READ(addr, RDBAL, 0);
+	printf("RDBAH %"PRIu32" RDBAL %"PRIu32"\n",rdbah,rdbal);
+
+	uint32_t len = IXGBE_REG_READ(addr, RDLEN, 0);
+	uint32_t rdh = IXGBE_REG_READ(addr, RDH, 0);
+	uint32_t rdt = IXGBE_REG_READ(addr, RDT, 0);
+
+	printf("len %"PRIu32"\n", len);
+	printf("rdh %"PRIu32" rdt%"PRIu32"\n",rdh,rdt);
+
+	uint32_t ral = IXGBE_REG_READ(addr, RAL, 0);
+	uint32_t rah = IXGBE_REG_READ(addr, RAH, 0);
+	printf("RAL 0x%" PRIx32 " RAH 0x%"PRIx32"\n", ral,rah);
+
+	printf("End of sanity check.\n");
 }
