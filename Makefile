@@ -15,6 +15,10 @@ CFLAGS += -pedantic -pedantic-errors
 CFLAGS += -Wconversion
 # Warn on unused macros
 CFLAGS += -Wunused-macros
+# Warn on non-static functions that do not have a prototype in a header
+CFLAGS += -Wmissing-prototypes
+# Warn on old-style function prototypes like foo() instead of foo(void)
+CFLAGS += -Wstrict-prototypes
 # Warn on unsafe pointer casts
 CFLAGS += -Wcast-qual
 # Warn on pointer casts that require alignment changes
@@ -45,6 +49,8 @@ CFLAGS += -Wc++-compat
 #CFLAGS += -DLOG_LEVEL=2
 # Release flags
 CFLAGS += -O2
+
+# TODO add https://kristerw.blogspot.com/2017/09/useful-gcc-warning-options-not-enabled.html once we get a more recent GCC
 
 # TODO try the following for binary size (from https://stackoverflow.com/a/15314861/3311770)
 # and check for impact on perf (esp. -Os)

@@ -21,3 +21,5 @@ bool ixgbe_device_init_send(uintptr_t addr, uint8_t queue, uintptr_t ring_addr, 
 
 // TODO REMOVE
 void ixgbe_sanity_check(uintptr_t addr);
+void ixgbe_stats_reset(const uintptr_t addr);
+void ixgbe_stats_probe(const uintptr_t addr);

@@ -4,8 +4,11 @@
 #include <inttypes.h>
 
 // Packet processing
-int main()
+int main(int argc, char** argv)
 {
+	(void) argc;
+	(void) argv;
+
 	int ret = tn_dev_init();
 	if (ret != 0) {
 		return ret;

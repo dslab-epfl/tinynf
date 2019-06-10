@@ -74,7 +74,7 @@ if (n == MY_DEV) {
 		if (!ixgbe_device_set_promiscuous(dev_base_addr)) {
 			return EINVAL;
 		}
-
+ixgbe_stats_reset(dev_base_addr);
 ixgbe_sanity_check(dev_base_addr);
 
 		tn_devices[n].base_addr = dev_base_addr;
@@ -105,13 +105,15 @@ ixgbe_sanity_check(dev_base_addr);
 }
 
 //static void tn_dev_reg_write(uintptr_t addr, uint32_t reg, uint32_t value) { tn_write_barrier(); *((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value); }
+#include <inttypes.h>
 void tn_dev_receive(void)
 {
 	tn_packet_index = tn_devices[MY_DEV].recv_head & 255; // 128 buffers, 2 lines each -> 256 addresses
 	uint64_t packet_metadata;
 	do {
-		packet_metadata = *(tn_devices[MY_DEV].recv_base + tn_packet_index + 1);
-	} while((packet_metadata & 1) == 0);
+		packet_metadata = *((volatile uint64_t*)(tn_devices[MY_DEV].recv_base + tn_packet_index + 1));
+ixgbe_stats_probe(tn_devices[MY_DEV].base_addr);
+	} while((packet_metadata == 1) == 0);
 	tn_packet_length = (packet_metadata >> 32) & 0xFFFFu;
 	tn_devices[MY_DEV].recv_head = (uint16_t) (tn_devices[MY_DEV].recv_head + 2u);
 	// TODO do this at TX time! otherwise RX might overwrite it.

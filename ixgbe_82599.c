@@ -60,24 +60,24 @@ const uint16_t IXGBE_RECEIVE_PACKET_SIZE_MAX = 16 * 1024;
 const int _ = 0;
 
 // Register primitives
-static uint32_t ixgbe_reg_read(uintptr_t addr, uint32_t reg)
+static uint32_t ixgbe_reg_read(const uintptr_t addr, const uint32_t reg)
 {
-	uint32_t val_le = *((uint32_t*)((char*)addr + reg));
+	uint32_t val_le = *((volatile uint32_t*)((char*)addr + reg));
 	tn_read_barrier();
 	uint32_t result = tn_le_to_cpu(val_le);
 	TN_DEBUG("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;
 }
-static void ixgbe_reg_force_read(uintptr_t addr, uint32_t reg)
+static void ixgbe_reg_force_read(const uintptr_t addr, const uint32_t reg)
 {
 	// See https://stackoverflow.com/a/13824124/3311770
 	uint32_t* ptr = (uint32_t*)((char*)addr + reg);
 	__asm__ volatile ("" : "=m" (*ptr) : "r" (*ptr));
 }
-static void ixgbe_reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
+static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint32_t value)
 {
 	tn_write_barrier();
-	*((uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value);
+	*((volatile uint32_t*)((char*)addr + reg)) = tn_cpu_to_le(value);
 	TN_DEBUG("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
 
@@ -506,6 +506,118 @@ static void ixgbe_device_reset(const uintptr_t addr)
 }
 
 
+// ---
+// ???
+// ---
+// (from the dpdk ixgbe driver...)
+
+#include <stdio.h>
+#include <inttypes.h>
+#define IXGBE_REG_EERD(_) 0x10014
+#define IXGBE_REG_EERD_START BIT(0)
+#define IXGBE_REG_EERD_DONE BIT(1)
+//#define IXGBE_REG_EERD_ADDR BITS(2,15)
+//#define IXGBE_REG_EERD_DATA BITS(16,31)
+// TODO: Make sure the EEPROm is valid, this method assumes it is
+// TODO this is where the 'addr' for the uintptr_t is dubious... "hw" maybe? something else?
+// TODO this method would be simpler if we could assume 0xFFFF is only ever returned on error...
+static bool ixgbe_eeprom_read(const uintptr_t addr, const uint16_t eeprom_addr, uint16_t* out_value)
+{
+	// Section 8.2.3.2.2 EEPROM Read Register:
+	// "This register is used by software to cause the 82599 to read individual words in the EEPROM.
+	//  To read a word, software writes the address to the Read Address field and simultaneously writes a 1b to the Start Read field.
+	//  The 82599 reads the word from the EEPROM and places it in the Read Data field, setting the Read Done field to 1b.
+	//  Software can poll this register, looking for a 1b in the Read Done field and then using the value in the Read Data field."
+	if (eeprom_addr >= 0x3FFFu) {
+printf("NO SUCH WORD\n");
+		return false; // No such word!
+	}
+
+	// NOTE: Since this has to be simultaneous, we bypass the usual API
+	// TODO check if we can use it anyway (perf doesn't matter, this isn't in the inner loop)
+	uint32_t eerd = ((uint32_t) eeprom_addr << 2) | IXGBE_REG_EERD_START;
+	IXGBE_REG_WRITE(addr, EERD, _, eerd);
+	bool eeprom_timed_out;
+	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, (eerd = IXGBE_REG_READ(addr, EERD, _)) & IXGBE_REG_EERD_DONE);
+	if (eeprom_timed_out) {
+printf("EEPROM TIMED OUT\n");
+		return false;
+	}
+
+	*out_value = (uint16_t) (eerd >> 16);
+	return true;
+}
+
+static bool ixgbe_device_init_sfp(const uintptr_t addr)
+{
+	uint16_t sfp_list_offset;
+	if (!ixgbe_eeprom_read(addr, 0x002Bu, &sfp_list_offset)) {
+printf("NO 2B\n");
+		return false;
+	}
+	if (sfp_list_offset == 0u || sfp_list_offset == 0xFFFFu) {
+printf("BAD 2B\n");
+		return false;
+	}
+	sfp_list_offset++;
+
+	uint16_t sfp_id;
+	if (!ixgbe_eeprom_read(addr, sfp_list_offset, &sfp_id)) {
+printf("NO ID\n");
+		return false;
+	}
+
+	uint16_t sfp_data_offset = 0u;
+	while (sfp_id != 0xFFFFu) {
+//		printf("SFP ID 0x%04"PRIx16"\n", sfp_id);
+		if (sfp_id == 3u){//3u) {
+			sfp_list_offset = (uint16_t) (sfp_list_offset + 1u);
+			if (!ixgbe_eeprom_read(addr, sfp_list_offset, &sfp_data_offset)) {
+printf("NO DATA OFF\n");
+				return false;
+			}
+		}
+		sfp_list_offset = (uint16_t) (sfp_list_offset + 2u);
+		if (!ixgbe_eeprom_read(addr, sfp_list_offset, &sfp_id)) {
+printf("NO ID, redux\n");
+			return false;
+		}
+	}
+
+	if (sfp_data_offset == 0u || sfp_data_offset == 0xFFFFu) {
+printf("NO SFP DATA OFF, redux\n");
+		return false;
+	}
+
+	if (!ixgbe_lock_resources(addr)) {
+printf("no lock\n");
+		return false;
+	}
+
+	sfp_data_offset = (uint16_t) (sfp_data_offset + 1u);
+
+	uint16_t sfp_data;
+	if (!ixgbe_eeprom_read(addr, sfp_data_offset, &sfp_data)) {
+printf("no sfp data\n");
+		return false;
+	}
+#define IXGBE_REG_CORECTL(_) 0x014F00u
+	while (sfp_data != 0xFFFFu) {
+	printf("i haz read %"PRIu16"\n", sfp_data);fflush(stdout);
+		IXGBE_REG_WRITE(addr, CORECTL, _, sfp_data);
+		sfp_data_offset = (uint16_t) (sfp_data_offset + 1u);
+		if (!ixgbe_eeprom_read(addr, sfp_data_offset, &sfp_data)) {
+printf("no sfp data, redux\n");fflush(stdout);
+			return false;
+		}
+	}
+printf("sfp done! :)\n");fflush(stdout);
+	ixgbe_unlock_resources(addr);
+
+	return true;
+}
+
+
 // -------------------------------------
 // Section 4.6.3 Initialization Sequence
 // -------------------------------------
@@ -541,6 +653,9 @@ bool ixgbe_device_init(const uintptr_t addr)
 	ixgbe_device_reset(addr);
 	tn_sleep_us(10 * 1000);
 	ixgbe_device_disable_interrupts(addr);
+
+// TODO moveme
+ixgbe_device_init_sfp(addr);
 
 	//	"To enable flow control, program the FCTTV, FCRTL, FCRTH, FCRTV and FCCFG registers.
 	//	 If flow control is not enabled, these registers should be written with 0x0.
@@ -976,8 +1091,9 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
 	// INTERPRETATION: This is a typo, the second "RDBAL" should read "RDBAH".
-	IXGBE_REG_WRITE(addr, RDBAH, queue, (uint32_t) (ring_addr >> 32));
-	IXGBE_REG_WRITE(addr, RDBAL, queue, (uint32_t) (ring_addr & 0xFFFFFFFFu));
+	uint64_t phys_ring_addr = tn_mem_virtual_to_physical_address(ring_addr);
+	IXGBE_REG_WRITE(addr, RDBAH, queue, (uint32_t) (phys_ring_addr >> 32));
+	IXGBE_REG_WRITE(addr, RDBAL, queue, (uint32_t) (phys_ring_addr & 0xFFFFFFFFu));
 
 	// "- Set the length register to the size of the descriptor ring (register RDLEN)."
 	// Section 8.2.3.8.3 Receive DEscriptor Length (RDLEN[n]):
@@ -1047,8 +1163,6 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	IXGBE_REG_SET(addr, CTRLEXT, _, NSDIS);
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
 	IXGBE_REG_SET(addr, DCARXCTRL, queue, UNKNOWN);
-	// ... and now we can set RXCTRL.RXEN as stated above
-	IXGBE_REG_SET(addr, RXCTRL, _, RXEN);
 
 	
 	// TODO document
@@ -1141,4 +1255,234 @@ void ixgbe_sanity_check(const uintptr_t addr)
 	printf("RAL 0x%" PRIx32 " RAH 0x%"PRIx32"\n", ral,rah);
 
 	printf("End of sanity check.\n");
+}
+
+
+	static uint32_t regs[] = {
+		0x04000, 0x04004, 0x04008,
+		0x04034, 0x04038, 0x04040,
+		0x08780,
+		0x041A4, 0x041A8,
+		0x04140 + 0,
+		0x04140 + 4,
+		0x04140 + 8,
+		0x04140 + 12,
+		0x04140 + 16,
+		0x04140 + 20,
+		0x04140 + 24,
+		0x04140 + 28,
+		0x04160 + 0,
+		0x04160 + 4,
+		0x04160 + 8,
+		0x04160 + 12,
+		0x04160 + 16,
+		0x04160 + 20,
+		0x04160 + 24,
+		0x04160 + 28,
+		0x0405C, 0x04060, 0x04064, 0x04068, 0x0406C, 0x04070, 0x04078, 0x0407C, 0x04074, 0x04088, 0x0408C,
+		0x041B0, 0x041B4, 0x041B8,
+		0x02F50, 0x02F54, 0x02F58, 0x02F5C, 0x02F60, 0x02F64, 0x02F68, 0x02F6C, 0x02F70, 0x02F74, 0x02F78, 0x02F7C,
+		0x04080,
+		0x04090, 0x04094,
+		0x087A0, 0x087A4, 0x087A8,
+		0x040A4, 0x040A8, 0x040B0, 0x040B4, 0x040B8, 0x040C0, 0x040C0, 0x040C4, 0x040D0, 0x040D4, 0x040D8, 0x040DC, 0x040E0, 0x040E4,
+			0x040E8, 0x040EC, 0x040F0, 0x040F4, 0x04010, 0x04120,
+		0x02300 + 0,
+		0x02300 + 1*4,
+		0x02300 + 2*4,
+		0x02300 + 3*4,
+		0x02300 + 4*4,
+		0x02300 + 5*4,
+		0x02300 + 6*4,
+		0x02300 + 7*4,
+		0x02300 + 8*4,
+		0x02300 + 9*4,
+		0x02300 + 10*4,
+		0x02300 + 11*4,
+		0x02300 + 12*4,
+		0x02300 + 13*4,
+		0x02300 + 14*4,
+		0x02300 + 15*4,
+		0x02300 + 16*4,
+		0x02300 + 17*4,
+		0x02300 + 18*4,
+		0x02300 + 19*4,
+		0x02300 + 20*4,
+		0x02300 + 21*4,
+		0x02300 + 22*4,
+		0x02300 + 23*4,
+		0x02300 + 24*4,
+		0x02300 + 25*4,
+		0x02300 + 26*4,
+		0x02300 + 27*4,
+		0x02300 + 28*4,
+		0x02300 + 30*4,
+		0x02300 + 31*4,
+		0x02F40,
+		0x08600 + 0*4,
+		0x08600 + 1*4,
+		0x08600 + 2*4,
+		0x08600 + 3*4,
+		0x08600 + 4*4,
+		0x08600 + 5*4,
+		0x08600 + 6*4,
+		0x08600 + 7*4,
+		0x08600 + 8*4,
+		0x08600 + 9*4,
+		0x08600 + 10*4,
+		0x08600 + 11*4,
+		0x08600 + 12*4,
+		0x08600 + 13*4,
+		0x08600 + 14*4,
+		0x08600 + 15*4,
+		0x08600 + 16*4,
+		0x08600 + 17*4,
+		0x08600 + 18*4,
+		0x08600 + 19*4,
+		0x08600 + 20*4,
+		0x08600 + 21*4,
+		0x08600 + 22*4,
+		0x08600 + 23*4,
+		0x08600 + 24*4,
+		0x08600 + 25*4,
+		0x08600 + 26*4,
+		0x08600 + 27*4,
+		0x08600 + 28*4,
+		0x08600 + 29*4,
+		0x08600 + 30*4,
+		0x08600 + 31*4,
+		0x01030+0x40*0,
+		0x01030+0x40*1,
+		0x01030+0x40*2,
+		0x01030+0x40*3,
+		0x01030+0x40*4,
+		0x01030+0x40*5,
+		0x01030+0x40*6,
+		0x01030+0x40*7,
+		0x01030+0x40*8,
+		0x01030+0x40*9,
+		0x01030+0x40*10,
+		0x01030+0x40*11,
+		0x01030+0x40*12,
+		0x01030+0x40*13,
+		0x01030+0x40*14,
+		0x01030+0x40*15,
+		0x01430+0x40*0,
+		0x01430+0x40*1,
+		0x01430+0x40*2,
+		0x01430+0x40*3,
+		0x01430+0x40*4,
+		0x01430+0x40*5,
+		0x01430+0x40*6,
+		0x01430+0x40*7,
+		0x01430+0x40*8,
+		0x01430+0x40*9,
+		0x01430+0x40*10,
+		0x01430+0x40*11,
+		0x01430+0x40*12,
+		0x01430+0x40*13,
+		0x01430+0x40*14,
+		0x01430+0x40*15,
+		0x1034+0x40*0,
+		0x1034+0x40*1,
+		0x1034+0x40*2,
+		0x1034+0x40*3,
+		0x1034+0x40*4,
+		0x1034+0x40*5,
+		0x1034+0x40*6,
+		0x1034+0x40*7,
+		0x1034+0x40*8,
+		0x1034+0x40*9,
+		0x1034+0x40*10,
+		0x1034+0x40*11,
+		0x1034+0x40*12,
+		0x1034+0x40*13,
+		0x1034+0x40*14,
+		0x1034+0x40*15,
+		0x1038+0x40*0,
+		0x1038+0x40*1,
+		0x1038+0x40*2,
+		0x1038+0x40*3,
+		0x1038+0x40*4,
+		0x1038+0x40*5,
+		0x1038+0x40*6,
+		0x1038+0x40*7,
+		0x1038+0x40*8,
+		0x1038+0x40*9,
+		0x1038+0x40*10,
+		0x1038+0x40*11,
+		0x1038+0x40*12,
+		0x1038+0x40*13,
+		0x1038+0x40*14,
+		0x1038+0x40*15,
+		0x08680+0x4*0,
+		0x08680+0x4*1,
+		0x08680+0x4*2,
+		0x08680+0x4*3,
+		0x08680+0x4*4,
+		0x08680+0x4*5,
+		0x08680+0x4*6,
+		0x08680+0x4*7,
+		0x08680+0x4*8,
+		0x08680+0x4*9,
+		0x08680+0x4*10,
+		0x08680+0x4*11,
+		0x08680+0x4*12,
+		0x08680+0x4*13,
+		0x08680+0x4*14,
+		0x08680+0x4*15,
+		0x08700+0x8*0,
+		0x08700+0x8*1,
+		0x08700+0x8*2,
+		0x08700+0x8*3,
+		0x08700+0x8*4,
+		0x08700+0x8*5,
+		0x08700+0x8*6,
+		0x08700+0x8*7,
+		0x08700+0x8*8,
+		0x08700+0x8*9,
+		0x08700+0x8*10,
+		0x08700+0x8*11,
+		0x08700+0x8*12,
+		0x08700+0x8*13,
+		0x08700+0x8*14,
+		0x08700+0x8*15,
+		0x08704+0x8*0,
+		0x08704+0x8*1,
+		0x08704+0x8*2,
+		0x08704+0x8*3,
+		0x08704+0x8*4,
+		0x08704+0x8*5,
+		0x08704+0x8*6,
+		0x08704+0x8*7,
+		0x08704+0x8*8,
+		0x08704+0x8*9,
+		0x08704+0x8*10,
+		0x08704+0x8*11,
+		0x08704+0x8*12,
+		0x08704+0x8*13,
+		0x08704+0x8*14,
+		0x08704+0x8*15,
+		0x05118, 0x0241C, 0x02424, 0x02428, 0x0242C, 0x08784, 0x08788
+	};
+void ixgbe_stats_reset(const uintptr_t addr)
+{
+	for (unsigned n = 0; n < sizeof(regs)/sizeof(uint32_t); n++) {
+		ixgbe_reg_force_read(addr, regs[n]);
+	}
+}
+#include <stdio.h>
+#include <inttypes.h>
+void ixgbe_stats_probe(const uintptr_t addr)
+{
+//	bool changed=false;
+	for (unsigned n = 0; n < sizeof(regs)/sizeof(uint32_t); n++) {
+		uint32_t xxx = ixgbe_reg_read(addr, regs[n]);
+		if (xxx != 0 && regs[n] !=0x405c && regs[n]!=0x4074&&regs[n]!=0x4088&&regs[n]!=0x41b0&&regs[n]!=0x41b4&&regs[n]!=0x40c0&&regs[n]!=0x40d0) {
+//			changed=true;
+			printf("REG 0x%" PRIx32 " == %" PRIu32"\n", regs[n], xxx);
+		}
+	}
+//	if(changed)ixgbe_sanity_check(addr);
+//	printf("checked\n");
 }
