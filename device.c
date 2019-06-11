@@ -113,7 +113,8 @@ void tn_dev_receive(void)
 	do {
 		packet_metadata = *((volatile uint64_t*)(tn_devices[MY_DEV].recv_base + tn_packet_index + 1));
 ixgbe_stats_probe(tn_devices[MY_DEV].base_addr);
-	} while((packet_metadata == 1) == 0);
+	} while((packet_metadata & 1) == 0);
+printf("PACKET METADATA 0x%08"PRIx64" thus length %"PRIu64"\n",packet_metadata,(packet_metadata >> 32));
 	tn_packet_length = (packet_metadata >> 32) & 0xFFFFu;
 	tn_devices[MY_DEV].recv_head = (uint16_t) (tn_devices[MY_DEV].recv_head + 2u);
 	// TODO do this at TX time! otherwise RX might overwrite it.
@@ -130,7 +131,7 @@ void tn_dev_transmit(void)
 
 uintptr_t tn_dev_get_packet(void)
 {
-	return (uintptr_t) (((uint64_t*)(tn_packets))[tn_packet_index]);
+	return tn_packets + (uintptr_t) (tn_packet_index * IXGBE_RECEIVE_PACKET_SIZE_MAX);
 }
 
 uint16_t tn_dev_get_packet_length(void)

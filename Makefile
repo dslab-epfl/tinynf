@@ -45,10 +45,10 @@ CFLAGS += -Wdisabled-optimization
 # Warn on code that wouldn't compile under C++
 CFLAGS += -Wc++-compat
 # Debug flags
-#CFLAGS += -O0 -g -rdynamic
+CFLAGS += -O0 -g -rdynamic
 CFLAGS += -DLOG_LEVEL=1
 # Release flags
-CFLAGS += -O2
+#CFLAGS += -O2
 
 # TODO add https://kristerw.blogspot.com/2017/09/useful-gcc-warning-options-not-enabled.html once we get a more recent GCC
 
