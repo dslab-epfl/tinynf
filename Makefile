@@ -46,7 +46,7 @@ CFLAGS += -Wdisabled-optimization
 CFLAGS += -Wc++-compat
 # Debug flags
 #CFLAGS += -O0 -g -rdynamic
-#CFLAGS += -DLOG_LEVEL=2
+CFLAGS += -DLOG_LEVEL=1
 # Release flags
 CFLAGS += -O2
 

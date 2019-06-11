@@ -42,7 +42,7 @@ uint16_t tn_packet_length;
 int tn_dev_init(void)
 {
 	// Allocate a 2MB hugepage, enough for 128 16KB buffers
-	uintptr_t packet_buffers = tn_hp_allocate(2 * 1024 * 1024);
+	const uintptr_t packet_buffers = tn_hp_allocate(2 * 1024 * 1024);
 	if (packet_buffers == (uintptr_t) -1) {
 		return ENOMEM;
 	}

@@ -656,6 +656,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 
 // TODO moveme
 ixgbe_device_init_sfp(addr);
+// TODO dpdk driver does a check for the firmware version; we should at least state this in our assumptions?
 
 	//	"To enable flow control, program the FCTTV, FCRTL, FCRTH, FCRTV and FCCFG registers.
 	//	 If flow control is not enabled, these registers should be written with 0x0.
@@ -1081,10 +1082,17 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
 	// The buffers are given to us as 'buffer_addr'
 	uint64_t* ring = (uint64_t*) ring_addr;
-	for(uint16_t n = 0; n < ring_size; n++) {
+	for (uint16_t n = 0; n < ring_size; n++) {
 		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
 		// Line 0 - Packet Buffer Address
-		ring[n * 2u] = buffer_addr + (uint64_t) (n * IXGBE_RECEIVE_PACKET_SIZE_MAX);
+		uintptr_t virt_buffer_addr = buffer_addr + (uintptr_t) (n * IXGBE_RECEIVE_PACKET_SIZE_MAX);
+		uintptr_t phys_buffer_addr = tn_mem_virtual_to_physical_address(virt_buffer_addr);
+		if (phys_buffer_addr == (uintptr_t) -1) {
+			// TODO tn_mem_virt_to_phys makes it too easy to forget to handle the error...
+			TN_INFO("Buffer address could not be mapped to a physical address");
+			return false;
+		}
+		ring[n * 2u] = phys_buffer_addr;
 		// Line 1 - Header Buffer Address (63:1), Descriptor Done (0)
 		ring[n * 2u + 1u] = 0u;
 	}
@@ -1092,6 +1100,10 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
 	// INTERPRETATION: This is a typo, the second "RDBAL" should read "RDBAH".
 	uintptr_t phys_ring_addr = tn_mem_virtual_to_physical_address(ring_addr);
+	if (phys_ring_addr == (uintptr_t) -1) {
+		TN_INFO("Ring address could not be mapped to a physical address");
+		return false;
+	}
 	IXGBE_REG_WRITE(addr, RDBAH, queue, (uint32_t) (phys_ring_addr >> 32));
 	IXGBE_REG_WRITE(addr, RDBAL, queue, (uint32_t) (phys_ring_addr & 0xFFFFFFFFu));
 
@@ -1137,6 +1149,9 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	}
 
 	// "- Bump the tail pointer (RDT) to enable descriptors fetching by setting it to the ring length minus one."
+	// Section 7.1.9 Receive Descriptor Queue Structure:
+	// "Software inserts receive descriptors by advancing the tail pointer(s) to refer to the address of the entry just beyond the last valid descriptor."
+	// INTERPRETATION: There is a clear contradiction here, according to 7.1.9 RDT should be 0 to refer to the entire ring... but empirically, it's indeed ring_size-1.
 	IXGBE_REG_WRITE(addr, RDT, queue, ring_size - 1u);
 
 	// "- Enable the receive path by setting RXCTRL.RXEN. This should be done only after all other settings are done following the steps below."
@@ -1212,8 +1227,15 @@ bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uin
 #define IXGBE_REG_LINKS(_) 0x042A4u
 #define IXGBE_REG_LINKS2(_) 0x04324u
 #define IXGBE_REG_AUTOC2(_) 0x042A8u
+#define IXGBE_REG_VLNCTRL(_) 0x05088u
 void ixgbe_sanity_check(const uintptr_t addr)
 {
+	uint32_t vlnctrl = IXGBE_REG_READ(addr, VLNCTRL, _);
+	printf("vlnctrl = 0x%08"PRIx32"\n",vlnctrl);
+
+	uint32_t rxdctl0 = IXGBE_REG_READ(addr,RXDCTL,0);
+	printf("rxdcl[0] = 0x%08"PRIx32"\n",rxdctl0);
+
 	if (IXGBE_REG_CLEARED(addr, RXCTRL, _, RXEN)) {
 		printf("RXEN is cleared!\n");
 	}
@@ -1248,7 +1270,7 @@ void ixgbe_sanity_check(const uintptr_t addr)
 	uint32_t rdt = IXGBE_REG_READ(addr, RDT, 0);
 
 	printf("len %"PRIu32"\n", len);
-	printf("rdh %"PRIu32" rdt%"PRIu32"\n",rdh,rdt);
+	printf("rdh %"PRIu32" rdt %"PRIu32"\n",rdh,rdt);
 
 	uint32_t ral = IXGBE_REG_READ(addr, RAL, 0);
 	uint32_t rah = IXGBE_REG_READ(addr, RAH, 0);
@@ -1475,14 +1497,14 @@ void ixgbe_stats_reset(const uintptr_t addr)
 #include <inttypes.h>
 void ixgbe_stats_probe(const uintptr_t addr)
 {
-//	bool changed=false;
+	bool changed=false;
 	for (unsigned n = 0; n < sizeof(regs)/sizeof(uint32_t); n++) {
 		uint32_t xxx = ixgbe_reg_read(addr, regs[n]);
 		if (xxx != 0 && regs[n] !=0x405c && regs[n]!=0x4074&&regs[n]!=0x4088&&regs[n]!=0x41b0&&regs[n]!=0x41b4&&regs[n]!=0x40c0&&regs[n]!=0x40d0) {
-//			changed=true;
+if(regs[n]!=0x1430)			changed=true;
 			printf("REG 0x%" PRIx32 " == %" PRIu32"\n", regs[n], xxx);
 		}
 	}
-//	if(changed)ixgbe_sanity_check(addr);
+	if(changed)ixgbe_sanity_check(addr);
 //	printf("checked\n");
 }
