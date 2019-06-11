@@ -506,118 +506,6 @@ static void ixgbe_device_reset(const uintptr_t addr)
 }
 
 
-// ---
-// ???
-// ---
-// (from the dpdk ixgbe driver...)
-
-#include <stdio.h>
-#include <inttypes.h>
-#define IXGBE_REG_EERD(_) 0x10014
-#define IXGBE_REG_EERD_START BIT(0)
-#define IXGBE_REG_EERD_DONE BIT(1)
-//#define IXGBE_REG_EERD_ADDR BITS(2,15)
-//#define IXGBE_REG_EERD_DATA BITS(16,31)
-// TODO: Make sure the EEPROm is valid, this method assumes it is
-// TODO this is where the 'addr' for the uintptr_t is dubious... "hw" maybe? something else?
-// TODO this method would be simpler if we could assume 0xFFFF is only ever returned on error...
-static bool ixgbe_eeprom_read(const uintptr_t addr, const uint16_t eeprom_addr, uint16_t* out_value)
-{
-	// Section 8.2.3.2.2 EEPROM Read Register:
-	// "This register is used by software to cause the 82599 to read individual words in the EEPROM.
-	//  To read a word, software writes the address to the Read Address field and simultaneously writes a 1b to the Start Read field.
-	//  The 82599 reads the word from the EEPROM and places it in the Read Data field, setting the Read Done field to 1b.
-	//  Software can poll this register, looking for a 1b in the Read Done field and then using the value in the Read Data field."
-	if (eeprom_addr >= 0x3FFFu) {
-printf("NO SUCH WORD\n");
-		return false; // No such word!
-	}
-
-	// NOTE: Since this has to be simultaneous, we bypass the usual API
-	// TODO check if we can use it anyway (perf doesn't matter, this isn't in the inner loop)
-	uint32_t eerd = ((uint32_t) eeprom_addr << 2) | IXGBE_REG_EERD_START;
-	IXGBE_REG_WRITE(addr, EERD, _, eerd);
-	bool eeprom_timed_out;
-	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, (eerd = IXGBE_REG_READ(addr, EERD, _)) & IXGBE_REG_EERD_DONE);
-	if (eeprom_timed_out) {
-printf("EEPROM TIMED OUT\n");
-		return false;
-	}
-
-	*out_value = (uint16_t) (eerd >> 16);
-	return true;
-}
-
-static bool ixgbe_device_init_sfp(const uintptr_t addr)
-{
-	uint16_t sfp_list_offset;
-	if (!ixgbe_eeprom_read(addr, 0x002Bu, &sfp_list_offset)) {
-printf("NO 2B\n");
-		return false;
-	}
-	if (sfp_list_offset == 0u || sfp_list_offset == 0xFFFFu) {
-printf("BAD 2B\n");
-		return false;
-	}
-	sfp_list_offset++;
-
-	uint16_t sfp_id;
-	if (!ixgbe_eeprom_read(addr, sfp_list_offset, &sfp_id)) {
-printf("NO ID\n");
-		return false;
-	}
-
-	uint16_t sfp_data_offset = 0u;
-	while (sfp_id != 0xFFFFu) {
-//		printf("SFP ID 0x%04"PRIx16"\n", sfp_id);
-		if (sfp_id == 3u){//3u) {
-			sfp_list_offset = (uint16_t) (sfp_list_offset + 1u);
-			if (!ixgbe_eeprom_read(addr, sfp_list_offset, &sfp_data_offset)) {
-printf("NO DATA OFF\n");
-				return false;
-			}
-		}
-		sfp_list_offset = (uint16_t) (sfp_list_offset + 2u);
-		if (!ixgbe_eeprom_read(addr, sfp_list_offset, &sfp_id)) {
-printf("NO ID, redux\n");
-			return false;
-		}
-	}
-
-	if (sfp_data_offset == 0u || sfp_data_offset == 0xFFFFu) {
-printf("NO SFP DATA OFF, redux\n");
-		return false;
-	}
-
-	if (!ixgbe_lock_resources(addr)) {
-printf("no lock\n");
-		return false;
-	}
-
-	sfp_data_offset = (uint16_t) (sfp_data_offset + 1u);
-
-	uint16_t sfp_data;
-	if (!ixgbe_eeprom_read(addr, sfp_data_offset, &sfp_data)) {
-printf("no sfp data\n");
-		return false;
-	}
-#define IXGBE_REG_CORECTL(_) 0x014F00u
-	while (sfp_data != 0xFFFFu) {
-//	printf("i haz read %"PRIu16"\n", sfp_data);fflush(stdout);
-		IXGBE_REG_WRITE(addr, CORECTL, _, sfp_data);
-		sfp_data_offset = (uint16_t) (sfp_data_offset + 1u);
-		if (!ixgbe_eeprom_read(addr, sfp_data_offset, &sfp_data)) {
-printf("no sfp data, redux\n");fflush(stdout);
-			return false;
-		}
-	}
-printf("sfp done! :)\n");fflush(stdout);
-	ixgbe_unlock_resources(addr);
-
-	return true;
-}
-
-
 // -------------------------------------
 // Section 4.6.3 Initialization Sequence
 // -------------------------------------
@@ -653,10 +541,6 @@ bool ixgbe_device_init(const uintptr_t addr)
 	ixgbe_device_reset(addr);
 	tn_sleep_us(10 * 1000);
 	ixgbe_device_disable_interrupts(addr);
-
-// TODO moveme
-ixgbe_device_init_sfp(addr);
-// TODO dpdk driver does a check for the firmware version; we should at least state this in our assumptions?
 
 	//	"To enable flow control, program the FCTTV, FCRTL, FCRTH, FCRTV and FCCFG registers.
 	//	 If flow control is not enabled, these registers should be written with 0x0.
@@ -1180,12 +1064,12 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	IXGBE_REG_SET(addr, DCARXCTRL, queue, UNKNOWN);
 
 	
-	// TODO document
+	// TODO is this needed for 10G somehow?
 	// Section 8.2.3.22.19 Auto Negotiation Control Register
-	ixgbe_lock_resources(addr);
+	//ixgbe_lock_resources(addr);
 	// "Link Mode Select. Selects the active link mode: [...] 011b = 10 GbE serial link (SFI – no backplane auto-negotiation)."
-	IXGBE_REG_WRITE(addr, AUTOC, _, LMS, 3);
-	ixgbe_unlock_resources(addr);
+	//IXGBE_REG_WRITE(addr, AUTOC, _, LMS, 3);
+	//ixgbe_unlock_resources(addr);
 
 	return true;
 }
