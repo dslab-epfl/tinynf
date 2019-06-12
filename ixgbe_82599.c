@@ -8,11 +8,11 @@
 
 // Fundamental constants
 
-// Section 8.2.3.8.3 Receive Descriptor Length: "Validated lengths up to 128 K (8 K descriptors)."
-const uint16_t IXGBE_RECEIVE_RING_SIZE_MAX = 8 * 1024;
-
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
-const uint16_t IXGBE_RECEIVE_PACKET_SIZE_MAX = 16 * 1024;
+// Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...]. The maximum length is 15.5 KB"
+// Thus we set 8 KB as a power of 2 that can be sent and received.
+const uint16_t IXGBE_PACKET_SIZE_MAX = 8 * 1024;
+
 
 // TODO find reference for this
 #define IXGBE_RECEIVE_QUEUES_COUNT 128u
@@ -84,7 +84,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
 #define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
 #define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
-#define IXGBE_REG_FORCE_READ(addr, reg, idx) ixgbe_reg_force_read(addr, IXGBE_REG_##reg(idx))
 #define IXGBE_REG_WRITE4(addr, reg, idx, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), value)
 #define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | (((value) << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
 #define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
@@ -114,10 +113,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 
 // TODO eliminate all "count" variables, and express them in terms of primitive counts instead (#pools, #MACs, ...)
 
-// Section 8.2.3.22.19 Auto Negotiation Control Register
-#define IXGBE_REG_AUTOC(_) 0x042A0
-#define IXGBE_REG_AUTOC_LMS BITS(13,15)
-
 #define IXGBE_REG_CTRL(_) 0x00000u
 #define IXGBE_REG_CTRL_MASTERDISABLE BIT(2)
 #define IXGBE_REG_CTRL_LRST BIT(3)
@@ -130,6 +125,10 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_DCARXCTRL(n) (n <= 63u ? (0x0100Cu + 0x40u*n) : (0x0D00Cu + 0x40u*(n-64u)))
 // This bit is reserved has no name, but must be cleared by software anyway.
 #define IXGBE_REG_DCARXCTRL_UNKNOWN BIT(12)
+
+// Section 8.2.3.9.2 DMA Tx Control
+#define IXGBE_REG_DMATXCTL(_) 0x04A80u
+#define IXGBE_REG_DMATXCTL_TE BIT(0)
 
 // Section 8.2.3.9.1 DMA Tx TCP Max Allow Size Requests
 #define IXGBE_REG_DTXMXSZRQ(_) 0x08100u
@@ -271,13 +270,18 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_STATUS(_) 0x00008u
 #define IXGBE_REG_STATUS_MASTERENABLE BIT(19)
 
-#define IXGBE_REG_SWFWSYNC(_) 0x10160u
-#define IXGBE_REG_SWFWSYNC_SW BITS(0,4)
-#define IXGBE_REG_SWFWSYNC_FW BITS(5,9)
+// Section 8.2.3.9.6 Transmit Descriptor Base Address High
+#define IXGBE_REG_TDBAH(n) (0x06004u + 0x40u*n)
 
-#define IXGBE_REG_SWSM(_) 0x10140u
-#define IXGBE_REG_SWSM_SMBI    BIT(0)
-#define IXGBE_REG_SWSM_SWESMBI BIT(1)
+// Section 8.2.3.9.5 Transmit Descriptor Base Address Low
+#define IXGBE_REG_TDBAL(n) (0x06000u + 0x40u*n)
+
+// Section 8.2.3.9.7 Transmit Descriptor Length
+#define IXGBE_REG_TDLEN(n) (n <= 63u ? (0x01008u + 0x40u*n) : (0x0D008u + 0x40u*n))
+
+// Section 8.2.3.9.10 Transmit Descriptor Control
+#define IXGBE_REG_TXDCTL(n) (0x06028u + 0x40u*n)
+#define IXGBE_REG_TXDCTL_ENABLE BIT(25)
 
 #define IXGBE_TXPBSIZE_REGISTERS_COUNT 8u
 #define IXGBE_REG_TXPBSIZE(n) (0x0CC00u + 4u*n)
@@ -285,116 +289,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Section 8.2.3.9.16 Tx Packet Buffer Threshold
 #define IXGBE_REG_TXPBTHRESH(n) (0x04950u + 4u*n)
 #define IXGBE_REG_TXPBTHRESH_THRESH BITS(0,9)
-
-// ----------------------------------------------------
-// Section 10.5.4 Software and Firmware Synchronization
-// ----------------------------------------------------
-
-// NOTE: For simplicity, we always gain/release control of all resources
-// TODO: Do we really need this part?
-
-// "Gaining Control of Shared Resource by Software"
-static void ixgbe_lock_swsm(const uintptr_t addr, bool* out_sw_malfunction, bool* out_fw_malfunction)
-{
-	// "Software checks that the software on the other LAN function does not use the software/firmware semaphore"
-
-	// "- Software polls the SWSM.SMBI bit until it is read as 0b or time expires (recommended expiration is ~10 ms+ expiration time used for the SWSM.SWESMBI)."
-	// "- If SWSM.SMBI is found at 0b, the semaphore is taken. Note that following this read cycle hardware auto sets the bit to 1b."
-	// "- If time expired, it is assumed that the software of the other function malfunctions. Software proceeds to the next steps checking SWESMBI for firmware use."
-	WAIT_WITH_TIMEOUT(*out_sw_malfunction, 10 * 1000 + 3000 * 1000, IXGBE_REG_CLEARED(addr, SWSM, _, SMBI));
-
-
-	// "Software checks that the firmware does not use the software/firmware semaphore and then takes its control"
-
-	// "- Software writes a 1b to the SWSM.SWESMBI bit"
-	IXGBE_REG_SET(addr, SWSM, _, SWESMBI);
-
-	// "- Software polls the SWSM.SWESMBI bit until it is read as 1b or time expires (recommended expiration is ~3 sec).
-	//    If time has expired software assumes that the firmware malfunctioned and proceeds to the next step while ignoring the firmware bits in the SW_FW_SYNC register."
-	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000 * 1000, IXGBE_REG_CLEARED(addr, SWSM, _, SWESMBI));
-}
-
-static void ixgbe_unlock_swsm(const uintptr_t addr)
-{
-	IXGBE_REG_CLEAR(addr, SWSM, _, SWESMBI);
-	IXGBE_REG_CLEAR(addr, SWSM, _, SMBI);
-}
-
-static bool ixgbe_lock_resources(const uintptr_t addr)
-{
-	uint32_t attempts = 0;
-
-start:;
-	bool sw_malfunction;
-	bool fw_malfunction;
-	ixgbe_lock_swsm(addr, &sw_malfunction, &fw_malfunction);
-
-	// "Software takes control of the requested resource(s)"
-
-	// "- Software reads the firmware and software bit(s) of the requested resource(s) in the SW_FW_SYNC register."
-	uint32_t sync = IXGBE_REG_READ(addr, SWFWSYNC, _);
-	// "- If time has expired in the previous steps due to a malfunction firmware,
-	//    the software should clear the firmware bits in the SW_FW_SYNC register.
-	//    If time has expired in the previous steps due to malfunction software of the other LAN function,
-	//    software should clear the software bits in the SW_FW_SYNC register that it does not own."
-	if (fw_malfunction) {
-		sync &= ~IXGBE_REG_SWFWSYNC_FW;
-	}
-	if (sw_malfunction) {
-		sync &= ~IXGBE_REG_SWFWSYNC_SW;
-	}
-
-	// "- If the software and firmware bit(s) of the requested resource(s) in the SW_FW_SYNC register are cleared, it means that these resources are accessible.
-	//    In this case software sets the software bit(s) of the requested resource(s) in the SW_FW_SYNC register.
-	//    Then the SW clears the SWSM.SWESMBI and SWSM.SMBI bits (releasing the SW/FW semaphore register) and can use the specific resource(s)."
-	if ((sync & IXGBE_REG_SWFWSYNC_SW) == 0 && (sync & IXGBE_REG_SWFWSYNC_FW) == 0) {
-		sync |= IXGBE_REG_SWFWSYNC_SW;
-		IXGBE_REG_WRITE(addr, SWFWSYNC, _, sync);
-
-		ixgbe_unlock_swsm(addr);
-
-		return true;
-	} else {
-		// "- Otherwise (either firmware or software of the other LAN function owns the resource),
-		//    software clears the SWSM.SWESMBI and SWSM.SMBI bits and then repeats the entire process after some delay (recommended 5-10 ms).
-		//    If the resources are not released by software of the other LAN function long enough (recommended expiration time is ~1 sec) software can assume that the other software malfunctioned.
-		//    In that case software should clear all software flags that it does not own and then repeat the entire process once again."
-		ixgbe_unlock_swsm(addr);
-
-		attempts++;
-
-		if (attempts == 200U) {
-			TN_INFO("Max attempts for SWSM reached");
-			return false;
-		}
-
-		if (attempts == 100U) {
-			IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
-			tn_sleep_us(10 * 1000);
-			goto start;
-		}
-
-		tn_sleep_us(10 * 1000);
-		goto start;
-	}
-}
-
-// "Releasing a Shared Resource by Software"
-static void ixgbe_unlock_resources(const uintptr_t addr)
-{
-	// "The software takes control over the software/firmware semaphore as previously described for gaining shared resources."
-	bool ignored;
-	ixgbe_lock_swsm(addr, &ignored, &ignored);
-
-	// "Software clears the bit(s) of the released resource(s) in the SW_FW_SYNC register."
-	IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
-
-	// "Software releases the software/firmware semaphore by clearing the SWSM.SWESMBI and SWSM.SMBI bits"
-	ixgbe_unlock_swsm(addr);
-
-	// "Software should wait a minimum delay (recommended 5-10 ms) before trying to gain the semaphore again"
-	tn_sleep_us(10 * 1000);
-}
 
 // ---------------------------------------------------------
 // Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
@@ -519,6 +413,13 @@ static void ixgbe_device_disable_interrupts(const uintptr_t addr)
 
 bool ixgbe_device_init(const uintptr_t addr)
 {
+	// We need to write 64-bit memory values, so pointers better be 64 bits!
+	if (UINTPTR_MAX != UINT64_MAX) {
+		TN_INFO("Wrong size of uintptr_t");
+		return false;
+	}
+
+
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
 
@@ -946,12 +847,6 @@ bool ixgbe_device_set_promiscuous(const uintptr_t addr)
 
 bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uint16_t ring_size, const uintptr_t buffer_addr)
 {
-	// At this point we need to write 64-bit memory values, so pointers better be 64 bits!
-	if (UINTPTR_MAX != UINT64_MAX) {
-		TN_INFO("Wrong size of uintptr_t");
-		return false;
-	}
-
 	// Section 4.6.7.1 Dynamic Enabling and Disabling of Receive Queues:
 	// "Receive queues can be enabled or disabled dynamically using the following procedure."
 	// Section 4.6.7.1.1 Enabling:
@@ -969,7 +864,7 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	for (uint16_t n = 0; n < ring_size; n++) {
 		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
 		// Line 0 - Packet Buffer Address
-		uintptr_t virt_buffer_addr = buffer_addr + (uintptr_t) (n * IXGBE_RECEIVE_PACKET_SIZE_MAX);
+		uintptr_t virt_buffer_addr = buffer_addr + (uintptr_t) (n * IXGBE_PACKET_SIZE_MAX);
 		uintptr_t phys_buffer_addr = tn_mem_virtual_to_physical_address(virt_buffer_addr);
 		if (phys_buffer_addr == (uintptr_t) -1) {
 			// TODO tn_mem_virt_to_phys makes it too easy to forget to handle the error...
@@ -988,6 +883,12 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 		TN_INFO("Ring address could not be mapped to a physical address");
 		return false;
 	}
+	// Section 8.2.3.8.1 Receive Descriptor Base Address Low (RDBAL[n]):
+	// "The receive descriptor base address must point to a 128 byte-aligned block of data."
+	if (phys_ring_addr % 128u != 0u) {
+		TN_INFO("Ring address is not 128-byte aligned");
+		return false;
+	}
 	IXGBE_REG_WRITE(addr, RDBAH, queue, (uint32_t) (phys_ring_addr >> 32));
 	IXGBE_REG_WRITE(addr, RDBAL, queue, (uint32_t) (phys_ring_addr & 0xFFFFFFFFu));
 
@@ -1004,8 +905,9 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	// "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
 	//	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
 	//		"BSIZEPACKET, Receive Buffer Size for Packet Buffer. The value is in 1 KB resolution. Value can be from 1 KB to 16 KB."
-	// TODO: Play with PACKET_SIZE_MAX, see if it changes perf in any way.
-	IXGBE_REG_WRITE(addr, SRRCTL, queue, BSIZEPACKET, IXGBE_RECEIVE_PACKET_SIZE_MAX / 1024u);
+	// We set it to the ceiling of PACKET_SIZE_MAX in KB.
+	// TODO: Play with this, see if it changes perf in any way.
+	IXGBE_REG_WRITE(addr, SRRCTL, queue, BSIZEPACKET, IXGBE_PACKET_SIZE_MAX / 1024u + (IXGBE_PACKET_SIZE_MAX % 1024u != 0));
 	//		"DESCTYPE, Define the descriptor type in Rx: [...] 001b = Advanced descriptor one buffer."
 	IXGBE_REG_WRITE(addr, SRRCTL, queue, DESCTYPE, 1);
 	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
@@ -1063,19 +965,28 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
 	IXGBE_REG_SET(addr, DCARXCTRL, queue, UNKNOWN);
 
-	
-	// TODO is this needed for 10G somehow?
-	// Section 8.2.3.22.19 Auto Negotiation Control Register
-	//ixgbe_lock_resources(addr);
-	// "Link Mode Select. Selects the active link mode: [...] 011b = 10 GbE serial link (SFI – no backplane auto-negotiation)."
-	//IXGBE_REG_WRITE(addr, AUTOC, _, LMS, 3);
-	//ixgbe_unlock_resources(addr);
-
 	return true;
 }
 
 bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uint16_t ring_size, const uintptr_t buffer_addr)
 {
+	// First, let's set up our ring.
+	uint64_t* ring = (uint64_t*) ring_addr;
+	for (uint16_t n = 0; n < ring_size; n++) {
+		// Section 7.2.3.2.4 Advanced Transmit Data Descriptor
+		// Table 7-39 Advanced Transmit Data Descriptor Read Format
+		// Line 0 - Address
+		uintptr_t virt_buffer_addr = buffer_addr + (uintptr_t) (n * IXGBE_PACKET_SIZE_MAX);
+		uintptr_t phys_buffer_addr = tn_mem_virtual_to_physical_address(virt_buffer_addr);
+		if (phys_buffer_addr == (uintptr_t) -1) {
+			TN_INFO("Buffer address could not be mapped to a physical address");
+			return false;
+		}
+		ring[n * 2u] = phys_buffer_addr;
+		// Line 1 is irrelevant for now, we'll fill it when we need to
+		ring[n * 2u + 1u] = 0u;
+	}
+
 	// Section 4.6.8.1 Dynamic Enabling and Disabling of Transmit Queues:
 	// "Transmit queues can be enabled or disabled dynamically if the following procedure is followed."
 	// Section 4.6.8.1.1 Enabling:
@@ -1083,24 +994,60 @@ bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uin
 
 	// Section 4.6.8 Transmit Initialization:
 	// "The following steps should be done once per transmit queue:"
+
 	// "- Allocate a region of memory for the transmit descriptor list."
+	// Given to us in 'ring_addr'.
+
 	// "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
+	uintptr_t phys_ring_addr = tn_mem_virtual_to_physical_address(ring_addr);
+	if (phys_ring_addr == (uintptr_t) -1) {
+		TN_INFO("Ring address could not be mapped to a physical address");
+		return false;
+	}
+	// Section 8.2.3.9.5 Transmit Descriptor Base Address Low (TDBAL[n]):
+	// "The Transmit Descriptor Base Address must point to a 128 byte-aligned block of data."
+	if (phys_ring_addr % 128u != 0) {
+		TN_INFO("Ring address is not 128-byte aligned");
+		return false;
+	}
+	IXGBE_REG_WRITE(addr, TDBAH, queue, (uint32_t) (phys_ring_addr >> 32));
+	IXGBE_REG_WRITE(addr, TDBAL, queue, (uint32_t) (phys_ring_addr & 0xFFFFFFFFu));
+
 	// "- Set the length register to the size of the descriptor ring (TDLEN)."
+	// Section 8.2.3.9.7 Receive Descriptor Length (RDLEN[n]):
+	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer. It must be 128-byte aligned."
+	// INTERPRETATION: Since each descriptor takes 16 bytes, the size of the ring must be a multiple of 8.
+	if (ring_size % 8u != 0u) {
+		TN_INFO("Ring size is not a multiple of 8");
+	}
+	IXGBE_REG_WRITE(addr, TDLEN, queue, ring_size * 16u);
+
 	// "- Program the TXDCTL register with the desired TX descriptor write back policy (see Section 8.2.3.9.10 for recommended values)."
+	// TODO: See if this is useful.
+
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
+	// TODO: Same as above. Take a look at the old ixgbe driver (1.3.31.5), it uses it, and disables some relaxed ordering because of it.
+
 	// "- Enable transmit path by setting DMATXCTL.TE.
 	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
+	// We do it every time, it makes the code simpler.
+	IXGBE_REG_SET(addr, DMATXCTL, _, TE);
+
 	// "- Enable the queue using TXDCTL.ENABLE.
 	//    Poll the TXDCTL register until the Enable bit is set."
-	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
+	// INTERPRETATION: No timeout is mentioned here, let's say 1s to be safe.
+	IXGBE_REG_SET(addr, TXDCTL, queue, ENABLE);
+	bool queue_timed_out;
+	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, TXDCTL, queue, ENABLE));
+	if (queue_timed_out) {
+		TN_INFO("TXDCTL.ENABLE did not set, cannot enable queue");
+		return false;
+	}
 
-	// TODO
-	(void)addr;
-	(void)queue;
-	(void)ring_addr;
-	(void)ring_size;
-	(void)buffer_addr;
-	return false;
+	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
+	// We have nothing to transmit, so we leave TDH/TDT alone.
+
+	return true;
 }
 
 #include <stdio.h>
@@ -1110,7 +1057,7 @@ bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uin
 #define IXGBE_REG_RDH(n) (n <= 63u ? (0x01010u + 0x40u*n) : (0x0D010u + 0x40u*(n-64u)))
 #define IXGBE_REG_LINKS(_) 0x042A4u
 #define IXGBE_REG_LINKS2(_) 0x04324u
-#define IXGBE_REG_AUTOC2(_) 0x042A8u
+//#define IXGBE_REG_AUTOC2(_) 0x042A8u
 #define IXGBE_REG_VLNCTRL(_) 0x05088u
 void ixgbe_sanity_check(const uintptr_t addr)
 {
@@ -1138,12 +1085,12 @@ void ixgbe_sanity_check(const uintptr_t addr)
 	printf("links2 = 0x%08"PRIx32"\n",links2);
 
 
-	IXGBE_REG_FORCE_READ(addr, AUTOC, _);
-	uint32_t autoc = IXGBE_REG_READ(addr,AUTOC,_);
-	printf("autoc = 0x%08"PRIx32"\n",autoc);
-	IXGBE_REG_FORCE_READ(addr, AUTOC2, _);
-	uint32_t autoc2 = IXGBE_REG_READ(addr,AUTOC2,_);
-	printf("autoc2 = 0x%08"PRIx32"\n",autoc2);
+//	IXGBE_REG_FORCE_READ(addr, AUTOC, _);
+//	uint32_t autoc = IXGBE_REG_READ(addr,AUTOC,_);
+//	printf("autoc = 0x%08"PRIx32"\n",autoc);
+//	IXGBE_REG_FORCE_READ(addr, AUTOC2, _);
+//	uint32_t autoc2 = IXGBE_REG_READ(addr,AUTOC2,_);
+//	printf("autoc2 = 0x%08"PRIx32"\n",autoc2);
 
 	uint32_t rdbah = IXGBE_REG_READ(addr, RDBAH, 0);
 	uint32_t rdbal = IXGBE_REG_READ(addr, RDBAL, 0);

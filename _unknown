@@ -214,3 +214,15 @@ static bool ixgbe_device_init_sfp(const uintptr_t addr)
 
 	return true;
 }
+
+
+// Section 8.2.3.22.19 Auto Negotiation Control Register
+#define IXGBE_REG_AUTOC(_) 0x042A0
+#define IXGBE_REG_AUTOC_LMS BITS(13,15)
+
+     // TODO is this needed for 10G somehow?
+    // Section 8.2.3.22.19 Auto Negotiation Control Register
+    //ixgbe_lock_resources(addr);
+       // "Link Mode Select. Selects the active link mode: [...] 011b = 10 GbE serial link (SFI – no backplane auto-negotiation)."
+        //IXGBE_REG_WRITE(addr, AUTOC, _, LMS, 3);
+         //ixgbe_unlock_resources(addr);

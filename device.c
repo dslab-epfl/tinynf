@@ -1,5 +1,7 @@
 #include "device.h"
 
+// TODO most of this file should be in ixgbe
+
 #include "os/hugepage.h"
 #include "os/pci.h"
 //#include "arch.h"
@@ -12,8 +14,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
-
-#define MY_DEV 0
 
 struct tn_device {
 	// Base address to access memory
@@ -41,7 +41,7 @@ uint16_t tn_packet_length;
 // Initialization; returns 0 or error code.
 int tn_dev_init(void)
 {
-	// Allocate a 2MB hugepage, enough for 128 16KB buffers
+	// Allocate a 2MB hugepage, enough for 128 16KB buffers, or 256 8 KB buffers
 	const uintptr_t packet_buffers = tn_hp_allocate(2 * 1024 * 1024);
 	if (packet_buffers == (uintptr_t) -1) {
 		return ENOMEM;
@@ -53,13 +53,14 @@ int tn_dev_init(void)
 		return ENOMEM;
 	}
 
+	// Another 2MB hugepage for the send descriptors
+	const uintptr_t send_ring = tn_hp_allocate(2 * 1024 * 1024);
+	if (send_ring == (uintptr_t) -1) {
+		return ENOMEM;
+	}
+
 	for (uint8_t n = 0; n < 2; n++) {
-	
-	
-if (n == MY_DEV) {
-	
-	
-		// TODO hardcoded addrs...
+		// TODO hardcoded addrs and len...
 		const uintptr_t dev_base_addr = tn_pci_get_device_address(0x83, 0x00, n, 512 * 1024); // length comes from manually checking
 		if (dev_base_addr == (uintptr_t) -1) {
 			return EINVAL;
@@ -68,39 +69,32 @@ if (n == MY_DEV) {
 			return EINVAL;
 		}
 
+	
+	
+if (n == 0) {
 		if (!ixgbe_device_init_receive(dev_base_addr, 0, receive_ring, 128, packet_buffers)) {
 			return EINVAL;
 		}
 		if (!ixgbe_device_set_promiscuous(dev_base_addr)) {
 			return EINVAL;
 		}
-ixgbe_stats_reset(dev_base_addr);
-ixgbe_sanity_check(dev_base_addr);
+
+		tn_devices[n].recv_base = (uint64_t*) receive_ring;
+} else {
+		if (!ixgbe_device_init_send(dev_base_addr, 0, send_ring, 128, packet_buffers)) {
+			return EINVAL;
+		}
+
+		tn_devices[n].send_base = (uint64_t*) send_ring;
+}
+//ixgbe_stats_reset(dev_base_addr);
+//ixgbe_sanity_check(dev_base_addr);
 
 		tn_devices[n].base_addr = dev_base_addr;
-		tn_devices[n].recv_base = (uint64_t*) receive_ring;
-	
-	
-}
-	
-	
 	}
 
-	// HACK
 	tn_packets = packet_buffers;
 
-	// Detect the NICs
-	// read the 1st memory line in /resource; then any reg is just the memory addr + reg
-	// Initialize the NICs
-	// Create 1 RX, 1 TX queue on NICs
-	// Start the NICs
-	// Set NICs to promiscuous mode (or do that before start?)
-	// Our custom setup:
-	// - All RX_DD = 0
-	// - RX_HD/TL = 0
-	// - All TX_DD = 1
-	// - TX_HD/TL = 0
-	// - RX[n] = TX[n] = &hugepage[n * 16 * 1024]
 	return 0;
 }
 
@@ -108,15 +102,13 @@ ixgbe_sanity_check(dev_base_addr);
 #include <inttypes.h>
 void tn_dev_receive(void)
 {
-	tn_packet_index = tn_devices[MY_DEV].recv_head & 255; // 128 buffers, 2 lines each -> 256 addresses
+	tn_packet_index = tn_devices[0].recv_head & 255; // 128 buffers, 2 lines each -> 256 addresses
 	uint64_t packet_metadata;
 	do {
-		packet_metadata = *((volatile uint64_t*)(tn_devices[MY_DEV].recv_base + tn_packet_index + 1));
-ixgbe_stats_probe(tn_devices[MY_DEV].base_addr);
+		packet_metadata = *((volatile uint64_t*)(tn_devices[0].recv_base + tn_packet_index + 1));
 	} while((packet_metadata & 1) == 0);
-printf("PACKET METADATA 0x%08"PRIx64" thus length %"PRIu64"\n",packet_metadata,(packet_metadata >> 32));
 	tn_packet_length = (packet_metadata >> 32) & 0xFFFFu;
-	tn_devices[MY_DEV].recv_head = (uint16_t) (tn_devices[MY_DEV].recv_head + 2u);
+	tn_devices[0].recv_head = (uint16_t) (tn_devices[0].recv_head + 2u);
 	// TODO do this at TX time! otherwise RX might overwrite it.
 //	tn_devices[1].recv_tail = 2;
 	// TODO in fact we don't need recv tail, it should be head at this point
@@ -131,7 +123,7 @@ void tn_dev_transmit(void)
 
 uintptr_t tn_dev_get_packet(void)
 {
-	return tn_packets + (uintptr_t) (tn_packet_index * IXGBE_RECEIVE_PACKET_SIZE_MAX);
+	return tn_packets + (uintptr_t) (tn_packet_index * IXGBE_PACKET_SIZE_MAX);
 }
 
 uint16_t tn_dev_get_packet_length(void)

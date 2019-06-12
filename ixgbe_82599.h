@@ -4,8 +4,7 @@
 #include <stdint.h>
 
 
-extern const uint16_t IXGBE_RECEIVE_RING_SIZE_MAX;
-extern const uint16_t IXGBE_RECEIVE_PACKET_SIZE_MAX;
+extern const uint16_t IXGBE_PACKET_SIZE_MAX;
 
 
 bool ixgbe_device_init(uintptr_t addr);

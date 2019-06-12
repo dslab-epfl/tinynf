@@ -4,6 +4,12 @@
 
 #include <linux/mman.h>
 
+// NOTE: This implementation assumes that the Linux kernel will not move hugepages,
+//       i.e. that their physical address remains constant.
+//       If this assumption were to be broken, this code would need to change.
+//       Locking a page is not sufficient - it guarantees the page won't be swapped out,
+//       not that it won't be moved.
+
 uintptr_t tn_hp_allocate(const size_t size)
 {
 	// We only support 2MB hugepages
