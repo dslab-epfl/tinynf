@@ -1,6 +1,6 @@
 #include "os/memory.h"
 
-#include "log.h"
+#include "util/log.h"
 
 #include <fcntl.h>
 #include <sys/types.h>

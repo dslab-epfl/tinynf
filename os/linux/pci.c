@@ -1,7 +1,7 @@
 #include "os/pci.h"
 
 #include "os/filesystem.h"
-#include "log.h"
+#include "util/log.h"
 
 #include <inttypes.h>
 #include <stdbool.h>

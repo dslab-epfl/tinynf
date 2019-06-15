@@ -72,7 +72,7 @@ int tn_dev_init(void)
 	
 	
 if (n == 0) {
-		if (!ixgbe_device_init_receive(dev_base_addr, 0, receive_ring, 128, packet_buffers)) {
+		if (!ixgbe_device_init_receive(dev_base_addr, 0, receive_ring, packet_buffers)) {
 			return EINVAL;
 		}
 		if (!ixgbe_device_set_promiscuous(dev_base_addr)) {
@@ -81,7 +81,7 @@ if (n == 0) {
 
 		tn_devices[n].recv_base = (uint64_t*) receive_ring;
 } else {
-		if (!ixgbe_device_init_send(dev_base_addr, 0, send_ring, 128, packet_buffers)) {
+		if (!ixgbe_device_init_send(dev_base_addr, 0, send_ring, packet_buffers)) {
 			return EINVAL;
 		}
 
@@ -117,6 +117,7 @@ void tn_dev_receive(void)
 
 void tn_dev_transmit(void)
 {
+	
 }
 
 // TODO: tn_dev_drop(void);

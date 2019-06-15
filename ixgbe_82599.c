@@ -4,9 +4,14 @@
 #include "os/memory.h"
 #include "os/pci.h"
 #include "os/time.h"
-#include "log.h"
+#include "util/log.h"
 
 // Fundamental constants
+
+// Section 7.2.3.3 Transmit Descriptor Ring:
+// "Transmit Descriptor Length register (TDLEN 0-127) — This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
+// By making this 256, we can use 8-bit unsigned integer as ring indices without extra work
+const uint16_t IXGBE_RING_SIZE = 256;
 
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
 // Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...]. The maximum length is 15.5 KB"
@@ -36,6 +41,7 @@ const uint16_t IXGBE_PACKET_SIZE_MAX = 8 * 1024;
 
 // Bit tricks; note that we count bits starting from 0!
 #define BIT(n) (1u << n)
+#define BITL(n) (1ull << n)
 #define BITS(start, end) ((end == 31 ? 0u : (0xFFFFFFFFu << (end + 1))) ^ (0xFFFFFFFFu << start))
 #define TRAILING_ZEROES(n) __builtin_ctzll(n)
 
@@ -278,6 +284,9 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 
 // Section 8.2.3.9.7 Transmit Descriptor Length
 #define IXGBE_REG_TDLEN(n) (n <= 63u ? (0x01008u + 0x40u*n) : (0x0D008u + 0x40u*n))
+
+// Section 8.2.3.9.9 Transmit Descriptor Tail
+#define IXGBE_REG_TDT(n) (0x06018u + 0x40u*n)
 
 // Section 8.2.3.9.10 Transmit Descriptor Control
 #define IXGBE_REG_TXDCTL(n) (0x06028u + 0x40u*n)
@@ -845,7 +854,7 @@ bool ixgbe_device_set_promiscuous(const uintptr_t addr)
 	return true;
 }
 
-bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uint16_t ring_size, const uintptr_t buffer_addr)
+bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uintptr_t buffer_addr)
 {
 	// Section 4.6.7.1 Dynamic Enabling and Disabling of Receive Queues:
 	// "Receive queues can be enabled or disabled dynamically using the following procedure."
@@ -861,7 +870,7 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
 	// The buffers are given to us as 'buffer_addr'
 	uint64_t* ring = (uint64_t*) ring_addr;
-	for (uint16_t n = 0; n < ring_size; n++) {
+	for (uint16_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
 		// Line 0 - Packet Buffer Address
 		uintptr_t virt_buffer_addr = buffer_addr + (uintptr_t) (n * IXGBE_PACKET_SIZE_MAX);
@@ -894,13 +903,9 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 
 	// "- Set the length register to the size of the descriptor ring (register RDLEN)."
 	// Section 8.2.3.8.3 Receive DEscriptor Length (RDLEN[n]):
-	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer. It must be 128-byte aligned"
-	// INTERPRETATION: Since each descriptor takes 16 bytes, the size of the ring must be a multiple of 8.
-	if (ring_size % 8u != 0u) {
-		TN_INFO("Ring size is not a multiple of 8");
-		return false;
-	}
-	IXGBE_REG_WRITE(addr, RDLEN, queue, ring_size * 16u);
+	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer."
+	// Note that receive descriptors are 16 bytes.
+	IXGBE_REG_WRITE(addr, RDLEN, queue, IXGBE_RING_SIZE * 16u);
 
 	// "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
 	//	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
@@ -937,8 +942,7 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	// "- Bump the tail pointer (RDT) to enable descriptors fetching by setting it to the ring length minus one."
 	// Section 7.1.9 Receive Descriptor Queue Structure:
 	// "Software inserts receive descriptors by advancing the tail pointer(s) to refer to the address of the entry just beyond the last valid descriptor."
-	// INTERPRETATION: There is a clear contradiction here, according to 7.1.9 RDT should be 0 to refer to the entire ring... but empirically, it's indeed ring_size-1.
-	IXGBE_REG_WRITE(addr, RDT, queue, ring_size - 1u);
+	IXGBE_REG_WRITE(addr, RDT, queue, IXGBE_RING_SIZE - 1u);
 
 	// "- Enable the receive path by setting RXCTRL.RXEN. This should be done only after all other settings are done following the steps below."
 	//	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
@@ -968,11 +972,11 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	return true;
 }
 
-bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uint16_t ring_size, const uintptr_t buffer_addr)
+bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uintptr_t buffer_addr)
 {
 	// First, let's set up our ring.
 	uint64_t* ring = (uint64_t*) ring_addr;
-	for (uint16_t n = 0; n < ring_size; n++) {
+	for (uint16_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.2.3.2.4 Advanced Transmit Data Descriptor
 		// Table 7-39 Advanced Transmit Data Descriptor Read Format
 		// Line 0 - Address
@@ -1014,13 +1018,10 @@ bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uin
 	IXGBE_REG_WRITE(addr, TDBAL, queue, (uint32_t) (phys_ring_addr & 0xFFFFFFFFu));
 
 	// "- Set the length register to the size of the descriptor ring (TDLEN)."
-	// Section 8.2.3.9.7 Receive Descriptor Length (RDLEN[n]):
-	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer. It must be 128-byte aligned."
-	// INTERPRETATION: Since each descriptor takes 16 bytes, the size of the ring must be a multiple of 8.
-	if (ring_size % 8u != 0u) {
-		TN_INFO("Ring size is not a multiple of 8");
-	}
-	IXGBE_REG_WRITE(addr, TDLEN, queue, ring_size * 16u);
+	// Section 8.2.3.9.7 Transmit Descriptor Length (TDLEN[n]):
+	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer."
+	// Note that each descriptor is 16 bytes.
+	IXGBE_REG_WRITE(addr, TDLEN, queue, IXGBE_RING_SIZE * 16u);
 
 	// "- Program the TXDCTL register with the desired TX descriptor write back policy (see Section 8.2.3.9.10 for recommended values)."
 	// TODO: See if this is useful.
@@ -1048,6 +1049,70 @@ bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uin
 	// We have nothing to transmit, so we leave TDH/TDT alone.
 
 	return true;
+}
+
+struct ixgbe_device
+{
+	uintptr_t addr;
+	uintptr_t buffer;
+	uintptr_t receive_ring;
+	uintptr_t send_ring;
+	uint8_t index; // TODO check if making index/queue uint16 or 32 or 64 makes any difference (changing index will need explicit truncation when it overflows the ring size!)
+	uint8_t queue;
+	uint8_t _padding[6];
+};
+
+uint16_t ixgbe_receive(struct ixgbe_device* device)
+{
+	// Wait for a packet to be at the current index
+	// Note that since descriptors are 16 bytes, we need to double the index
+	uint64_t packet_metadata;
+	do {
+		packet_metadata = *((volatile uint64_t*)(device->receive_ring + 2u*device->index + 1u));
+	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
+	// Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done.
+	} while((packet_metadata & BITL(0)) == 0);
+
+	// Set the tail to the current index (right now, it's just before that)
+	// This does _not_ imply that the NIC will use it to receive a packet;
+	// since the ring always has one unused descriptor by design, we're making the current descriptor unused.
+	IXGBE_REG_WRITE(device->addr, RDT, device->queue, device->index);
+
+	// Return the length
+	return (packet_metadata >> 32) & 0xFFFFu;
+}
+
+void ixgbe_send(struct ixgbe_device* device, uint16_t packet_length)
+{
+	// Wait for the current descriptor to be free
+	// TODO: Can we assume that it's impossible for it to not be free, since we'll have processed IXGBE_RING_SIZE packets in the meantime? It should've been sent...
+	// Here as well the descriptors are 16 bytes so we double the index.
+	uint64_t packet_metadata;
+	do {
+		packet_metadata = *((volatile uint64_t*)(device->send_ring + 2u*device->index + 1u));
+	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
+	// STA is at offset 32, and its "bit 0" is Descriptor Done
+	} while ((packet_metadata & BITL(32)) == 1);
+
+	// Increase the index
+	device->index = (uint8_t)(device->index + 1u);
+
+	// TODO YESSS we can drop packets by making a zero-length descriptor!
+	// Set the metadata
+	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor
+	// "DTALEN", bits 0-15: "This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor."
+	// "RSV", bits 16-17: "Reserved"
+	// "MAC", bits 18-19
+	// "DTYP", bits 20-23
+	// "DCMD", bits 24-31
+	// STA, bits 32-35
+	// IDX, bits 36-28
+	// CC, bit 39
+	// POPTS, bits 40-45
+	// PAYLEN, bits 46-63
+
+	// Set the tail to the newly-incremented index, which tells the NIC to use the descriptor
+	IXGBE_REG_WRITE(device->addr, TDT, device->queue, device->index);
 }
 
 #include <stdio.h>
