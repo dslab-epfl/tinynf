@@ -1146,19 +1146,19 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	// Write the metadata
 	*((volatile uint64_t*)(queue->ring_addr + 2u*queue->packet_index + 1u)) = packet_metadata;
 
+	// Increase the index
+	queue->packet_index = (uint8_t)(queue->packet_index + 1u);
+
 	// Set the tail to the newly-incremented index, which tells the NIC to use the descriptor
 	IXGBE_REG_WRITE(queue->device_addr, TDT, queue->queue_index, queue->packet_index);
 
-	// Wait for the current descriptor to be done
-	// Here as well the descriptors are 16 bytes so we double the index.
+	// Wait for the descriptor to be done
+	// Here as well the descriptors are 16 bytes so we double the index; but -1 because we incremented the index earlier.
 	do {
-		packet_metadata = *((volatile uint64_t*)(queue->ring_addr + 2u*queue->packet_index + 1u));
+		packet_metadata = *((volatile uint64_t*)(queue->ring_addr + 2u*queue->packet_index - 1u));
 	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
 	// STA is at offset 32, and its "bit 0" is Descriptor Done
 	} while ((packet_metadata & BITL(32)) == 1);
-
-	// Increase the index
-	queue->packet_index = (uint8_t)(queue->packet_index + 1u);
 }
 
 
