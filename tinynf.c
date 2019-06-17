@@ -2,6 +2,7 @@
 
 #include "os/hugepage.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <inttypes.h>
 
@@ -13,7 +14,7 @@ int main(int argc, char** argv)
 	(void) argc;
 	(void) argv;
 
-	const uintptr_t packet_buffers = tn_hp_allocate(2 * 1024 * 1024);
+	const uintptr_t packet_buffers = tn_hp_allocate(IXGBE_PACKET_SIZE_MAX * IXGBE_RING_SIZE);
 	if (packet_buffers == (uintptr_t) -1) {
 		return 1;
 	}
@@ -43,29 +44,31 @@ int main(int argc, char** argv)
 		}
 	}
 printf("Initialized successfully!\n");
-	uint16_t packet_len = ixgbe_receive(&queue_receive);
-	uint8_t* packet = (uint8_t*) (packet_buffers + IXGBE_PACKET_SIZE_MAX * queue_receive.packet_index);
-printf("Received a packet!\n");
+	while (true) {
+		uint16_t packet_len = ixgbe_receive(&queue_receive);
+//		printf("Received a packet!\n");
+		uint8_t* packet = (uint8_t*) (packet_buffers + IXGBE_PACKET_SIZE_MAX * queue_receive.packet_index);
 //	for (uint16_t n = 0; n < packet_len; n++) {
 //		printf("0x%02"PRIx8" ", packet[n]);
 //	}
-	// SRC MAC (90:e2:ba:55:14:11)
-	packet[0] = 0x90;
-	packet[1] = 0xE2;
-	packet[2] = 0xBA;
-	packet[3] = 0x55;
-	packet[4] = 0x14;
-	packet[5] = 0x11;
-	// DST MAC (01:02:03:04:05:06)
-	packet[6] = 0x01;
-	packet[7] = 0x02;
-	packet[8] = 0x03;
-	packet[9] = 0x04;
-	packet[10]= 0x05;
-	packet[11]= 0x06;
+		// SRC MAC (90:e2:ba:55:14:11)
+		packet[0] = 0x90;
+		packet[1] = 0xE2;
+		packet[2] = 0xBA;
+		packet[3] = 0x55;
+		packet[4] = 0x14;
+		packet[5] = 0x11;
+		// DST MAC (90:e2:ba:55:12:25)
+		packet[6] = 0xFF;
+		packet[7] = 0xFF;
+		packet[8] = 0xFF;
+		packet[9] = 0xFF;
+		packet[10]= 0xFF;
+		packet[11]= 0xFF;
 
-	ixgbe_send(&queue_send, packet_len);
-printf("Sent a packet!\n");
+		ixgbe_send(&queue_send, packet_len);
+//		printf("Sent a packet!\n");
+	}
 
 	return 0;
 }

@@ -63,8 +63,9 @@ OUTPUT := tinynf
 # Relative paths
 CFLAGS += -I.
 # Files
+HEADERS := *.h os/*.h
 FILES := *.c os/linux/*.c
 
-$(OUTPUT): Makefile $(FILES)
+$(OUTPUT): Makefile $(HEADERS) $(FILES)
 	@rm -f *.gch $(OUTPUT)
 	@$(CC) $(CFLAGS) $(FILES) -o $(OUTPUT)
