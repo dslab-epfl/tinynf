@@ -220,6 +220,10 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_RTRPT4C_REGISTERS_COUNT 8u
 #define IXGBE_REG_RTRPT4C(n) (0x02140u + 4u*n)
 
+// Section 8.2.3.10.2 DCB Transmit Descriptor Plane Control and Status
+#define IXGBE_REG_RTTDCS(_) 0x04900u
+#define IXGBE_REG_RTTDCS_ARBDIS BIT(6)
+
 // Section 8.2.3.10.13 DCB Transmit Descriptor Plane Queue Select
 #define IXGBE_REG_RTTDQSEL(_) 0x04904u
 #define IXGBE_REG_RTTDQSEL_TXDQIDX BITS(0,6)
@@ -686,98 +690,26 @@ bool ixgbe_device_init(const struct ixgbe_device* const device)
 	for (uint32_t n = 1; n < IXGBE_RXPBSIZE_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(device->addr, RXPBSIZE, n);
 	}
-	//		"- TXPBSIZE[0].SIZE=0xA0, TXPBSIZE[1-7].SIZE=0x0"
-	//		Section 8.2.3.9.13 Transmit Packet Buffer Size (TXPBSIZE[n]):
-	//			"SIZE, Init val 0xA0"
-	//			"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
-	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
-	for (uint32_t n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(device->addr, TXPBSIZE, n);
-	}
-	//		"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
-	// INTERPRETATION: Typo in the spec; should be TXPBTHRESH[0].THRESH
-	//		Section 8.2.3.9.16 Tx Packet Buffer Threshold (TXPBTHRESH):
-	//			"Default values: 0x96 for TXPBSIZE0, 0x0 for TXPBSIZE1-7."
-	// INTERPRETATION: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
-	// Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
-	IXGBE_REG_WRITE(device->addr, TXPBTHRESH, 0, THRESH, 0xA0u);
-	//		"- MRQC and MTQC"
+	//		"- MRQC"
 	//			"- Set MRQE to 0xxxb, with the three least significant bits set according to the RSS mode"
 	// 			Section 8.2.3.7.12 Multiple Receive Queues Command Register (MRQC): "MRQE, Init Val 0x0; 0000b = RSS disabled"
 	// Thus we do not need to modify MRQC.
-	//			"- Clear both RT_Ena and VT_Ena bits in the MTQC register."
-	//			"- Set MTQC.NUM_TC_OR_Q to 00b."
-	//			Section 8.2.3.9.15 Multiple Transmit Queues Command Register (MTQC):
-	//				"RT_Ena, Init val 0b"
-	//				"VT_Ena, Init val 0b"
-	//				"NUM_TC_OR_Q, Init val 00b"
-	// Thus we do not need to modify MTQC.
-	//		"- Clear PFVTCTL.VT_Ena (as the MRQC.VT_Ena)"
-	//		Section 8.2.3.27.1 VT Control Register (PFVTCTL):
-	//			"VT_Ena, Init val 0b"
-	// Thus we do not need to modify PFVTCTL.
 	//		(from 4.6.11.3.1) "Queue Drop Enable (PFQDE) — In SR-IO the QDE bit should be set to 1b in the PFQDE register for all queues. In VMDq mode, the QDE bit should be set to 0b for all queues."
 	// ASSUMPTION: We do not need SR-IO or VMDq.
 	// INTERPRETATION: We do not need to change PFQDE.
 	//		"- Rx UP to TC (RTRUP2TC), UPnMAP=0b, n=0,...,7"
 	//		Section 8.2.3.10.4 DCB Receive User Priority to Traffic Class (RTRUP2TC): All init vals = 0
 	// Thus we do not need to modify RTRUP2TC.
-	//		"- Tx UP to TC (RTTUP2TC), UPnMAP=0b, n=0,...,7"
-	//		Section 8.2.3.10.5 DCB Transmit User Priority to Traffic Class (RTTUP2TC): All init vals = 0
-	// Thus we do not need to modify RTTUP2TC.
-	//		"- DMA TX TCP Maximum Allowed Size Requests (DTXMXSZRQ) — set Max_byte_num_req = 0xFFF = 1 MB"
-	IXGBE_REG_WRITE(device->addr, DTXMXSZRQ, _, MAXBYTESNUMREQ, 0xFFF);
 	//		"Allow no-drop policy in Rx:"
 	//		"- PFQDE: The QDE bit should be set to 0b in the PFQDE register for all queues enabling per queue policy by the SRRCTL[n] setting."
 	//		Section 8.2.3.27.9 PF PF Queue Drop Enable Register (PFQDE): "QDE, Init val 0b"
 	// Thus we do not need to modify PFQDE.
-	//		"- Split Receive Control (SRRCTL[0-127]): The Drop_En bit should be set per receive queue according to the required drop / no-drop policy of the TC of the queue."
-	//		Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]): "Drop_En, Init val 0b; Drop Enabled."
-	// ASSUMPTION: We do not want to drop packets.
-	// Thus we do not need to modify SRRCTL.
 	//		"Disable PFC and enable legacy flow control:"
 	//		"- Disable receive PFC via: MFLCN.RPFCE=0b"
 	//		Section 8.2.3.22.34 MAC Flow Control Register (MFLCN): "RPFCE, Init val 0b"
-	// Thus we do not need to modify MFLCN.
+	// Thus we do not need to modify MFLCN.RPFCE.
 	//		"- Enable receive legacy flow control via: MFLCN.RFCE=1b"
-	IXGBE_REG_WRITE(device->addr, MFLCN, _, RFCE, 1);
-	//		"- Enable transmit legacy flow control via: FCCFG.TFCE=01b"
-	IXGBE_REG_WRITE(device->addr, FCCFG, _, TFCE, 1);
-	//		"Reset all arbiters:"
-	//		"- Clear RTTDT1C register, per each queue, via setting RTTDQSEL first"
-	for (uint32_t n = 0; n < IXGBE_TX_QUEUE_POOLS_COUNT; n++) {
-		IXGBE_REG_WRITE(device->addr, RTTDQSEL, _, TXDQIDX, n);
-		IXGBE_REG_CLEAR(device->addr, RTTDT1C, _);
-	}
-	//		"- Clear RTTDT2C[0-7] registers"
-	for (uint32_t n = 0; n < IXGBE_RTTDT2C_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(device->addr, RTTDT2C, n);
-	}
-	//		"- Clear RTTPT2C[0-7] registers"
-	for (uint32_t n = 0; n < IXGBE_RTTPT2C_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(device->addr, RTTPT2C, n);
-	}
-	//		"- Clear RTRPT4C[0-7] registers"
-	for (uint32_t n = 0; n < IXGBE_RTRPT4C_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(device->addr, RTRPT4C, n);
-	}
-	//		"Disable TC and VM arbitration layers:"
-	//		"- Tx Descriptor Plane Control and Status (RTTDCS), bits: TDPAC=0b, VMPAC=0b, TDRM=0b, BDPM=1b, BPBFSM=1b"
-	//		Section 8.2.3.10.2 DCB Transmit Descriptor Plane Control and Status (RTTDCS): the above values are the default ones
-	// Thus we do not need to modify RTTDCS.
-	//		"- Tx Packet Plane Control and Status (RTTPCS): TPPAC=0b, TPRM=0b, ARBD=0x224"
-	//		Section 8.2.3.10.3 DCB Transmit Packet Plane Control and Status (RTTPCS): the above values are the default ones
-	// Thus we do not need to modify RTTPCS.
-	//		"- Rx Packet Plane Control and Status (RTRPCS): RAC=0b, RRM=0b"
-	//		Section 8.2.3.10.1 DCB Receive Packet Plane Control and Status (RTRPCS): the above values are the default ones
-	// Thus we do not need to modify RTTPCS.
-	//		(from 4.6.11.3.1) "Set the SECTXMINIFG.SECTXDCB field to 0x1F."
-	//		Section 8.2.3.12.4 Security Tx Buffer Minimum IFG (SECTXMINIFG):
-	//			"If PFC is enabled, then the SECTXDCB field should be set to 0x1F.
-	//			 If PFC is not enabled, then the default value should be used (0x10)."
-	//		Section 8.2.3.22.34 MAC Flow Control Register:
-	//			"Note: PFC should be enabled in DCB mode only."
-	// INTERPRETATION: Despite the lack of an explicit exception, this part of Section 4.6.11.3.1 does not apply in this case.
+	IXGBE_REG_SET(device->addr, MFLCN, _, RFCE);
 
 	//	"Enable jumbo reception by setting HLREG0.JUMBOEN in one of the following two cases:
 	//	 1. Jumbo packets are expected. Set the MAXFRS.MFS to expected max packet size.
@@ -827,19 +759,49 @@ bool ixgbe_device_init(const struct ixgbe_device* const device)
 	// INTERPRETATION: Relaxed ordering has no correctness issues, and thus should be enabled.
 	// TODO: Benchmark with relaxed ordering enabled and disabled.
 	//		"- Set RTTDCS.ARBDIS to 1b."
+	IXGBE_REG_SET(device->addr, RTTDCS, _, ARBDIS);
 	//		"- Program DTXMXSZRQ, TXPBSIZE, TXPBTHRESH, MTQC, and MNGTXMAP, according to the DCB and virtualization modes (see Section 4.6.11.3)."
+	//		Section 4.6.11.3.4 DCB-Off, VT-Off:
+	//			"Set the configuration bits as specified in Section 4.6.11.3.1 with the following exceptions:"
+	//			"- TXPBSIZE[0].SIZE=0xA0, TXPBSIZE[1-7].SIZE=0x0"
+	//			Section 8.2.3.9.13 Transmit Packet Buffer Size (TXPBSIZE[n]):
+	//				"SIZE, Init val 0xA0"
+	//				"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
+	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
+	for (uint32_t n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
+		IXGBE_REG_CLEAR(device->addr, TXPBSIZE, n);
+	}
+	//			"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
+	// INTERPRETATION: Typo in the spec; should be TXPBTHRESH[0].THRESH
+	//			Section 8.2.3.9.16 Tx Packet Buffer Threshold (TXPBTHRESH):
+	//				"Default values: 0x96 for TXPBSIZE0, 0x0 for TXPBSIZE1-7."
+	// INTERPRETATION: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
+	// Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
+	IXGBE_REG_WRITE(device->addr, TXPBTHRESH, 0, THRESH, 0xA0u);
+	//		"- MTQC"
+	//			"- Clear both RT_Ena and VT_Ena bits in the MTQC register."
+	//			"- Set MTQC.NUM_TC_OR_Q to 00b."
+	//			Section 8.2.3.9.15 Multiple Transmit Queues Command Register (MTQC):
+	//				"RT_Ena, Init val 0b"
+	//				"VT_Ena, Init val 0b"
+	//				"NUM_TC_OR_Q, Init val 00b"
+	// Thus we do not need to modify MTQC.
+	//		"- DMA TX TCP Maximum Allowed Size Requests (DTXMXSZRQ) — set Max_byte_num_req = 0xFFF = 1 MB"
+	IXGBE_REG_WRITE(device->addr, DTXMXSZRQ, _, MAXBYTESNUMREQ, 0xFFF);
+	// INTERPRETATION: Section 4.6.11.3 does not refer to MNGTXMAP, but since it's a management-related register we can ignore it here.
 	//		"- Clear RTTDCS.ARBDIS to 0b"
+	IXGBE_REG_CLEAR(device->addr, RTTDCS, _, ARBDIS);
 	// INTERPRETATION: The spec forgot to mention it earlier, but MTQC requires ARBDIS to be disabled (see Section 7.2.1.2.1 Tx Queues Assignment).
 	// We've already done DCB/VT config earlier, no need to do anything here.
 
 	// TODO: Look into Section 7.1.10 and the related errata about header splitting.
+	// note: the errata just says "nope don't use it"
 
 	// "- Enable interrupts (see Section 4.6.3.1)."
 	// Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
 	// ASSUMPTION: We do not want interrupts.
 	// INTERPRETATION: We don't need to do anything here.
 
-ixgbe_sanity_check(device->addr);
 	return true;
 }
 
