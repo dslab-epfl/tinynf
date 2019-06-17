@@ -1,6 +1,7 @@
 #include "ixgbe_82599.h"
 
 #include "os/arch.h"
+#include "os/hugepage.h"
 #include "os/memory.h"
 #include "os/pci.h"
 #include "os/time.h"
@@ -11,13 +12,10 @@
 // Section 7.2.3.3 Transmit Descriptor Ring:
 // "Transmit Descriptor Length register (TDLEN 0-127) — This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
 // By making this 256, we can use 8-bit unsigned integer as ring indices without extra work
-const uint16_t IXGBE_RING_SIZE = 256;
+const uint32_t IXGBE_RING_SIZE = 256;
 
-// Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
-// Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...]. The maximum length is 15.5 KB"
-// Thus we set 8 KB as a power of 2 that can be sent and received.
-const uint16_t IXGBE_PACKET_SIZE_MAX = 8 * 1024;
-
+const size_t IXGBE_RECEIVE_DESCRIPTOR_BYTES_COUNT = 16;
+const size_t IXGBE_SEND_DESCRIPTOR_BYTES_COUNT = 16;
 
 // TODO find reference for this
 #define IXGBE_RECEIVE_QUEUES_COUNT 128u
@@ -74,12 +72,6 @@ static uint32_t ixgbe_reg_read(const uintptr_t addr, const uint32_t reg)
 	TN_DEBUG("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;
 }
-static void ixgbe_reg_force_read(const uintptr_t addr, const uint32_t reg)
-{
-	// See https://stackoverflow.com/a/13824124/3311770
-	uint32_t* ptr = (uint32_t*)((char*)addr + reg);
-	__asm__ volatile ("" : "=m" (*ptr) : "r" (*ptr));
-}
 static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint32_t value)
 {
 	tn_write_barrier();
@@ -101,8 +93,8 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) | IXGBE_REG_##reg##_##field))
 
 // PCI primitives (we do not write to PCI)
-#define IXGBE_PCIREG_READ(addr, reg) tn_pci_read(addr, IXGBE_PCIREG_##reg)
-#define IXGBE_PCIREG_CLEARED(addr, reg, field) ((IXGBE_PCIREG_READ(addr, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
+#define IXGBE_PCIREG_READ(bus, device, function, reg) tn_pci_read(bus, device, function, IXGBE_PCIREG_##reg)
+#define IXGBE_PCIREG_CLEARED(bus, device, function, reg, field) ((IXGBE_PCIREG_READ(bus, device, function, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
 
 
 // -------------------------------------------------------------
@@ -299,20 +291,49 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_TXPBTHRESH(n) (0x04950u + 4u*n)
 #define IXGBE_REG_TXPBTHRESH_THRESH BITS(0,9)
 
+
+// ==========
+// DEVICE GET
+// ==========
+
+// ---
+// ???
+// ---
+// TODO: Look at the ixgbe kernel driver, which is what this code depends on
+
+bool ixgbe_device_get(const uint8_t bus, const uint8_t device, const uint8_t function, struct ixgbe_device* const out_device)
+{
+	const uintptr_t addr = tn_pci_get_device_address(bus, device, function, 512 * 1024); // length comes from manually checking
+	if (addr == (uintptr_t) -1) {
+		return false;
+	}
+
+	out_device->addr = addr;
+	out_device->pci_bus = bus;
+	out_device->pci_device = device;
+	out_device->pci_function = function;
+	return true;
+}
+
+
+// ===========
+// DEVICE INIT
+// ===========
+
 // ---------------------------------------------------------
 // Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
 // ---------------------------------------------------------
 
-static bool ixgbe_recv_disable(const uintptr_t addr, const uint8_t queue)
+static bool ixgbe_recv_disable(const struct ixgbe_device* const device, const uint8_t queue)
 {
 	// "Disable the queue by clearing the RXDCTL.ENABLE bit."
-	IXGBE_REG_CLEAR(addr, RXDCTL, queue, ENABLE);
+	IXGBE_REG_CLEAR(device->addr, RXDCTL, queue, ENABLE);
 
 	// "The 82599 clears the RXDCTL.ENABLE bit only after all pending memory accesses to the descriptor ring are done.
 	//  The driver should poll this bit before releasing the memory allocated to this queue."
 	// INTERPRETATION: There is no mention of what to do if the 82599 never clears the bit; 1s seems like a decent timeout
 	bool timed_out;
-	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(addr, RXDCTL, queue, ENABLE));
+	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(device->addr, RXDCTL, queue, ENABLE));
 	if (timed_out) {
 		TN_INFO("RXDCTL.ENABLE did not clear, cannot disable receive");
 		return false;
@@ -324,34 +345,33 @@ static bool ixgbe_recv_disable(const uintptr_t addr, const uint8_t queue)
 	return true;
 }
 
-
 // --------------------------------
 // Section 5.2.5.3.2 Master Disable
 // --------------------------------
 
 // See quotes inside to understand the meaning of the return value
-static bool ixgbe_device_master_disable(const uintptr_t addr)
+static bool ixgbe_device_master_disable(const struct ixgbe_device* const device)
 {
 	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
 	for (uint8_t queue = 0; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
-		ixgbe_recv_disable(addr, queue);
+		ixgbe_recv_disable(device, queue);
 	}
 
 	// "Then the device driver sets the PCIe Master Disable bit [in the Device Status register] when notified of a pending master disable (or D3 entry)."
-	IXGBE_REG_SET(addr, CTRL, _, MASTERDISABLE);
+	IXGBE_REG_SET(device->addr, CTRL, _, MASTERDISABLE);
 
 	// "The 82599 then blocks new requests and proceeds to issue any pending requests by this function.
 	//  The driver then reads the change made to the PCIe Master Disable bit and then polls the PCIe Master Enable Status bit.
 	//  Once the bit is cleared, it is guaranteed that no requests are pending from this function."
 	// INTERPRETATION: The next sentence refers to "a given time"; let's say 1 second should be plenty...
 	bool timed_out;
-	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(addr, STATUS, _, MASTERENABLE));
+	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(device->addr, STATUS, _, MASTERENABLE));
 
 	// "The driver might time out if the PCIe Master Enable Status bit is not cleared within a given time."
 	if (timed_out) {
 		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
 		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
-		if (!IXGBE_PCIREG_CLEARED(addr, DEVICESTATUS, TRANSACTIONPENDING)) {
+		if (!IXGBE_PCIREG_CLEARED(device->pci_bus, device->pci_device, device->pci_function, DEVICESTATUS, TRANSACTIONPENDING)) {
 			// Because this is recoverable, we log it as DEBUG rather than INFO
 			TN_DEBUG("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable");
 			return false;
@@ -361,23 +381,22 @@ static bool ixgbe_device_master_disable(const uintptr_t addr)
 		//  The recommended method to flush the transmit data path is as follows:"
 		// "- Inhibit data transmission by setting the HLREG0.LPBK bit and clearing the RXCTRL.RXEN bit.
 		//    This configuration avoids transmission even if flow control or link down events are resumed."
-		IXGBE_REG_SET(addr, HLREG0, _, LPBK);
-		IXGBE_REG_CLEAR(addr, RXCTRL, _, RXEN);
+		IXGBE_REG_SET(device->addr, HLREG0, _, LPBK);
+		IXGBE_REG_CLEAR(device->addr, RXCTRL, _, RXEN);
 
 		// "- Set the GCR_EXT.Buffers_Clear_Func bit for 20 microseconds to flush internal buffers."
-		IXGBE_REG_SET(addr, GCREXT, _, BUFFERSCLEAR);
+		IXGBE_REG_SET(device->addr, GCREXT, _, BUFFERSCLEAR);
 		tn_sleep_us(20);
 
 		// "- Clear the HLREG0.LPBK bit and the GCR_EXT.Buffers_Clear_Func"
-		IXGBE_REG_CLEAR(addr, HLREG0, _, LPBK);
-		IXGBE_REG_CLEAR(addr, GCREXT, _, BUFFERSCLEAR);
+		IXGBE_REG_CLEAR(device->addr, HLREG0, _, LPBK);
+		IXGBE_REG_CLEAR(device->addr, GCREXT, _, BUFFERSCLEAR);
 
 		// "- It is now safe to issue a software reset."
 	}
 
 	return true;
 }
-
 
 // --------------------------
 // Section 4.2.1.7 Link Reset
@@ -386,18 +405,18 @@ static bool ixgbe_device_master_disable(const uintptr_t addr)
 // INTERPRETATION: The spec has a circular dependency here - resets need master disable, but master disable asks for two resets if it fails!
 //                 We assume that if the master disable fails, the resets do not need to go through the master disable step.
 
-static void ixgbe_device_reset(const uintptr_t addr)
+static void ixgbe_device_reset(const struct ixgbe_device* const device)
 {
 	// "Prior to issuing link reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
-	bool master_disabled = ixgbe_device_master_disable(addr);
+	bool master_disabled = ixgbe_device_master_disable(device);
 
 	// "Initiated by writing the Link Reset bit of the Device Control register (CTRL.LRST)."
-	IXGBE_REG_SET(addr, CTRL, _, LRST);
+	IXGBE_REG_SET(device->addr, CTRL, _, LRST);
 
 	// See quotes in ixgbe_device_master_disable
 	if (master_disabled) {
 		tn_sleep_us(2);
-		IXGBE_REG_SET(addr, CTRL, _, LRST);
+		IXGBE_REG_SET(device->addr, CTRL, _, LRST);
 	}
 
 	// Section 8.2.3.1.1 Device Control Register
@@ -408,19 +427,18 @@ static void ixgbe_device_reset(const uintptr_t addr)
 	tn_sleep_us(1000);
 }
 
-
 // -------------------------------------
 // Section 4.6.3 Initialization Sequence
 // -------------------------------------
 
-static void ixgbe_device_disable_interrupts(const uintptr_t addr)
+static void ixgbe_device_disable_interrupts(const struct ixgbe_device* const device)
 {
 	for (uint32_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, EIMC, n, MASK);
+		IXGBE_REG_CLEAR(device->addr, EIMC, n, MASK);
 	}
 }
 
-bool ixgbe_device_init(const uintptr_t addr)
+bool ixgbe_device_init(const struct ixgbe_device* const device)
 {
 	// We need to write 64-bit memory values, so pointers better be 64 bits!
 	if (UINTPTR_MAX != UINT64_MAX) {
@@ -447,10 +465,10 @@ bool ixgbe_device_init(const uintptr_t addr)
 	// Section 4.6.3.2 Global Reset and General Configuration
 	//	"Device initialization typically starts with a software reset that puts the device into a known state and enables the device driver to continue the initialization sequence.
 	//	 Following a Global Reset the Software driver should wait at least 10msec to enable smooth initialization flow."
-	ixgbe_device_disable_interrupts(addr);
-	ixgbe_device_reset(addr);
+	ixgbe_device_disable_interrupts(device);
+	ixgbe_device_reset(device);
 	tn_sleep_us(10 * 1000);
-	ixgbe_device_disable_interrupts(addr);
+	ixgbe_device_disable_interrupts(device);
 
 	//	"To enable flow control, program the FCTTV, FCRTL, FCRTH, FCRTV and FCCFG registers.
 	//	 If flow control is not enabled, these registers should be written with 0x0.
@@ -461,16 +479,16 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//	 FCEN should be set to 0b if flow control is not enabled as all the other registers previously indicated."
 	// INTERPRETATION: Sections 3.7.7.3.{2-5} are irrelevant here since we do not want flow control.
 	for (uint32_t n = 0; n < IXGBE_FCTTV_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, FCTTV, n);
+		IXGBE_REG_CLEAR(device->addr, FCTTV, n);
 	}
 	for (uint32_t n = 0; n < IXGBE_FCRTL_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, FCRTL, n);
+		IXGBE_REG_CLEAR(device->addr, FCRTL, n);
 	}
 	for (uint32_t n = 0; n < IXGBE_FCRTH_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, FCRTH, n);
+		IXGBE_REG_CLEAR(device->addr, FCRTH, n);
 	}
-	IXGBE_REG_CLEAR(addr, FCRTV, _);
-	IXGBE_REG_CLEAR(addr, FCCFG, _);
+	IXGBE_REG_CLEAR(device->addr, FCRTV, _);
+	IXGBE_REG_CLEAR(device->addr, FCCFG, _);
 	// Section 8.2.3.8.9 Receive Packet Buffer Size (RXPBSIZE[n])
 	//	"The size is defined in KB units and the default size of PB[0] is 512 KB."
 	// Section 8.2.3.3.4 Flow Control Receive Threshold High (FCRTH[n])
@@ -484,7 +502,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	// INTERPRETATION: There is an obvious contradiction in the stated granularities (16 vs 32 bytes). We assume 32 is correct, since the DPDK ixgbe driver treats it that way..
 	// INTERPRETATION: We assume that the "RXPBSIZE[n]-0x6000" calculation above refers to the RXPBSIZE in bytes (otherwise the size of FCRTH[n].RTH would be negative by default...)
 	//                 Thus we set FCRTH[0].RTH = 512 * 1024 - 0x6000, which importantly has the 5 lowest bits unset.
-	IXGBE_REG_WRITE(addr, FCRTH, 0, RTH, 512 * 1024 - 0x6000);
+	IXGBE_REG_WRITE(device->addr, FCRTH, 0, RTH, 512 * 1024 - 0x6000);
 
 	// "- Wait for EEPROM auto read completion."
 	// INTERPRETATION: This refers to Section 8.2.3.2.1 EEPROM/Flash Control Register (EEC), Bit 9 "EEPROM Auto-Read Done"
@@ -493,8 +511,8 @@ bool ixgbe_device_init(const uintptr_t addr)
 	// INTERPRETATION: We also need to check whether the EEPROM has a valid checksum, using the FWSM's register EXT_ERR_IND, where "0x00 = No error"
 	// INTERPRETATION: No timeout is mentioned, so we use 1s.
 	bool eeprom_timed_out;
-	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, EEC, _, AUTORD));
-	if (eeprom_timed_out || IXGBE_REG_CLEARED(addr, EEC, _, EEPRES) || !IXGBE_REG_CLEARED(addr, FWSM, _, EXTERRIND)) {
+	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, EEC, _, AUTORD));
+	if (eeprom_timed_out || IXGBE_REG_CLEARED(device->addr, EEC, _, EEPRES) || !IXGBE_REG_CLEARED(device->addr, FWSM, _, EXTERRIND)) {
 		TN_INFO("EEPROM auto read timed out");
 		return false;
 	}
@@ -502,7 +520,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	// "- Wait for DMA initialization done (RDRXCTL.DMAIDONE)."
 	// INTERPRETATION: Once again, no timeout mentioned, so we use 1s
 	bool dma_timed_out;
-	WAIT_WITH_TIMEOUT(dma_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, RDRXCTL, _, DMAIDONE));
+	WAIT_WITH_TIMEOUT(dma_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, RDRXCTL, _, DMAIDONE));
 	if (dma_timed_out) {
 		TN_INFO("DMA init timed out");
 		return false;
@@ -536,7 +554,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//	Section 8.2.3.27.12 PF Unicast Table Array (PFUTA[n]):
 	//		"This table should be zeroed by software before start of operation."
 	for (uint32_t n = 0; n < IXGBE_PFUTA_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, PFUTA, n);
+		IXGBE_REG_CLEAR(device->addr, PFUTA, n);
 	}
 
 	//	"- VLAN Filter Table Array (VFTA[n])."
@@ -551,7 +569,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	// 	Section 8.2.3.27.15 PF VM VLAN Pool Filter (PFVLVF[n]):
 	//		"Software should initialize these registers before transmit and receive are enabled."
 	for (uint32_t n = 0; n < IXGBE_PFVLVF_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, PFVLVF, n);
+		IXGBE_REG_CLEAR(device->addr, PFVLVF, n);
 	}
 
 	//	"- MAC Pool Select Array (MPSAR[n])."
@@ -562,24 +580,24 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//		 Bit 'i' in register '2*n' is associated with POOL 'i'.
 	//		 Bit 'i' in register '2*n+1' is associated with POOL '32+i'."
 	// INTERPRETATION: We should enable all pools with address 0, just in case, and disable everything else since we only have 1 MAC address.
-	IXGBE_REG_WRITE(addr, MPSAR, 0, 0xFFFFFFFF);
-	IXGBE_REG_WRITE(addr, MPSAR, 1, 0xFFFFFFFF);
+	IXGBE_REG_WRITE(device->addr, MPSAR, 0, 0xFFFFFFFF);
+	IXGBE_REG_WRITE(device->addr, MPSAR, 1, 0xFFFFFFFF);
 	for (uint32_t n = 2; n < IXGBE_MPSAR_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, MPSAR, n);
+		IXGBE_REG_CLEAR(device->addr, MPSAR, n);
 	}
 
 	//	"- VLAN Pool Filter Bitmap (PFVLVFB[n])."
 	// INTERPRETATION: See above remark on PFVLVF
 	//	Section 8.2.3.27.16: PF VM VLAN Pool Filter Bitmap
 	for (uint32_t n = 0; n < IXGBE_PFVLVFB_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, PFVLVFB, n);
+		IXGBE_REG_CLEAR(device->addr, PFVLVFB, n);
 	}
 
 	//	"Set up the Multicast Table Array (MTA) registers.
 	//	 This entire table should be zeroed and only the desired multicast addresses should be permitted (by writing 0x1 to the corresponding bit location).
 	//	 Set the MCSTCTRL.MFE bit if multicast filtering is required."
 	for (uint32_t n = 0; n < IXGBE_MTA_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, MTA, n);
+		IXGBE_REG_CLEAR(device->addr, MTA, n);
 	}
 
 	//	"Initialize the flexible filters 0...5 — Flexible Host Filter Table registers (FHFT)."
@@ -642,8 +660,8 @@ bool ixgbe_device_init(const uintptr_t addr)
 	// ASSUMPTION: We do not want 5-tuple filtering.
 	// INTERPRETATION: We clear Queue Enable, and set the mask to 0b11111 just in case. We then do not need to deal with SAQF, DAQF, SDPQF, SYNQF.
 	for (uint32_t n = 0; n < IXGBE_FTQF_REGISTERS_COUNT; n++) {
-		IXGBE_REG_SET(addr, FTQF, n, MASK);
-		IXGBE_REG_CLEAR(addr, FTQF, n, QUEUEENABLE);
+		IXGBE_REG_SET(device->addr, FTQF, n, MASK);
+		IXGBE_REG_CLEAR(device->addr, FTQF, n, QUEUEENABLE);
 	}
 	//	Section 7.1.2.3 L2 Ethertype Filters:
 	//		"The following flow is used by the Ethertype filters:
@@ -671,7 +689,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//			"The default size of PB[1-7] is also 512 KB but it is meaningless in non-DCB mode."
 	// INTERPRETATION: We do not need to change PB[0]. Let's stay on the safe side and clear PB[1-7] to 0 anyway.
 	for (uint32_t n = 1; n < IXGBE_RXPBSIZE_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, RXPBSIZE, n);
+		IXGBE_REG_CLEAR(device->addr, RXPBSIZE, n);
 	}
 	//		"- TXPBSIZE[0].SIZE=0xA0, TXPBSIZE[1-7].SIZE=0x0"
 	//		Section 8.2.3.9.13 Transmit Packet Buffer Size (TXPBSIZE[n]):
@@ -679,7 +697,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//			"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
 	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
 	for (uint32_t n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, TXPBSIZE, n);
+		IXGBE_REG_CLEAR(device->addr, TXPBSIZE, n);
 	}
 	//		"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
 	// INTERPRETATION: Typo in the spec; should be TXPBTHRESH[0].THRESH
@@ -687,7 +705,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//			"Default values: 0x96 for TXPBSIZE0, 0x0 for TXPBSIZE1-7."
 	// INTERPRETATION: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
 	// Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
-	IXGBE_REG_WRITE(addr, TXPBTHRESH, 0, THRESH, 0xA0u);
+	IXGBE_REG_WRITE(device->addr, TXPBTHRESH, 0, THRESH, 0xA0u);
 	//		"- MRQC and MTQC"
 	//			"- Set MRQE to 0xxxb, with the three least significant bits set according to the RSS mode"
 	// 			Section 8.2.3.7.12 Multiple Receive Queues Command Register (MRQC): "MRQE, Init Val 0x0; 0000b = RSS disabled"
@@ -713,7 +731,7 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//		Section 8.2.3.10.5 DCB Transmit User Priority to Traffic Class (RTTUP2TC): All init vals = 0
 	// Thus we do not need to modify RTTUP2TC.
 	//		"- DMA TX TCP Maximum Allowed Size Requests (DTXMXSZRQ) — set Max_byte_num_req = 0xFFF = 1 MB"
-	IXGBE_REG_WRITE(addr, DTXMXSZRQ, _, MAXBYTESNUMREQ, 0xFFF);
+	IXGBE_REG_WRITE(device->addr, DTXMXSZRQ, _, MAXBYTESNUMREQ, 0xFFF);
 	//		"Allow no-drop policy in Rx:"
 	//		"- PFQDE: The QDE bit should be set to 0b in the PFQDE register for all queues enabling per queue policy by the SRRCTL[n] setting."
 	//		Section 8.2.3.27.9 PF PF Queue Drop Enable Register (PFQDE): "QDE, Init val 0b"
@@ -727,26 +745,26 @@ bool ixgbe_device_init(const uintptr_t addr)
 	//		Section 8.2.3.22.34 MAC Flow Control Register (MFLCN): "RPFCE, Init val 0b"
 	// Thus we do not need to modify MFLCN.
 	//		"- Enable receive legacy flow control via: MFLCN.RFCE=1b"
-	IXGBE_REG_WRITE(addr, MFLCN, _, RFCE, 1);
+	IXGBE_REG_WRITE(device->addr, MFLCN, _, RFCE, 1);
 	//		"- Enable transmit legacy flow control via: FCCFG.TFCE=01b"
-	IXGBE_REG_WRITE(addr, FCCFG, _, TFCE, 1);
+	IXGBE_REG_WRITE(device->addr, FCCFG, _, TFCE, 1);
 	//		"Reset all arbiters:"
 	//		"- Clear RTTDT1C register, per each queue, via setting RTTDQSEL first"
 	for (uint32_t n = 0; n < IXGBE_TX_QUEUE_POOLS_COUNT; n++) {
-		IXGBE_REG_WRITE(addr, RTTDQSEL, _, TXDQIDX, n);
-		IXGBE_REG_CLEAR(addr, RTTDT1C, _);
+		IXGBE_REG_WRITE(device->addr, RTTDQSEL, _, TXDQIDX, n);
+		IXGBE_REG_CLEAR(device->addr, RTTDT1C, _);
 	}
 	//		"- Clear RTTDT2C[0-7] registers"
 	for (uint32_t n = 0; n < IXGBE_RTTDT2C_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, RTTDT2C, n);
+		IXGBE_REG_CLEAR(device->addr, RTTDT2C, n);
 	}
 	//		"- Clear RTTPT2C[0-7] registers"
 	for (uint32_t n = 0; n < IXGBE_RTTPT2C_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, RTTPT2C, n);
+		IXGBE_REG_CLEAR(device->addr, RTTPT2C, n);
 	}
 	//		"- Clear RTRPT4C[0-7] registers"
 	for (uint32_t n = 0; n < IXGBE_RTRPT4C_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(addr, RTRPT4C, n);
+		IXGBE_REG_CLEAR(device->addr, RTRPT4C, n);
 	}
 	//		"Disable TC and VM arbitration layers:"
 	//		"- Tx Descriptor Plane Control and Status (RTTDCS), bits: TDPAC=0b, VMPAC=0b, TDRM=0b, BDPM=1b, BPBFSM=1b"
@@ -829,32 +847,32 @@ bool ixgbe_device_init(const uintptr_t addr)
 	return true;
 }
 
-bool ixgbe_device_set_promiscuous(const uintptr_t addr)
+bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 {
 	// Section 8.2.3.7.1 Filter Control Register:
 	// "Before receive filters are updated/modified the RXCTRL.RXEN bit should be set to 0b.
 	// After the proper filters have been set the RXCTRL.RXEN bit can be set to 1b to re-enable the receiver."
-	bool was_rx_enabled = !IXGBE_REG_CLEARED(addr, RXCTRL, _, RXEN);
+	bool was_rx_enabled = !IXGBE_REG_CLEARED(device->addr, RXCTRL, _, RXEN);
 	if (was_rx_enabled) {
-		IXGBE_REG_CLEAR(addr, RXCTRL, _, RXEN);
+		IXGBE_REG_CLEAR(device->addr, RXCTRL, _, RXEN);
 	}
 
 	// "Multicast Promiscuous Enable. 1b = Enabled."
-	IXGBE_REG_SET(addr, FCTRL, _, MPE);
+	IXGBE_REG_SET(device->addr, FCTRL, _, MPE);
 	// "Unicast Promiscuous Enable. 1b = Enabled.
-	IXGBE_REG_SET(addr, FCTRL, _, UPE);
+	IXGBE_REG_SET(device->addr, FCTRL, _, UPE);
 	// "Broadcast Accept Mode. 1b = Accept broadcast packets to host."
-	IXGBE_REG_SET(addr, FCTRL, _, BAM);
+	IXGBE_REG_SET(device->addr, FCTRL, _, BAM);
 
 	if (was_rx_enabled) {
-		IXGBE_REG_SET(addr, RXCTRL, _, RXEN);
+		IXGBE_REG_SET(device->addr, RXCTRL, _, RXEN);
 	}
 
 	// This function cannot fail (for now?)
 	return true;
 }
 
-bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uintptr_t buffer_addr)
+bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, const uint8_t queue_index, const uintptr_t buffer_addr, struct ixgbe_queue* out_queue)
 {
 	// Section 4.6.7.1 Dynamic Enabling and Disabling of Receive Queues:
 	// "Receive queues can be enabled or disabled dynamically using the following procedure."
@@ -865,7 +883,10 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	// "The following should be done per each receive queue:"
 
 	// "- Allocate a region of memory for the receive descriptor list."
-	// Given to us as 'ring_addr'
+	const uintptr_t ring_addr = tn_hp_allocate(IXGBE_RING_SIZE * IXGBE_RECEIVE_DESCRIPTOR_BYTES_COUNT);
+	if (ring_addr == (uintptr_t) -1) {
+		return false;
+	}
 
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
 	// The buffers are given to us as 'buffer_addr'
@@ -898,26 +919,26 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 		TN_INFO("Ring address is not 128-byte aligned");
 		return false;
 	}
-	IXGBE_REG_WRITE(addr, RDBAH, queue, (uint32_t) (phys_ring_addr >> 32));
-	IXGBE_REG_WRITE(addr, RDBAL, queue, (uint32_t) (phys_ring_addr & 0xFFFFFFFFu));
+	IXGBE_REG_WRITE(device->addr, RDBAH, queue_index, (uint32_t) (phys_ring_addr >> 32));
+	IXGBE_REG_WRITE(device->addr, RDBAL, queue_index, (uint32_t) (phys_ring_addr & 0xFFFFFFFFu));
 
 	// "- Set the length register to the size of the descriptor ring (register RDLEN)."
 	// Section 8.2.3.8.3 Receive DEscriptor Length (RDLEN[n]):
 	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer."
 	// Note that receive descriptors are 16 bytes.
-	IXGBE_REG_WRITE(addr, RDLEN, queue, IXGBE_RING_SIZE * 16u);
+	IXGBE_REG_WRITE(device->addr, RDLEN, queue_index, IXGBE_RING_SIZE * 16u);
 
 	// "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
 	//	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
 	//		"BSIZEPACKET, Receive Buffer Size for Packet Buffer. The value is in 1 KB resolution. Value can be from 1 KB to 16 KB."
 	// We set it to the ceiling of PACKET_SIZE_MAX in KB.
 	// TODO: Play with this, see if it changes perf in any way.
-	IXGBE_REG_WRITE(addr, SRRCTL, queue, BSIZEPACKET, IXGBE_PACKET_SIZE_MAX / 1024u + (IXGBE_PACKET_SIZE_MAX % 1024u != 0));
+	IXGBE_REG_WRITE(device->addr, SRRCTL, queue_index, BSIZEPACKET, IXGBE_PACKET_SIZE_MAX / 1024u + (IXGBE_PACKET_SIZE_MAX % 1024u != 0));
 	//		"DESCTYPE, Define the descriptor type in Rx: [...] 001b = Advanced descriptor one buffer."
-	IXGBE_REG_WRITE(addr, SRRCTL, queue, DESCTYPE, 1);
+	IXGBE_REG_WRITE(device->addr, SRRCTL, queue_index, DESCTYPE, 1);
 	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
 	// ASSUMPTION: We want to drop packets if we can't process them fast enough, to have predictable behavior.
-	IXGBE_REG_SET(addr, SRRCTL, queue, DROPEN);
+	IXGBE_REG_SET(device->addr, SRRCTL, queue_index, DROPEN);
 
 	// "- If header split is required for this queue, program the appropriate PSRTYPE for the appropriate headers."
 	// Section 7.1.10 Header Splitting: "Header Splitting mode might cause unpredictable behavior and should not be used with the 82599."
@@ -927,13 +948,13 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	// TODO: Write all assumptions in a single place, then refer to them by ID or something.
 
 	// "- Program RXDCTL with appropriate values including the queue Enable bit. Note that packets directed to a disabled queue are dropped."
-	IXGBE_REG_SET(addr, RXDCTL, queue, ENABLE);
+	IXGBE_REG_SET(device->addr, RXDCTL, queue_index, ENABLE);
 
 	// "- Poll the RXDCTL register until the Enable bit is set. The tail should not be bumped before this bit was read as 1b."
 	// INTERPRETATION: No timeout is mentioned here, let's say 1s to be safe.
 	// TODO: Categorize all interpretations (e.g. "no timeout", "clear typo", ...)
 	bool queue_timed_out;
-	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, RXDCTL, queue, ENABLE));
+	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, RXDCTL, queue_index, ENABLE));
 	if (queue_timed_out) {
 		TN_INFO("RXDCTL.ENABLE did not set, cannot enable queue");
 		return false;
@@ -942,39 +963,56 @@ bool ixgbe_device_init_receive(const uintptr_t addr, const uint8_t queue, const 
 	// "- Bump the tail pointer (RDT) to enable descriptors fetching by setting it to the ring length minus one."
 	// Section 7.1.9 Receive Descriptor Queue Structure:
 	// "Software inserts receive descriptors by advancing the tail pointer(s) to refer to the address of the entry just beyond the last valid descriptor."
-	IXGBE_REG_WRITE(addr, RDT, queue, IXGBE_RING_SIZE - 1u);
+	IXGBE_REG_WRITE(device->addr, RDT, queue_index, IXGBE_RING_SIZE - 1u);
 
 	// "- Enable the receive path by setting RXCTRL.RXEN. This should be done only after all other settings are done following the steps below."
 	//	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
-	IXGBE_REG_SET(addr, SECRXCTRL, _, RXDIS);
+	IXGBE_REG_SET(device->addr, SECRXCTRL, _, RXDIS);
 	//	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
 	// INTERPRETATION: Another undefined timeout, assuming 1s as usual
 	bool sec_timed_out;
-	WAIT_WITH_TIMEOUT(sec_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, SECRXSTAT, _, SECRXRDY));
+	WAIT_WITH_TIMEOUT(sec_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, SECRXSTAT, _, SECRXRDY));
 	if (sec_timed_out) {
 		TN_INFO("SECRXSTAT.SECRXRDY timed out, cannot enable queue");
 		return false;
 	}
 	//	"- Set RXCTRL.RXEN"
-	IXGBE_REG_SET(addr, RXCTRL, _, RXEN);
+	IXGBE_REG_SET(device->addr, RXCTRL, _, RXEN);
 	//	"- Clear the SECRXCTRL.SECRX_DIS bits to enable receive data path"
 	// INTERPRETATION: This refers to RX_DIS, not SECRX_DIS, since it's RX_DIS being cleared that enables the receive data path.
-	IXGBE_REG_CLEAR(addr, SECRXCTRL, _, RXDIS);
+	IXGBE_REG_CLEAR(device->addr, SECRXCTRL, _, RXDIS);
 	//	"- If software uses the receive descriptor minimum threshold Interrupt, that value should be set."
 	// ASSUMPTION: We don't want interrupts.
 	// Nothing to do.
 	// "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
 	// Section 8.2.3.1.3 Extended Device Control Register (CTRL_EXT): Bit 16 == "NS_DIS, No Snoop Disable"
-	IXGBE_REG_SET(addr, CTRLEXT, _, NSDIS);
+	IXGBE_REG_SET(device->addr, CTRLEXT, _, NSDIS);
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
-	IXGBE_REG_SET(addr, DCARXCTRL, queue, UNKNOWN);
+	IXGBE_REG_SET(device->addr, DCARXCTRL, queue_index, UNKNOWN);
 
+	out_queue->device_addr = device->addr;
+	out_queue->ring_addr = ring_addr;
+	out_queue->queue_index = queue_index;
+	out_queue->packet_index = 0;
 	return true;
 }
 
-bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uintptr_t ring_addr, const uintptr_t buffer_addr)
+bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const uint8_t queue_index, const uintptr_t buffer_addr, struct ixgbe_queue* out_queue)
 {
-	// First, let's set up our ring.
+	// Section 4.6.8.1 Dynamic Enabling and Disabling of Transmit Queues:
+	// "Transmit queues can be enabled or disabled dynamically if the following procedure is followed."
+	// Section 4.6.8.1.1 Enabling:
+	// "Follow the per queue initialization described in the previous section."
+
+	// Section 4.6.8 Transmit Initialization:
+	// "The following steps should be done once per transmit queue:"
+
+	// "- Allocate a region of memory for the transmit descriptor list."
+	const uintptr_t ring_addr = tn_hp_allocate(IXGBE_RING_SIZE * IXGBE_SEND_DESCRIPTOR_BYTES_COUNT);
+	if (ring_addr == (uintptr_t) -1) {
+		return false;
+	}
+	// Let's set up our ring.
 	uint64_t* ring = (uint64_t*) ring_addr;
 	for (uint16_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.2.3.2.4 Advanced Transmit Data Descriptor
@@ -991,16 +1029,6 @@ bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uin
 		ring[n * 2u + 1u] = 0u;
 	}
 
-	// Section 4.6.8.1 Dynamic Enabling and Disabling of Transmit Queues:
-	// "Transmit queues can be enabled or disabled dynamically if the following procedure is followed."
-	// Section 4.6.8.1.1 Enabling:
-	// "Follow the per queue initialization described in the previous section."
-
-	// Section 4.6.8 Transmit Initialization:
-	// "The following steps should be done once per transmit queue:"
-
-	// "- Allocate a region of memory for the transmit descriptor list."
-	// Given to us in 'ring_addr'.
 
 	// "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
 	uintptr_t phys_ring_addr = tn_mem_virtual_to_physical_address(ring_addr);
@@ -1014,14 +1042,14 @@ bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uin
 		TN_INFO("Ring address is not 128-byte aligned");
 		return false;
 	}
-	IXGBE_REG_WRITE(addr, TDBAH, queue, (uint32_t) (phys_ring_addr >> 32));
-	IXGBE_REG_WRITE(addr, TDBAL, queue, (uint32_t) (phys_ring_addr & 0xFFFFFFFFu));
+	IXGBE_REG_WRITE(device->addr, TDBAH, queue_index, (uint32_t) (phys_ring_addr >> 32));
+	IXGBE_REG_WRITE(device->addr, TDBAL, queue_index, (uint32_t) (phys_ring_addr & 0xFFFFFFFFu));
 
 	// "- Set the length register to the size of the descriptor ring (TDLEN)."
 	// Section 8.2.3.9.7 Transmit Descriptor Length (TDLEN[n]):
 	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer."
 	// Note that each descriptor is 16 bytes.
-	IXGBE_REG_WRITE(addr, TDLEN, queue, IXGBE_RING_SIZE * 16u);
+	IXGBE_REG_WRITE(device->addr, TDLEN, queue_index, IXGBE_RING_SIZE * 16u);
 
 	// "- Program the TXDCTL register with the desired TX descriptor write back policy (see Section 8.2.3.9.10 for recommended values)."
 	// TODO: See if this is useful.
@@ -1032,14 +1060,14 @@ bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uin
 	// "- Enable transmit path by setting DMATXCTL.TE.
 	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
 	// We do it every time, it makes the code simpler.
-	IXGBE_REG_SET(addr, DMATXCTL, _, TE);
+	IXGBE_REG_SET(device->addr, DMATXCTL, _, TE);
 
 	// "- Enable the queue using TXDCTL.ENABLE.
 	//    Poll the TXDCTL register until the Enable bit is set."
 	// INTERPRETATION: No timeout is mentioned here, let's say 1s to be safe.
-	IXGBE_REG_SET(addr, TXDCTL, queue, ENABLE);
+	IXGBE_REG_SET(device->addr, TXDCTL, queue_index, ENABLE);
 	bool queue_timed_out;
-	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(addr, TXDCTL, queue, ENABLE));
+	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, TXDCTL, queue_index, ENABLE));
 	if (queue_timed_out) {
 		TN_INFO("TXDCTL.ENABLE did not set, cannot enable queue");
 		return false;
@@ -1048,27 +1076,20 @@ bool ixgbe_device_init_send(const uintptr_t addr, const uint8_t queue, const uin
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
 	// We have nothing to transmit, so we leave TDH/TDT alone.
 
+	out_queue->device_addr = device->addr;
+	out_queue->ring_addr = ring_addr;
+	out_queue->queue_index = queue_index;
+	out_queue->packet_index = 0;
 	return true;
 }
 
-struct ixgbe_device
-{
-	uintptr_t addr;
-	uintptr_t buffer;
-	uintptr_t receive_ring;
-	uintptr_t send_ring;
-	uint8_t index; // TODO check if making index/queue uint16 or 32 or 64 makes any difference (changing index will need explicit truncation when it overflows the ring size!)
-	uint8_t queue;
-	uint8_t _padding[6];
-};
-
-uint16_t ixgbe_receive(struct ixgbe_device* device)
+uint16_t ixgbe_receive(struct ixgbe_queue* queue)
 {
 	// Wait for a packet to be at the current index
 	// Note that since descriptors are 16 bytes, we need to double the index
 	uint64_t packet_metadata;
 	do {
-		packet_metadata = *((volatile uint64_t*)(device->receive_ring + 2u*device->index + 1u));
+		packet_metadata = *((volatile uint64_t*)(queue->ring_addr + 2u*queue->packet_index + 1u));
 	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
 	// Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done.
 	} while((packet_metadata & BITL(0)) == 0);
@@ -1076,45 +1097,79 @@ uint16_t ixgbe_receive(struct ixgbe_device* device)
 	// Set the tail to the current index (right now, it's just before that)
 	// This does _not_ imply that the NIC will use it to receive a packet;
 	// since the ring always has one unused descriptor by design, we're making the current descriptor unused.
-	IXGBE_REG_WRITE(device->addr, RDT, device->queue, device->index);
+	IXGBE_REG_WRITE(queue->device_addr, RDT, queue->queue_index, queue->packet_index);
 
 	// Return the length
 	return (packet_metadata >> 32) & 0xFFFFu;
 }
 
-void ixgbe_send(struct ixgbe_device* device, uint16_t packet_length)
+void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 {
-	// Wait for the current descriptor to be free
-	// TODO: Can we assume that it's impossible for it to not be free, since we'll have processed IXGBE_RING_SIZE packets in the meantime? It should've been sent...
+	// TODO YESSS we can drop packets by making a zero-length descriptor!
+	// Set the metadata
+	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor
+	uint64_t packet_metadata =
+	// "DTALEN", bits 0-15: "This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor."
+		((uint64_t) packet_length) |
+	// "RSV", bits 16-17: "Reserved"
+		// All zero
+	// "MAC", bits 18-19: "ILSec (bit 0) — Apply LinkSec on packet. [...] 1588 (bit 1) — IEEE1588 time stamp packet."
+		// All zero
+	// "DTYP", bits 20-23: "0011b for advanced data descriptor."
+		(0x3ull << 20) |
+	// "DCMD", bits 24-31:
+	// "TSE (bit 7) — Transmit Segmentation Enable [...]
+	//  VLE (bit 6) — VLAN Packet Enable [...]
+	//  DEXT (bit 5) — Descriptor Extension: This bit must be one to indicate advanced descriptor format
+	//  Rsv (bit 4) — Reserved [...]
+	//  RS (bit 3) — Report Status: signals hardware to report the DMA completion status indication
+	//  Rsv (bit 2) — Reserved
+	//  IFCS (bit 1) — Insert FCS
+	//  EOP (bit 0) — End of Packet"
+		// Thus, we must set bits 5, 3 and 0
+		(0x29ull << 24) |
+	// STA, bits 32-35: "Rsv (bit 3:1) — Reserved. DD (bit 0) — Descriptor Done"
+		// All zero
+	// IDX, bits 36-38: "If no offload is required and the CC bit is cleared, this field is not relevant"
+		// All zero
+	// CC, bit 39: "Check Context bit — When set, a Tx context descriptor indicated by IDX index should be used for this packet(s)"
+		// Zero
+	// POPTS, bits 40-45:
+	// "Rsv (bits 5:3) — Reserved
+	//  IPSEC (bit 2) — Ipsec offload request
+	//  TXSM (bit 1) — Insert TCP/UDP Checksum
+	//  IXSM (bit 0) — Insert IP Checksum:"
+		// All zero
+	// PAYLEN, bits 46-63: "PAYLEN indicates the size (in byte units) of the data buffer(s) in host memory for transmission. In a single-send packet, PAYLEN defines the entire packet size fetched from host memory."
+		((uint64_t) packet_length << 46);
+
+	// Write the metadata
+	*((volatile uint64_t*)(queue->ring_addr + 2u*queue->packet_index + 1u)) = packet_metadata;
+
+	// Set the tail to the newly-incremented index, which tells the NIC to use the descriptor
+	IXGBE_REG_WRITE(queue->device_addr, TDT, queue->queue_index, queue->packet_index);
+
+	// Wait for the current descriptor to be done
 	// Here as well the descriptors are 16 bytes so we double the index.
-	uint64_t packet_metadata;
 	do {
-		packet_metadata = *((volatile uint64_t*)(device->send_ring + 2u*device->index + 1u));
+		packet_metadata = *((volatile uint64_t*)(queue->ring_addr + 2u*queue->packet_index + 1u));
 	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
 	// STA is at offset 32, and its "bit 0" is Descriptor Done
 	} while ((packet_metadata & BITL(32)) == 1);
 
 	// Increase the index
-	device->index = (uint8_t)(device->index + 1u);
-
-	// TODO YESSS we can drop packets by making a zero-length descriptor!
-	// Set the metadata
-	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor
-	// "DTALEN", bits 0-15: "This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor."
-	// "RSV", bits 16-17: "Reserved"
-	// "MAC", bits 18-19
-	// "DTYP", bits 20-23
-	// "DCMD", bits 24-31
-	// STA, bits 32-35
-	// IDX, bits 36-28
-	// CC, bit 39
-	// POPTS, bits 40-45
-	// PAYLEN, bits 46-63
-
-	// Set the tail to the newly-incremented index, which tells the NIC to use the descriptor
-	IXGBE_REG_WRITE(device->addr, TDT, device->queue, device->index);
+	queue->packet_index = (uint8_t)(queue->packet_index + 1u);
 }
 
+
+
+/*static void ixgbe_reg_force_read(const uintptr_t addr, const uint32_t reg)
+{
+	// See https://stackoverflow.com/a/13824124/3311770
+	uint32_t* ptr = (uint32_t*)((char*)addr + reg);
+	__asm__ volatile ("" : "=m" (*ptr) : "r" (*ptr));
+}*/
+/*
 #include <stdio.h>
 #include <inttypes.h>
 #define IXGBE_REG_RAL(n) (0x0A200u + 8u*n)
@@ -1404,3 +1459,4 @@ if(regs[n]!=0x1430)			changed=true;
 	if(changed)ixgbe_sanity_check(addr);
 //	printf("checked\n");
 }
+*/

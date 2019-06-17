@@ -15,20 +15,7 @@
 #define PCI_CONFIG_ADDR 0xCF8
 #define PCI_CONFIG_DATA 0xCFC
 
-// We store known PCI devices so that we can implement the tn_pci_read function since it refers to devices by their memory-mapped address.
-struct tn_pci_device {
-	// We assume that a correct memory address is never 0
-	uintptr_t address;
-
-	uint8_t bus;
-	uint8_t device;
-	uint8_t function;
-
-	uint8_t _padding[5]; // silence warning
-};
-// 16 known devices should be more than enough
-struct tn_pci_device tn_pci_known_devices[16];
-bool tn_pci_got_ioperm;
+static bool tn_pci_got_ioperm;
 
 
 // TODO uniformize naming
@@ -46,18 +33,6 @@ uintptr_t tn_pci_get_device_address(const uint8_t bus, const uint8_t device, con
 			goto error;
 		}
 		tn_pci_got_ioperm = true;
-	}
-
-	// Find which slot we'll save the memory-mapped address in
-	struct tn_pci_device* dev = NULL;
-	for (size_t n = 0; n < sizeof(tn_pci_known_devices)/sizeof(struct tn_pci_device); n++) {
-		if (tn_pci_known_devices[n].address == 0) {
-			dev = &tn_pci_known_devices[n];
-		}
-	}
-	if (dev == NULL) {
-		TN_DEBUG("Too many PCI devices");
-		goto error;
 	}
 
 	// Read the first line of the PCI /resource file, as a sanity check + indication of the length of the resource
@@ -94,11 +69,6 @@ uintptr_t tn_pci_get_device_address(const uint8_t bus, const uint8_t device, con
 		goto error;
 	}
 
-	// Store the device info
-	dev->bus = bus;
-	dev->device = device;
-	dev->function = function;
-	dev->address = dev_addr;
 	TN_INFO("PCI device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, bus, device, function, dev_addr);
 
 error:
@@ -107,23 +77,11 @@ error:
 	return dev_addr;
 }
 
-uint32_t tn_pci_read(const uintptr_t device_address, const uint8_t reg)
+uint32_t tn_pci_read(uint8_t bus, uint8_t device, uint8_t function, const uint8_t reg)
 {
-	const struct tn_pci_device* dev = NULL;
-	for (size_t n = 0; n < sizeof(tn_pci_known_devices)/sizeof(struct tn_pci_device); n++) {
-		if (tn_pci_known_devices[n].address == device_address) {
-			dev = &tn_pci_known_devices[n];
-		}
-	}
-	if (dev == NULL) {
-		// Device not found. Return all-1s, which is what PCI would return in that case.
-		return 0xFFFFFFFF;
-	}
-
-	const uint32_t address = 0x80000000 | ((uint32_t)dev->bus << 16) | ((uint32_t)dev->device << 11) | ((uint32_t)dev->function << 8) | reg;
+	const uint32_t address = 0x80000000 | ((uint32_t)bus << 16) | ((uint32_t)device << 11) | ((uint32_t)function << 8) | reg;
 	outl_p(address, PCI_CONFIG_ADDR);
 	const uint32_t result = inl_p(PCI_CONFIG_DATA);
 	TN_DEBUG("PCI read: 0x%08" PRIx32 " -> 0x%08" PRIx32, address, result);
-
 	return result;
 }

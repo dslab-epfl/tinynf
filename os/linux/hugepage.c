@@ -10,13 +10,15 @@
 //       Locking a page is not sufficient - it guarantees the page won't be swapped out,
 //       not that it won't be moved.
 
-uintptr_t tn_hp_allocate(const size_t size)
+uintptr_t tn_hp_allocate(size_t size)
 {
 	// We only support 2MB hugepages
 	const int HUGEPAGE_SIZE_POWER = 10 + 10 + 1;
 	const size_t HUGEPAGE_SIZE = 1U << HUGEPAGE_SIZE_POWER;
 
-	if (size != HUGEPAGE_SIZE) {
+	if (size < HUGEPAGE_SIZE) {
+		size = HUGEPAGE_SIZE;
+	} else if (size > HUGEPAGE_SIZE) {
 		return (uintptr_t) -1;
 	}
 
