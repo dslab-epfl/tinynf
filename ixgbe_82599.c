@@ -1,4 +1,6 @@
 #include "ixgbe_82599.h"
+	static bool ixgbe_lock_resources(uintptr_t);
+	static void ixgbe_unlock_resources(uintptr_t);
 
 #include "os/arch.h"
 #include "os/hugepage.h"
@@ -33,9 +35,9 @@ const size_t IXGBE_SEND_DESCRIPTOR_BYTES_COUNT = 16;
 #define GET_MACRO(_1, _2, _3, _4, _5, NAME, ...) NAME
 
 // Bit tricks; note that we count bits starting from 0!
-#define BIT(n) (1u << n)
-#define BITL(n) (1ull << n)
-#define BITS(start, end) ((end == 31 ? 0u : (0xFFFFFFFFu << (end + 1))) ^ (0xFFFFFFFFu << start))
+#define BIT(n) (1u << (n))
+#define BITL(n) (1ull << (n))
+#define BITS(start, end) (((end) == 31 ? 0u : (0xFFFFFFFFu << ((end) + 1))) ^ (0xFFFFFFFFu << (start)))
 #define TRAILING_ZEROES(n) __builtin_ctzll(n)
 
 // Poll until the given condition holds, or the given timeout occurs; store whether a timeout occurred in result_name
@@ -433,13 +435,16 @@ static void ixgbe_device_reset(const struct ixgbe_device* const device)
 static void ixgbe_device_disable_interrupts(const struct ixgbe_device* const device)
 {
 	for (uint32_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
-		IXGBE_REG_CLEAR(device->addr, EIMC, n, MASK);
+		// Section 8.2.3.5.4 Extended Interrupt Mask Clear Register (EIMC):
+		// "Writing a 1b to any bit clears its corresponding bit in the EIMS register disabling the corresponding interrupt in the EICR register. Writing 0b has no impact"
+		IXGBE_REG_SET(device->addr, EIMC, n, MASK);
 	}
 }
 
 bool ixgbe_device_init(const struct ixgbe_device* const device)
 {
 	// We need to write 64-bit memory values, so pointers better be 64 bits!
+	// TODO enforce this at the type level? how?
 	if (UINTPTR_MAX != UINT64_MAX) {
 		TN_INFO("Wrong size of uintptr_t");
 		return false;
@@ -528,7 +533,21 @@ bool ixgbe_device_init(const struct ixgbe_device* const device)
 	// "- Setup the PHY and the link (see Section 4.6.4)."
 	// ASSUMPTION: The cables are already plugged in.
 	// INTERPRETATION: We don't need to do anything here.
+	
+// NOTE the LINKS reg has a completely different val if we don't do that - and it has a different val for the two ports! so let's do that.
+// TODO format this and stuff
+	if(!ixgbe_lock_resources(device->addr)) return false;
+#define IXGBE_REG_AUTOC(_) 0x042A0u
+#define IXGBE_REG_AUTOC_10GPMAPMDPARALLEL BITS(7,8)
+#define IXGBE_REG_AUTOC_RESTARTAN BIT(12)
+#define IXGBE_REG_AUTOC_LMS BITS(13,15)
+TN_INFO("AUTOC 0x%016"PRIx32, IXGBE_REG_READ(device->addr, AUTOC, _));
+IXGBE_REG_WRITE(device->addr, AUTOC, _, 10GPMAPMDPARALLEL, 0);
+IXGBE_REG_WRITE(device->addr, AUTOC, _, LMS, 3);
+IXGBE_REG_SET(device->addr, AUTOC, _, RESTARTAN);
+ixgbe_unlock_resources(device->addr);
 
+	
 	// "- Initialize all statistical counters (see Section 4.6.5)."
 	// ASSUMPTION: We do not care about statistics.
 	// INTERPRETATION: We don't need to do anything here.
@@ -768,7 +787,10 @@ bool ixgbe_device_init(const struct ixgbe_device* const device)
 	//				"SIZE, Init val 0xA0"
 	//				"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
 	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
-	for (uint32_t n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
+	
+	IXGBE_REG_WRITE(device->addr, TXPBSIZE, 0, 0xA000);
+	
+		for (uint32_t n = 1; n < IXGBE_TXPBSIZE_REGISTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(device->addr, TXPBSIZE, n);
 	}
 	//			"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
@@ -849,9 +871,6 @@ bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, co
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
 	// The buffers are given to us as 'buffer_addr'
 	uint64_t* ring = (uint64_t*) ring_addr;
-	
-TN_DEBUG("receive metadata ___ %p", ring);
-	
 	for (uint16_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
 		// Line 0 - Packet Buffer Address
@@ -963,11 +982,13 @@ static bool ixgbe_device_init_sfp(uintptr_t addr);
 #define IXGBE_REG_ESDP_SDP3 BIT(3)
 bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const uint8_t queue_index, const uintptr_t buffer_addr, struct ixgbe_queue* out_queue)
 {
+/*
 if(!ixgbe_device_init_sfp(device->addr))return false;
 // TODO document
 IXGBE_REG_CLEAR(device->addr, ESDP, _, SDP3);
 // Enable Tx laser; allow 100ms to light up
 tn_sleep_us(100 * 1000);
+*/
 	
 
 	// Section 4.6.8.1 Dynamic Enabling and Disabling of Transmit Queues:
@@ -1024,7 +1045,15 @@ tn_sleep_us(100 * 1000);
 
 	// "- Program the TXDCTL register with the desired TX descriptor write back policy (see Section 8.2.3.9.10 for recommended values)."
 	// TODO: See if this is useful.
-
+	
+#define IXGBE_REG_TXDCTL_PTHRESH BITS(0,6)
+#define IXGBE_REG_TXDCTL_HTHRESH BITS(8,14)
+#define IXGBE_REG_TXDCTL_WTHRESH BITS(16,22)
+#define IXGBE_REG_TXDCTL_SWFLSH BIT(26)
+IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 36);
+IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 8);
+IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, WTHRESH, 4);
+	
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	// TODO: Same as above. Take a look at the old ixgbe driver (1.3.31.5), it uses it, and disables some relaxed ordering because of it.
 
@@ -1070,7 +1099,10 @@ uint16_t ixgbe_receive(struct ixgbe_queue* queue)
 	// This does _not_ imply that the NIC will use it to receive a packet;
 	// since the ring always has one unused descriptor by design, we're making the current descriptor unused.
 	IXGBE_REG_WRITE(queue->device_addr, RDT, queue->queue_index, queue->packet_index);
-
+	
+ixgbe_sanity_check(queue->device_addr);
+ixgbe_stats_probe(queue->device_addr);
+	
 	// Return the length
 	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
 	// Bits 32-47: "PKT_LEN holds the number of bytes posted to the packet buffer."
@@ -1079,7 +1111,7 @@ uint16_t ixgbe_receive(struct ixgbe_queue* queue)
 
 void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 {
-	// TODO YESSS we can drop packets by making a zero-length descriptor!
+	// TODO YESSS we can drop packets by making a zero-length descriptor! but DD isn't set; will this be better with TWDBAL/H?
 	// Set the metadata
 	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor
 	uint64_t packet_metadata =
@@ -1090,7 +1122,7 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	// "MAC", bits 18-19: "ILSec (bit 0) — Apply LinkSec on packet. [...] 1588 (bit 1) — IEEE1588 time stamp packet."
 		// All zero
 	// "DTYP", bits 20-23: "0011b for advanced data descriptor."
-		(0x3ull << 20) |
+		BITL(20) | BITL(20+1) |
 	// "DCMD", bits 24-31:
 	// "TSE (bit 7) — Transmit Segmentation Enable [...]
 	//  VLE (bit 6) — VLAN Packet Enable [...]
@@ -1098,10 +1130,12 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	//  Rsv (bit 4) — Reserved [...]
 	//  RS (bit 3) — Report Status: signals hardware to report the DMA completion status indication
 	//  Rsv (bit 2) — Reserved
-	//  IFCS (bit 1) — Insert FCS
+	//  IFCS (bit 1) — Insert FCS:
+	//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
+	//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
 	//  EOP (bit 0) — End of Packet"
-		// Thus, we must set bits 5, 3 and 0
-		(0x29ull << 24) |
+		// Thus, we must set bits 5, 3, 1 and 0
+		BITL(24+5) | BITL(24+3) | BITL(24+1) | BITL(24) |
 	// STA, bits 32-35: "Rsv (bit 3:1) — Reserved. DD (bit 0) — Descriptor Done"
 		// All zero
 	// IDX, bits 36-38: "If no offload is required and the CC bit is cleared, this field is not relevant"
@@ -1121,25 +1155,28 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	volatile uint64_t* packet_metadata_addr = (volatile uint64_t*)queue->ring_addr + 2u*queue->packet_index + 1u;
 	*packet_metadata_addr = packet_metadata;
 
+	// Increment the index
+	queue->packet_index = (uint8_t)(queue->packet_index + 1u);
+
 	// Increment the tail, which tells the NIC to use the descriptor
-	IXGBE_REG_WRITE(queue->device_addr, TDT, queue->queue_index, queue->packet_index + 1u);
-TN_INFO("metadata before 0x%016"PRIx64,packet_metadata);
+	IXGBE_REG_WRITE(queue->device_addr, TDT, queue->queue_index, queue->packet_index);
+
+	
+ixgbe_sanity_check(queue->device_addr);
+ixgbe_stats_probe(queue->device_addr);
+	
+//TN_INFO("addr 0x%016"PRIx64,*((volatile uint64_t*)queue->ring_addr+2u*queue->packet_index));
+//TN_INFO("metadata before 0x%016"PRIx64,packet_metadata);
+if (queue->packet_index >= 50)
 	// Wait for the descriptor to be done
 	// Here as well the descriptors are 16 bytes so we double the index
 	do {
 		packet_metadata = *packet_metadata_addr;
+//IXGBE_REG_WRITE(queue->device_addr, TXDCTL, queue->queue_index, SWFLSH, 0);
 	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
 	// STA is at offset 32, and its "bit 0" is Descriptor Done
 	} while ((packet_metadata & BITL(32)) == 0);
 TN_INFO("metadata after 0x%016"PRIx64,packet_metadata);
-
-	// Increase the index
-	queue->packet_index = (uint8_t)(queue->packet_index + 1u);
-	
-// TODO remove
-//ixgbe_sanity_check(queue->device_addr);
-ixgbe_stats_probe(queue->device_addr);
-	
 }
 
 
@@ -1174,18 +1211,20 @@ void ixgbe_sanity_check(const uintptr_t addr)
 	}
 
 	if (IXGBE_REG_CLEARED(addr, RXDCTL, 0, ENABLE)) {
-		printf("QUEUE ENABLE is cleared!\n");
+		printf("RX QUEUE ENABLE is cleared!\n");
 	}
+
+	printf("txdctl = 0x%08"PRIx32"\n", IXGBE_REG_READ(addr, TXDCTL, 0));
 
 	uint32_t status = IXGBE_REG_READ(addr,STATUS,_);
 	printf("status = 0x%08"PRIx32"\n",status);
 
-
+ixgbe_reg_force_read(addr, IXGBE_REG_LINKS(_));
+ixgbe_reg_force_read(addr, IXGBE_REG_LINKS2(_));
 	uint32_t links = IXGBE_REG_READ(addr,LINKS,_);
 	printf("links = 0x%08"PRIx32"\n",links);
 	uint32_t links2 = IXGBE_REG_READ(addr,LINKS2,_);
 	printf("links2 = 0x%08"PRIx32"\n",links2);
-
 
 //	IXGBE_REG_FORCE_READ(addr, AUTOC, _);
 //	uint32_t autoc = IXGBE_REG_READ(addr,AUTOC,_);
@@ -1445,7 +1484,7 @@ if(regs[n]!=0xfff1430)			changed=true;
 			printf("REG 0x%" PRIx32 " == %" PRIu32"\n", regs[n], xxx);
 		}
 	}
-	if(changed)ixgbe_sanity_check(addr);
+//	if(changed)ixgbe_sanity_check(addr);
 //	printf("checked\n");
 }
 // Old code that may be necessary in the future; the dpdk ixgbe driver does this and I have no clue why...
@@ -1667,8 +1706,6 @@ static bool ixgbe_device_init_sfp(const uintptr_t addr)
 
 
 // Section 8.2.3.22.19 Auto Negotiation Control Register
-//#define IXGBE_REG_AUTOC(_) 0x042A0
-//#define IXGBE_REG_AUTOC_LMS BITS(13,15)
 
      // TODO is this needed for 10G somehow?
     // Section 8.2.3.22.19 Auto Negotiation Control Register
