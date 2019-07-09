@@ -760,7 +760,7 @@ ixgbe_unlock_resources(device->addr);
 	//				"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
 	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
 	
-	IXGBE_REG_WRITE(device->addr, TXPBSIZE, 0, 0xA000);
+//	IXGBE_REG_WRITE(device->addr, TXPBSIZE, 0, 0xA000);
 	
 	for (uint32_t n = 1; n < IXGBE_TRAFFIC_CLASSES_COUNT; n++) {
 		IXGBE_REG_CLEAR(device->addr, TXPBSIZE, n);
@@ -958,6 +958,7 @@ static bool ixgbe_device_init_sfp(uintptr_t addr);
 //#define IXGBE_REG_ESDP_SDP3 BIT(3)
 bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const uint8_t queue_index, const uintptr_t buffer_addr, struct ixgbe_queue* out_queue)
 {
+	
 /*
 if(!ixgbe_device_init_sfp(device->addr))return false;
 // TODO document
@@ -1025,13 +1026,13 @@ tn_sleep_us(100 * 1000);
 	// "- Program the TXDCTL register with the desired TX descriptor write back policy (see Section 8.2.3.9.10 for recommended values)."
 	// TODO: See if this is useful.
 	
-#define IXGBE_REG_TXDCTL_PTHRESH BITS(0,6)
-#define IXGBE_REG_TXDCTL_HTHRESH BITS(8,14)
-#define IXGBE_REG_TXDCTL_WTHRESH BITS(16,22)
+//#define IXGBE_REG_TXDCTL_PTHRESH BITS(0,6)
+//#define IXGBE_REG_TXDCTL_HTHRESH BITS(8,14)
+//#define IXGBE_REG_TXDCTL_WTHRESH BITS(16,22)
 //#define IXGBE_REG_TXDCTL_SWFLSH BIT(26)
-IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 36);
-IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 8);
-IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, WTHRESH, 4);
+//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 36);
+//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 8);
+//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, WTHRESH, 4);
 	
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	// TODO: Same as above. Take a look at the old ixgbe driver (1.3.31.5), it uses it, and disables some relaxed ordering because of it.
@@ -1079,8 +1080,8 @@ uint16_t ixgbe_receive(struct ixgbe_queue* queue)
 	// since the ring always has one unused descriptor by design, we're making the current descriptor unused.
 	IXGBE_REG_WRITE(queue->device_addr, RDT, queue->queue_index, queue->packet_index);
 	
-ixgbe_sanity_check(queue->device_addr);
-ixgbe_stats_probe(queue->device_addr);
+//ixgbe_sanity_check(queue->device_addr);
+//ixgbe_stats_probe(queue->device_addr);
 	
 	// Return the length
 	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
@@ -1141,12 +1142,12 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	IXGBE_REG_WRITE(queue->device_addr, TDT, queue->queue_index, queue->packet_index);
 
 	
-ixgbe_sanity_check(queue->device_addr);
-ixgbe_stats_probe(queue->device_addr);
+//ixgbe_sanity_check(queue->device_addr);
+//ixgbe_stats_probe(queue->device_addr);
 	
 //TN_INFO("addr 0x%016"PRIx64,*((volatile uint64_t*)queue->ring_addr+2u*queue->packet_index));
 //TN_INFO("metadata before 0x%016"PRIx64,packet_metadata);
-if (queue->packet_index >= 50)
+//if (queue->packet_index >= 50)
 	// Wait for the descriptor to be done
 	// Here as well the descriptors are 16 bytes so we double the index
 	do {

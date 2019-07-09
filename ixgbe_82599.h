@@ -9,7 +9,8 @@
 static const uint32_t IXGBE_RING_SIZE = 256;
 
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
-// Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...>  19 // Thus we set 8 KB as a power of 2 that can be sent and received.
+// Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...]
+// Thus we set 8 KB as a power of 2 that can be sent and received.
 static const uint32_t IXGBE_PACKET_SIZE_MAX = 8 * 1024;
 
 // This struct is not used in the processing loop.
@@ -25,7 +26,7 @@ struct ixgbe_device
 // This struct is used in the processing loop!
 struct ixgbe_queue
 {
-	uintptr_t device_addr;
+	uintptr_t device_addr; // TODO consider having the reg address directly, less computation?
 	uintptr_t ring_addr;
 	uint8_t queue_index;
 	uint8_t packet_index; // TODO check if making index/queue uint16 or 32 or 64 makes any difference (changing index will need explicit truncation when it overflows the ring size!)
