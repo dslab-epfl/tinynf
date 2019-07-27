@@ -1136,7 +1136,6 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 //#define IXGBE_REG_TXDCTL_PTHRESH BITS(0,6)
 //#define IXGBE_REG_TXDCTL_HTHRESH BITS(8,14)
 //#define IXGBE_REG_TXDCTL_WTHRESH BITS(16,22)
-//#define IXGBE_REG_TXDCTL_SWFLSH BIT(26)
 //IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 36);
 //IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 8);
 //IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, WTHRESH, 4);
@@ -1172,24 +1171,30 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 
 uint16_t ixgbe_receive(struct ixgbe_queue* queue)
 {
-	// Wait for a packet to be at the current index
-	// Note that since descriptors are 16 bytes, we need to double the index
-	uint64_t packet_metadata;
-	volatile uint64_t* packet_metadata_addr = (volatile uint64_t*)queue->ring_addr + 2u*queue->packet_index + 1u;
-	do {
-		packet_metadata = *packet_metadata_addr;
 	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
-	// Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done.
+	// "Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done."
+	// NOTE: Since descriptors are 16 bytes, we need to double the index
+	uint64_t packet_metadata;
+	volatile uint64_t* packet_metadata_addr = (volatile uint64_t*)queue->ring_addr + 2u*queue->packet_index;
+	do {
+		packet_metadata = *(packet_metadata_addr + 1);
 	} while((packet_metadata & BITL(0)) == 0);
+
+	// Write the buffer address back to the descriptor, since it got clobbered by metadata
+	uint64_t packet_address = queue->buffer_addr + (IXGBE_PACKET_SIZE_MAX * queue->packet_index);
+	*packet_metadata_addr = packet_address;
+
+	// Clear the second line of the descriptor
+	*(packet_metadata_addr + 1) = 0;
 
 	// Set the tail to the current index (right now, it's just before that)
 	// This does _not_ imply that the NIC will use it to receive a packet;
 	// since the ring always has one unused descriptor by design, we're making the current descriptor unused.
 	IXGBE_REG_WRITE(queue->device_addr, RDT, queue->queue_index, queue->packet_index);
-	
-//ixgbe_sanity_check(queue->device_addr);
-//ixgbe_stats_probe(queue->device_addr);
-	
+
+	// Increment the index now that we're done with packet-related stuff
+	queue->packet_index = queue->packet_index + 1;
+
 	// Return the length
 	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
 	// Bits 32-47: "PKT_LEN holds the number of bytes posted to the packet buffer."
@@ -1248,22 +1253,13 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	// Increment the tail, which tells the NIC to use the descriptor
 	IXGBE_REG_WRITE(queue->device_addr, TDT, queue->queue_index, queue->packet_index);
 
-	
-//ixgbe_sanity_check(queue->device_addr);
-//ixgbe_stats_probe(queue->device_addr);
-	
-//TN_INFO("addr 0x%016"PRIx64,*((volatile uint64_t*)queue->ring_addr+2u*queue->packet_index));
-//TN_INFO("metadata before 0x%016"PRIx64,packet_metadata);
-//if (queue->packet_index >= 50)
 	// Wait for the descriptor to be done
 	// Here as well the descriptors are 16 bytes so we double the index
 	do {
 		packet_metadata = *packet_metadata_addr;
-//IXGBE_REG_WRITE(queue->device_addr, TXDCTL, queue->queue_index, SWFLSH, 0);
 	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
 	// STA is at offset 32, and its "bit 0" is Descriptor Done
 	} while ((packet_metadata & BITL(32)) == 0);
-TN_INFO("metadata after 0x%016"PRIx64,packet_metadata);
 }
 
 

@@ -28,6 +28,7 @@ struct ixgbe_queue
 {
 	uintptr_t device_addr; // TODO consider having the reg address directly, less computation?
 	uintptr_t ring_addr;
+	uintptr_t buffer_addr; // Required to reset descriptors after receive/send
 	uint8_t queue_index;
 	uint8_t packet_index; // TODO check if making index/queue uint16 or 32 or 64 makes any difference (changing index will need explicit truncation when it overflows the ring size!)
 	uint8_t _padding[6];
