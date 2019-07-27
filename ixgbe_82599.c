@@ -1,6 +1,4 @@
 #include "ixgbe_82599.h"
-	static bool ixgbe_lock_resources(uintptr_t);
-	static void ixgbe_unlock_resources(uintptr_t);
 
 #include "os/arch.h"
 #include "os/hugepage.h"
@@ -242,6 +240,16 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_STATUS(_) 0x00008u
 #define IXGBE_REG_STATUS_PCIE_MASTER_ENABLE_STATUS BIT(19)
 
+// Section 8.2.3.4.11 Software-Firmware Synchronization
+#define IXGBE_REG_SWFWSYNC(_) 0x10160u
+#define IXGBE_REG_SWFWSYNC_SW BITS(0,4)
+#define IXGBE_REG_SWFWSYNC_FW BITS(5,9)
+
+// Section 8.2.3.4.9 Software Semaphore Register
+#define IXGBE_REG_SWSM(_) 0x10140u
+#define IXGBE_REG_SWSM_SMBI    BIT(0)
+#define IXGBE_REG_SWSM_SWESMBI BIT(1)
+
 // Section 8.2.3.9.6 Transmit Descriptor Base Address High
 #define IXGBE_REG_TDBAH(n) (0x06004u + 0x40u*n)
 
@@ -293,6 +301,117 @@ bool ixgbe_device_get(const uint8_t bus, const uint8_t device, const uint8_t fun
 // ===========
 // DEVICE INIT
 // ===========
+
+// ----------------------------------------------------
+// Section 10.5.4 Software and Firmware Synchronization
+// ----------------------------------------------------
+
+// NOTE: For simplicity, we always gain/release control of all resources
+// TODO: Do we really need this part?
+
+// "Gaining Control of Shared Resource by Software"
+static void ixgbe_lock_swsm(const uintptr_t addr, bool* out_sw_malfunction, bool* out_fw_malfunction)
+{
+	// "Software checks that the software on the other LAN function does not use the software/firmware semaphore"
+
+	// "- Software polls the SWSM.SMBI bit until it is read as 0b or time expires (recommended expiration is ~10 ms+ expiration time used for the SWSM.SWESMBI)."
+	// "- If SWSM.SMBI is found at 0b, the semaphore is taken. Note that following this read cycle hardware auto sets the bit to 1b."
+	// "- If time expired, it is assumed that the software of the other function malfunctions. Software proceeds to the next steps checking SWESMBI for firmware use."
+	WAIT_WITH_TIMEOUT(*out_sw_malfunction, 10 * 1000 + 3000 * 1000, IXGBE_REG_CLEARED(addr, SWSM, _, SMBI));
+
+
+	// "Software checks that the firmware does not use the software/firmware semaphore and then takes its control"
+
+	// "- Software writes a 1b to the SWSM.SWESMBI bit"
+	IXGBE_REG_SET(addr, SWSM, _, SWESMBI);
+
+	// "- Software polls the SWSM.SWESMBI bit until it is read as 1b or time expires (recommended expiration is ~3 sec).
+	//    If time has expired software assumes that the firmware malfunctioned and proceeds to the next step while ignoring the firmware bits in the SW_FW_SYNC register."
+	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000 * 1000, IXGBE_REG_CLEARED(addr, SWSM, _, SWESMBI));
+}
+
+static void ixgbe_unlock_swsm(const uintptr_t addr)
+{
+	IXGBE_REG_CLEAR(addr, SWSM, _, SWESMBI);
+	IXGBE_REG_CLEAR(addr, SWSM, _, SMBI);
+}
+
+static bool ixgbe_lock_resources(const uintptr_t addr)
+{
+	uint32_t attempts = 0;
+	bool sw_malfunction = false;
+	bool fw_malfunction = false;
+
+start:
+	ixgbe_lock_swsm(addr, &sw_malfunction, &fw_malfunction);
+
+	// "Software takes control of the requested resource(s)"
+
+	// "- Software reads the firmware and software bit(s) of the requested resource(s) in the SW_FW_SYNC register."
+	uint32_t sync = IXGBE_REG_READ(addr, SWFWSYNC, _);
+	// "- If time has expired in the previous steps due to a malfunction firmware,
+	//    the software should clear the firmware bits in the SW_FW_SYNC register.
+	//    If time has expired in the previous steps due to malfunction software of the other LAN function,
+	//    software should clear the software bits in the SW_FW_SYNC register that it does not own."
+	if (fw_malfunction) {
+		sync &= ~IXGBE_REG_SWFWSYNC_FW;
+	}
+	if (sw_malfunction) {
+		sync &= ~IXGBE_REG_SWFWSYNC_SW;
+	}
+
+	// "- If the software and firmware bit(s) of the requested resource(s) in the SW_FW_SYNC register are cleared, it means that these resources are accessible.
+	//    In this case software sets the software bit(s) of the requested resource(s) in the SW_FW_SYNC register.
+	//    Then the SW clears the SWSM.SWESMBI and SWSM.SMBI bits (releasing the SW/FW semaphore register) and can use the specific resource(s)."
+	if ((sync & IXGBE_REG_SWFWSYNC_SW) == 0 && (sync & IXGBE_REG_SWFWSYNC_FW) == 0) {
+		sync |= IXGBE_REG_SWFWSYNC_SW;
+		IXGBE_REG_WRITE(addr, SWFWSYNC, _, sync);
+
+		ixgbe_unlock_swsm(addr);
+
+		return true;
+	} else {
+		// "- Otherwise (either firmware or software of the other LAN function owns the resource),
+		//    software clears the SWSM.SWESMBI and SWSM.SMBI bits and then repeats the entire process after some delay (recommended 5-10 ms).
+		//    If the resources are not released by software of the other LAN function long enough (recommended expiration time is ~1 sec) software can assume that the other software malfunctioned.
+		//    In that case software should clear all software flags that it does not own and then repeat the entire process once again."
+		ixgbe_unlock_swsm(addr);
+
+		attempts++;
+
+		if (attempts == 200U) {
+			TN_INFO("Max attempts for SWSM reached");
+			return false;
+		}
+
+		if (attempts == 100U) {
+			IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
+			tn_sleep_us(10 * 1000);
+			goto start;
+		}
+
+		tn_sleep_us(10 * 1000);
+		goto start;
+	}
+}
+
+// "Releasing a Shared Resource by Software"
+static void ixgbe_unlock_resources(const uintptr_t addr)
+{
+	// "The software takes control over the software/firmware semaphore as previously described for gaining shared resources."
+	bool ignored;
+	ixgbe_lock_swsm(addr, &ignored, &ignored);
+
+	// "Software clears the bit(s) of the released resource(s) in the SW_FW_SYNC register."
+	IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
+
+	// "Software releases the software/firmware semaphore by clearing the SWSM.SWESMBI and SWSM.SMBI bits"
+	ixgbe_unlock_swsm(addr);
+
+	// "Software should wait a minimum delay (recommended 5-10 ms) before trying to gain the semaphore again"
+	tn_sleep_us(10 * 1000);
+}
+
 
 // ---------------------------------------------------------
 // Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
@@ -953,20 +1072,8 @@ bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, co
 	return true;
 }
 
-static bool ixgbe_device_init_sfp(uintptr_t addr);
-//#define IXGBE_REG_ESDP(_) 0x00020
-//#define IXGBE_REG_ESDP_SDP3 BIT(3)
 bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const uint8_t queue_index, const uintptr_t buffer_addr, struct ixgbe_queue* out_queue)
 {
-	
-/*
-if(!ixgbe_device_init_sfp(device->addr))return false;
-// TODO document
-IXGBE_REG_CLEAR(device->addr, ESDP, _, SDP3);
-// Enable Tx laser; allow 100ms to light up
-tn_sleep_us(100 * 1000);
-*/
-	
 	if (queue_index >= IXGBE_SEND_QUEUES_COUNT) {
 		return false;
 	}
@@ -1456,240 +1563,14 @@ void ixgbe_stats_reset(const uintptr_t addr)
 #include <inttypes.h>
 void ixgbe_stats_probe(const uintptr_t addr)
 {
-	bool changed=false;
+//	bool changed=false;
 	for (unsigned n = 0; n < sizeof(regs)/sizeof(uint32_t); n++) {
 		uint32_t xxx = ixgbe_reg_read(addr, regs[n]);
 		if (xxx != 0 && regs[n] !=0x405c && regs[n]!=0x4074&&regs[n]!=0x4088&&regs[n]!=0x41b0&&regs[n]!=0x41b4&&regs[n]!=0x40c0&&regs[n]!=0x40d0) {
-if(regs[n]!=0xfff1430)			changed=true;
+//if(regs[n]!=0xfff1430)			changed=true;
 			printf("REG 0x%" PRIx32 " == %" PRIu32"\n", regs[n], xxx);
 		}
 	}
 //	if(changed)ixgbe_sanity_check(addr);
 //	printf("checked\n");
 }
-// Old code that may be necessary in the future; the dpdk ixgbe driver does this and I have no clue why...
-
-#define IXGBE_REG_SWFWSYNC(_) 0x10160u
-#define IXGBE_REG_SWFWSYNC_SW BITS(0,4)
-#define IXGBE_REG_SWFWSYNC_FW BITS(5,9)
-
-#define IXGBE_REG_SWSM(_) 0x10140u
-#define IXGBE_REG_SWSM_SMBI    BIT(0)
-#define IXGBE_REG_SWSM_SWESMBI BIT(1)
-
-// ----------------------------------------------------
-// Section 10.5.4 Software and Firmware Synchronization
-// ----------------------------------------------------
-
-// NOTE: For simplicity, we always gain/release control of all resources
-// TODO: Do we really need this part?
-
-// "Gaining Control of Shared Resource by Software"
-static void ixgbe_lock_swsm(const uintptr_t addr, bool* out_sw_malfunction, bool* out_fw_malfunction)
-{
-	// "Software checks that the software on the other LAN function does not use the software/firmware semaphore"
-
-	// "- Software polls the SWSM.SMBI bit until it is read as 0b or time expires (recommended expiration is ~10 ms+ expiration time used for the SWSM.SWESMBI)."
-	// "- If SWSM.SMBI is found at 0b, the semaphore is taken. Note that following this read cycle hardware auto sets the bit to 1b."
-	// "- If time expired, it is assumed that the software of the other function malfunctions. Software proceeds to the next steps checking SWESMBI for firmware use."
-	WAIT_WITH_TIMEOUT(*out_sw_malfunction, 10 * 1000 + 3000 * 1000, IXGBE_REG_CLEARED(addr, SWSM, _, SMBI));
-
-
-	// "Software checks that the firmware does not use the software/firmware semaphore and then takes its control"
-
-	// "- Software writes a 1b to the SWSM.SWESMBI bit"
-	IXGBE_REG_SET(addr, SWSM, _, SWESMBI);
-
-	// "- Software polls the SWSM.SWESMBI bit until it is read as 1b or time expires (recommended expiration is ~3 sec).
-	//    If time has expired software assumes that the firmware malfunctioned and proceeds to the next step while ignoring the firmware bits in the SW_FW_SYNC register."
-	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000 * 1000, IXGBE_REG_CLEARED(addr, SWSM, _, SWESMBI));
-}
-
-static void ixgbe_unlock_swsm(const uintptr_t addr)
-{
-	IXGBE_REG_CLEAR(addr, SWSM, _, SWESMBI);
-	IXGBE_REG_CLEAR(addr, SWSM, _, SMBI);
-}
-
-static bool ixgbe_lock_resources(const uintptr_t addr)
-{
-	uint32_t attempts = 0;
-
-start:;
-	bool sw_malfunction;
-	bool fw_malfunction;
-	ixgbe_lock_swsm(addr, &sw_malfunction, &fw_malfunction);
-
-	// "Software takes control of the requested resource(s)"
-
-	// "- Software reads the firmware and software bit(s) of the requested resource(s) in the SW_FW_SYNC register."
-	uint32_t sync = IXGBE_REG_READ(addr, SWFWSYNC, _);
-	// "- If time has expired in the previous steps due to a malfunction firmware,
-	//    the software should clear the firmware bits in the SW_FW_SYNC register.
-	//    If time has expired in the previous steps due to malfunction software of the other LAN function,
-	//    software should clear the software bits in the SW_FW_SYNC register that it does not own."
-	if (fw_malfunction) {
-		sync &= ~IXGBE_REG_SWFWSYNC_FW;
-	}
-	if (sw_malfunction) {
-		sync &= ~IXGBE_REG_SWFWSYNC_SW;
-	}
-
-	// "- If the software and firmware bit(s) of the requested resource(s) in the SW_FW_SYNC register are cleared, it means that these resources are accessible.
-	//    In this case software sets the software bit(s) of the requested resource(s) in the SW_FW_SYNC register.
-	//    Then the SW clears the SWSM.SWESMBI and SWSM.SMBI bits (releasing the SW/FW semaphore register) and can use the specific resource(s)."
-	if ((sync & IXGBE_REG_SWFWSYNC_SW) == 0 && (sync & IXGBE_REG_SWFWSYNC_FW) == 0) {
-		sync |= IXGBE_REG_SWFWSYNC_SW;
-		IXGBE_REG_WRITE(addr, SWFWSYNC, _, sync);
-
-		ixgbe_unlock_swsm(addr);
-
-		return true;
-	} else {
-		// "- Otherwise (either firmware or software of the other LAN function owns the resource),
-		//    software clears the SWSM.SWESMBI and SWSM.SMBI bits and then repeats the entire process after some delay (recommended 5-10 ms).
-		//    If the resources are not released by software of the other LAN function long enough (recommended expiration time is ~1 sec) software can assume that the other software malfunctioned.
-		//    In that case software should clear all software flags that it does not own and then repeat the entire process once again."
-		ixgbe_unlock_swsm(addr);
-
-		attempts++;
-
-		if (attempts == 200U) {
-			TN_INFO("Max attempts for SWSM reached");
-			return false;
-		}
-
-		if (attempts == 100U) {
-			IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
-			tn_sleep_us(10 * 1000);
-			goto start;
-		}
-
-		tn_sleep_us(10 * 1000);
-		goto start;
-	}
-}
-
-// "Releasing a Shared Resource by Software"
-static void ixgbe_unlock_resources(const uintptr_t addr)
-{
-	// "The software takes control over the software/firmware semaphore as previously described for gaining shared resources."
-	bool ignored;
-	ixgbe_lock_swsm(addr, &ignored, &ignored);
-
-	// "Software clears the bit(s) of the released resource(s) in the SW_FW_SYNC register."
-	IXGBE_REG_CLEAR(addr, SWFWSYNC, _, SW);
-
-	// "Software releases the software/firmware semaphore by clearing the SWSM.SWESMBI and SWSM.SMBI bits"
-	ixgbe_unlock_swsm(addr);
-
-	// "Software should wait a minimum delay (recommended 5-10 ms) before trying to gain the semaphore again"
-	tn_sleep_us(10 * 1000);
-}
-
-// ---
-// ???
-// ---
-// (from the dpdk ixgbe driver...)
-
-#include <stdio.h>
-#include <inttypes.h>
-#define IXGBE_REG_EERD(_) 0x10014
-#define IXGBE_REG_EERD_START BIT(0)
-#define IXGBE_REG_EERD_DONE BIT(1)
-//#define IXGBE_REG_EERD_ADDR BITS(2,15)
-//#define IXGBE_REG_EERD_DATA BITS(16,31)
-// TODO: Make sure the EEPROm is valid, this method assumes it is
-// TODO this is where the 'addr' for the uintptr_t is dubious... "hw" maybe? something else?
-// TODO this method would be simpler if we could assume 0xFFFF is only ever returned on error...
-static bool ixgbe_eeprom_read(const uintptr_t addr, const uint16_t eeprom_addr, uint16_t* out_value)
-{
-	// Section 8.2.3.2.2 EEPROM Read Register:
-	// "This register is used by software to cause the 82599 to read individual words in the EEPROM.
-	//  To read a word, software writes the address to the Read Address field and simultaneously writes a 1b to the Start Read field.
-	//  The 82599 reads the word from the EEPROM and places it in the Read Data field, setting the Read Done field to 1b.
-	//  Software can poll this register, looking for a 1b in the Read Done field and then using the value in the Read Data field."
-	if (eeprom_addr >= 0x3FFFu) {
-		return false; // No such word!
-	}
-
-	// NOTE: Since this has to be simultaneous, we bypass the usual API
-	// TODO check if we can use it anyway (perf doesn't matter, this isn't in the inner loop)
-	uint32_t eerd = ((uint32_t) eeprom_addr << 2) | IXGBE_REG_EERD_START;
-	IXGBE_REG_WRITE(addr, EERD, _, eerd);
-	bool eeprom_timed_out;
-	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, (eerd = IXGBE_REG_READ(addr, EERD, _)) & IXGBE_REG_EERD_DONE);
-	if (eeprom_timed_out) {
-		return false;
-	}
-
-	*out_value = (uint16_t) (eerd >> 16);
-	return true;
-}
-
-static bool ixgbe_device_init_sfp(const uintptr_t addr)
-{
-	uint16_t sfp_list_offset;
-	if (!ixgbe_eeprom_read(addr, 0x002Bu, &sfp_list_offset)) {
-		return false;
-	}
-	if (sfp_list_offset == 0u || sfp_list_offset == 0xFFFFu) {
-		return false;
-	}
-	sfp_list_offset++;
-
-	uint16_t sfp_id;
-	if (!ixgbe_eeprom_read(addr, sfp_list_offset, &sfp_id)) {
-		return false;
-	}
-
-	uint16_t sfp_data_offset = 0u;
-	while (sfp_id != 0xFFFFu) {
-		if (sfp_id == 3u){//3u) {
-			sfp_list_offset = (uint16_t) (sfp_list_offset + 1u);
-			if (!ixgbe_eeprom_read(addr, sfp_list_offset, &sfp_data_offset)) {
-				return false;
-			}
-		}
-		sfp_list_offset = (uint16_t) (sfp_list_offset + 2u);
-		if (!ixgbe_eeprom_read(addr, sfp_list_offset, &sfp_id)) {
-			return false;
-		}
-	}
-
-	if (sfp_data_offset == 0u || sfp_data_offset == 0xFFFFu) {
-		return false;
-	}
-
-	if (!ixgbe_lock_resources(addr)) {
-		return false;
-	}
-
-	sfp_data_offset = (uint16_t) (sfp_data_offset + 1u);
-
-	uint16_t sfp_data;
-	if (!ixgbe_eeprom_read(addr, sfp_data_offset, &sfp_data)) {
-		return false;
-	}
-#define IXGBE_REG_CORECTL(_) 0x014F00u
-	while (sfp_data != 0xFFFFu) {
-		IXGBE_REG_WRITE(addr, CORECTL, _, sfp_data);
-		sfp_data_offset = (uint16_t) (sfp_data_offset + 1u);
-		if (!ixgbe_eeprom_read(addr, sfp_data_offset, &sfp_data)) {
-			return false;
-		}
-	}
-	ixgbe_unlock_resources(addr);
-
-	return true;
-}
-
-
-// Section 8.2.3.22.19 Auto Negotiation Control Register
-
-     // TODO is this needed for 10G somehow?
-    // Section 8.2.3.22.19 Auto Negotiation Control Register
-    //ixgbe_lock_resources(addr);
-       // "Link Mode Select. Selects the active link mode: [...] 011b = 10 GbE serial link (SFI – no backplane auto-negotiation)."
-        //IXGBE_REG_WRITE(addr, AUTOC, _, LMS, 3);
-         //ixgbe_unlock_resources(addr);
