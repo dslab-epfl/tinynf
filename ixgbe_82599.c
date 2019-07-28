@@ -114,6 +114,12 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Registers, in alphabetical order, along with their fields
 // ---------------------------------------------------------
 
+// Section 8.2.3.22.19 Auto Negotiation Control Register
+#define IXGBE_REG_AUTOC(_) 0x042A0u
+#define IXGBE_REG_AUTOC_10G_PMA_PMD_PARALLEL BITS(7,8)
+#define IXGBE_REG_AUTOC_RESTART_AN BIT(12)
+#define IXGBE_REG_AUTOC_LMS BITS(13,15)
+
 // Section 8.2.3.1.1 Device Control Register
 #define IXGBE_REG_CTRL(_) 0x00000u
 #define IXGBE_REG_CTRL_MASTER_DISABLE BIT(2)
@@ -171,6 +177,11 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Section 8.2.3.22.8 MAC Core Control 0 Register
 #define IXGBE_REG_HLREG0(_) 0x04240u
 #define IXGBE_REG_HLREG0_LPBK BIT(15)
+
+// Section 8.2.3.22.20 Link Status Register
+#define IXGBE_REG_LINKS(_) 0x042A4u
+#define IXGBE_REG_LINKS_LINK_SPEED BITS(28,29)
+#define IXGBE_REG_LINKS_LINK_UP BIT(30)
 
 // Section 8.2.3.22.34 MAC Flow Control Register
 #define IXGBE_REG_MFLCN(_) 0x04294u
@@ -620,23 +631,38 @@ bool ixgbe_device_init(const struct ixgbe_device* const device)
 	}
 
 	// "- Setup the PHY and the link (see Section 4.6.4)."
-	// ASSUMPTION: The cables are already plugged in.
-	// INTERPRETATION: We don't need to do anything here.
-	
-// NOTE the LINKS reg has a completely different val if we don't do that - and it has a different val for the two ports! so let's do that.
-// TODO format this and stuff
-	if(!ixgbe_lock_resources(device->addr)) return false;
-#define IXGBE_REG_AUTOC(_) 0x042A0u
-#define IXGBE_REG_AUTOC_10GPMAPMDPARALLEL BITS(7,8)
-#define IXGBE_REG_AUTOC_RESTARTAN BIT(12)
-#define IXGBE_REG_AUTOC_LMS BITS(13,15)
-TN_INFO("AUTOC 0x%016"PRIx32, IXGBE_REG_READ(device->addr, AUTOC, _));
-IXGBE_REG_WRITE(device->addr, AUTOC, _, 10GPMAPMDPARALLEL, 0);
-IXGBE_REG_WRITE(device->addr, AUTOC, _, LMS, 3);
-IXGBE_REG_SET(device->addr, AUTOC, _, RESTARTAN);
-ixgbe_unlock_resources(device->addr);
+	// TODO: Can we just assume that the EEPROM contains proper config and we don't need to do anything here?
+	// Section 4.6.4.2 XAUI / BX4 / CX4 / SFI Link Setup Flow:
+	// "1. XAUI / BX4 / CX4 / SFI link electrical setup is done according to EEPROM configuration to set the analog interface to the appropriate setting."
+	// OK, nothing to do for this
+	// "2. Configure the Link Mode Select field in the AUTOC register, AUTOC.10G_PARALLEL_PMA_PMD and AUTOC2.10G_PMA_PMD_Serial to the appropriate operating mode."
+	// 	Section 8.2.3.22.19 Auto Negotiation Control Register (AUTOC):
+	// 	"The 82599 Device Firmware may access AUTOC register in parallel to software driver and a synchronization between them is needed. For more information see Section 10.5.4."
+	if(!ixgbe_lock_resources(device->addr)) {
+		return false;
+	}
+	// 	"10G_PMA_PMD_PARALLEL 8:7 01b* Define 10 GbE PMA/PMD over four differential pairs (Tx and Rx each). 00b = XAUI PMA/PMD."
+	IXGBE_REG_WRITE(device->addr, AUTOC, _, 10G_PMA_PMD_PARALLEL, 0);
+	// 	"LMS, Link Mode Select [...] 001b = 10 GbE parallel link"
+	IXGBE_REG_WRITE(device->addr, AUTOC, _, LMS, 3);
+	// "3. Configure any interface fields in the SERDESC register if necessary."
+	// Not necessary.
+	// "4. Restart the link using the Restart Auto Negotiation field in the AUTOC register."
+	//	 Section 8.2.3.22.19 Auto Negotiation Control Register (AUTOC):
+	// 		"Restart_AN, Restart Auto-Negotiation, Applies new link settings and restarts relative auto-negotiation process (self–clearing bit).
+	// 		 0b = No action needed. 1b = Applies new link settings and restarts auto-negotiation."
+	IXGBE_REG_SET(device->addr, AUTOC, _, RESTART_AN);
+	ixgbe_unlock_resources(device->addr);
+	// "5. Verify correct link status (align, link_up, speed) using the LINKS register."
+	//	Section 8.2.3.22.20 Link Status Register (LINKS):
+	//		"LINK_SPEED [...] 11b = 10 GbE"
+	//		"Link Up [...] 1b = Link is up"
+	bool link_timed_out;
+	WAIT_WITH_TIMEOUT(link_timed_out, 10 * 1000 * 1000, IXGBE_REG_READ(device->addr, LINKS, _, LINK_SPEED) == 3 && !IXGBE_REG_CLEARED(device->addr, LINKS, _, LINK_UP));
+	if (link_timed_out) {
+		return false;
+	}
 
-	
 	// "- Initialize all statistical counters (see Section 4.6.5)."
 	// ASSUMPTION: We do not care about statistics.
 	// INTERPRETATION: We don't need to do anything here.
@@ -878,9 +904,6 @@ ixgbe_unlock_resources(device->addr);
 	//				"SIZE, Init val 0xA0"
 	//				"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
 	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
-	
-//	IXGBE_REG_WRITE(device->addr, TXPBSIZE, 0, 0xA000);
-	
 	for (uint32_t n = 1; n < IXGBE_TRAFFIC_CLASSES_COUNT; n++) {
 		IXGBE_REG_CLEAR(device->addr, TXPBSIZE, n);
 	}
@@ -1132,14 +1155,13 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 
 	// "- Program the TXDCTL register with the desired TX descriptor write back policy (see Section 8.2.3.9.10 for recommended values)."
 	// TODO: See if this is useful.
-	
-//#define IXGBE_REG_TXDCTL_PTHRESH BITS(0,6)
-//#define IXGBE_REG_TXDCTL_HTHRESH BITS(8,14)
-//#define IXGBE_REG_TXDCTL_WTHRESH BITS(16,22)
-//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 36);
-//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 8);
-//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, WTHRESH, 4);
-	
+	//#define IXGBE_REG_TXDCTL_PTHRESH BITS(0,6)
+	//#define IXGBE_REG_TXDCTL_HTHRESH BITS(8,14)
+	//#define IXGBE_REG_TXDCTL_WTHRESH BITS(16,22)
+	//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 36);
+	//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 8);
+	//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, WTHRESH, 4);
+
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	// TODO: Same as above. Take a look at the old ixgbe driver (1.3.31.5), it uses it, and disables some relaxed ordering because of it.
 
@@ -1277,7 +1299,6 @@ static void ixgbe_reg_force_read(const uintptr_t addr, const uint32_t reg)
 #define IXGBE_REG_RAH(n) (0x0A204u + 8u*n)
 #define IXGBE_REG_RDH(n) (n <= 63u ? (0x01010u + 0x40u*n) : (0x0D010u + 0x40u*(n-64u)))
 #define IXGBE_REG_TDH(n) (0x06010u + 0x40u*n)
-#define IXGBE_REG_LINKS(_) 0x042A4u
 #define IXGBE_REG_LINKS2(_) 0x04324u
 //#define IXGBE_REG_AUTOC2(_) 0x042A8u
 #define IXGBE_REG_VLNCTRL(_) 0x05088u
