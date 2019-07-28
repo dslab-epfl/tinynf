@@ -4,14 +4,14 @@
 #include <stdint.h>
 
 // Section 7.2.3.3 Transmit Descriptor Ring:
-// "Transmit Descriptor Length register (TDLEN 0-127) — This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
-// By making this 256, we can use 8-bit unsigned integer as ring indices without extra work
+// "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
+// By making this 256, we can use 8-bit unsigned integers as ring indices without extra work
 static const uint32_t IXGBE_RING_SIZE = 256;
 
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
 // Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...]
 // Thus we set 8 KB as a power of 2 that can be sent and received.
-static const uint32_t IXGBE_PACKET_SIZE_MAX = 8 * 1024;
+static const uint32_t IXGBE_PACKET_SIZE_MAX = 2 * 1024;
 
 // This struct is not used in the processing loop.
 struct ixgbe_device
