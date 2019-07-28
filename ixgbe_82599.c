@@ -1197,17 +1197,17 @@ uint16_t ixgbe_receive(struct ixgbe_queue* queue)
 	// "Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done."
 	// NOTE: Since descriptors are 16 bytes, we need to double the index
 	uint64_t packet_metadata;
-	volatile uint64_t* packet_metadata_addr = (volatile uint64_t*)queue->ring_addr + 2u*queue->packet_index;
+	volatile uint64_t* descriptor_addr = (volatile uint64_t*)queue->ring_addr + 2u*queue->packet_index;
 	do {
-		packet_metadata = *(packet_metadata_addr + 1);
+		packet_metadata = *(descriptor_addr + 1);
 	} while((packet_metadata & BITL(0)) == 0);
 
 	// Write the buffer address back to the descriptor, since it got clobbered by metadata
-	uint64_t packet_address = queue->buffer_addr + (IXGBE_PACKET_SIZE_MAX * queue->packet_index);
-	*packet_metadata_addr = packet_address;
+	uint64_t packet_addr = queue->buffer_addr + (IXGBE_PACKET_SIZE_MAX * queue->packet_index);
+	*descriptor_addr = packet_addr;
 
 	// Clear the second line of the descriptor
-	*(packet_metadata_addr + 1) = 0;
+	*(descriptor_addr + 1) = 0;
 
 	// Set the tail to the current index (right now, it's just before that)
 	// This does _not_ imply that the NIC will use it to receive a packet;
@@ -1215,7 +1215,7 @@ uint16_t ixgbe_receive(struct ixgbe_queue* queue)
 	IXGBE_REG_WRITE(queue->device_addr, RDT, queue->queue_index, queue->packet_index);
 
 	// Increment the index now that we're done with packet-related stuff
-	queue->packet_index = queue->packet_index + 1;
+	queue->packet_index = (uint8_t) (queue->packet_index + 1);
 
 	// Return the length
 	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
@@ -1265,9 +1265,14 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	// PAYLEN, bits 46-63: "PAYLEN indicates the size (in byte units) of the data buffer(s) in host memory for transmission. In a single-send packet, PAYLEN defines the entire packet size fetched from host memory."
 		((uint64_t) packet_length << 46);
 
+	// Write the packet address, since it gets clobbered on write-back
+	// NOTE: Here as well the descriptors are 16 bytes so we double the index
+	volatile uint64_t* descriptor_addr = (volatile uint64_t*)queue->ring_addr + 2u*queue->packet_index;
+	uint64_t packet_addr = queue->buffer_addr + (IXGBE_PACKET_SIZE_MAX * queue->packet_index);
+	*descriptor_addr = packet_addr;
+
 	// Write the metadata
-	volatile uint64_t* packet_metadata_addr = (volatile uint64_t*)queue->ring_addr + 2u*queue->packet_index + 1u;
-	*packet_metadata_addr = packet_metadata;
+	*(descriptor_addr + 1) = packet_metadata;
 
 	// Increment the index
 	queue->packet_index = (uint8_t)(queue->packet_index + 1u);
@@ -1276,23 +1281,20 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	IXGBE_REG_WRITE(queue->device_addr, TDT, queue->queue_index, queue->packet_index);
 
 	// Wait for the descriptor to be done
-	// Here as well the descriptors are 16 bytes so we double the index
-	do {
-		packet_metadata = *packet_metadata_addr;
 	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
 	// STA is at offset 32, and its "bit 0" is Descriptor Done
+	do {
+		packet_metadata = *descriptor_addr;
 	} while ((packet_metadata & BITL(32)) == 0);
 }
 
-
-
+// TODO Remove everything below this
 static void ixgbe_reg_force_read(const uintptr_t addr, const uint32_t reg)
 {
 	// See https://stackoverflow.com/a/13824124/3311770
 	uint32_t* ptr = (uint32_t*)((char*)addr + reg);
 	__asm__ volatile ("" : "=m" (*ptr) : "r" (*ptr));
 }
-
 #include <stdio.h>
 #include <inttypes.h>
 #define IXGBE_REG_RAL(n) (0x0A200u + 8u*n)
