@@ -44,10 +44,10 @@ int main(int argc, char** argv)
 		}
 	}
 printf("Initialized successfully!\n");
-//	while (true) {
-	for (int n = 0; n < 50; n++) {
+	while (true) {
+//	for (int n = 0; n < 50; n++) {
 		uint16_t packet_len = ixgbe_receive(&queue_receive);
-		printf("Received a packet!\n");
+//		printf("Received a packet!\n");
 		uint8_t* packet = (uint8_t*) (packet_buffers + IXGBE_PACKET_SIZE_MAX * queue_receive.packet_index);
 //	for (uint16_t n = 0; n < packet_len; n++) {
 //		printf("0x%02"PRIx8" ", packet[n]);
@@ -68,7 +68,7 @@ printf("Initialized successfully!\n");
 		packet[11]= 0xFF;
 
 		ixgbe_send(&queue_send, packet_len);
-		printf("Sent a packet!\n");
+//		printf("Sent a packet!\n");
 	}
 
 	return 0;

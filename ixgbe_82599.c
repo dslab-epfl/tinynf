@@ -966,6 +966,7 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 	return true;
 }
 
+// TODO very important assumption that the buffer is a single contiguous physical block! how do we enforce this?
 bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, const uint8_t queue_index, const uintptr_t buffer_addr, struct ixgbe_queue* out_queue)
 {
 	if (queue_index >= IXGBE_RECEIVE_QUEUES_COUNT) {
@@ -989,17 +990,16 @@ bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, co
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
 	// The buffers are given to us as 'buffer_addr'
 	uint64_t* ring = (uint64_t*) ring_addr;
+	uintptr_t phys_buffer_addr = tn_mem_virtual_to_physical_address(buffer_addr);
+	if (phys_buffer_addr == (uintptr_t) -1) {
+		// TODO tn_mem_virt_to_phys makes it too easy to forget to handle the error... also tn_hp_allocate is the same
+		TN_INFO("Buffer address could not be mapped to a physical address");
+		return false;
+	}
 	for (uint16_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
 		// Line 0 - Packet Buffer Address
-		uintptr_t virt_buffer_addr = buffer_addr + (uintptr_t) (n * IXGBE_PACKET_SIZE_MAX);
-		uintptr_t phys_buffer_addr = tn_mem_virtual_to_physical_address(virt_buffer_addr);
-		if (phys_buffer_addr == (uintptr_t) -1) {
-			// TODO tn_mem_virt_to_phys makes it too easy to forget to handle the error... also tn_hp_allocate is the same
-			TN_INFO("Buffer address could not be mapped to a physical address");
-			return false;
-		}
-		ring[n * 2u] = phys_buffer_addr;
+		ring[n * 2u] = phys_buffer_addr + (uintptr_t) (n * IXGBE_PACKET_SIZE_MAX);
 		// Line 1 - Header Buffer Address (63:1), Descriptor Done (0)
 		ring[n * 2u + 1u] = 0u;
 	}
@@ -1090,6 +1090,7 @@ bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, co
 
 	out_queue->device_addr = device->addr;
 	out_queue->ring_addr = ring_addr;
+	out_queue->phys_buffer_addr = phys_buffer_addr;
 	out_queue->queue_index = queue_index;
 	out_queue->packet_index = 0;
 	return true;
@@ -1116,17 +1117,16 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	}
 	// Let's set up our ring.
 	uint64_t* ring = (uint64_t*) ring_addr;
+	uintptr_t phys_buffer_addr = tn_mem_virtual_to_physical_address(buffer_addr);
+	if (phys_buffer_addr == (uintptr_t) -1) {
+		TN_INFO("Buffer address could not be mapped to a physical address");
+		return false;
+	}
 	for (uint16_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.2.3.2.4 Advanced Transmit Data Descriptor
 		// Table 7-39 Advanced Transmit Data Descriptor Read Format
 		// Line 0 - Address
-		uintptr_t virt_buffer_addr = buffer_addr + (uintptr_t) (n * IXGBE_PACKET_SIZE_MAX);
-		uintptr_t phys_buffer_addr = tn_mem_virtual_to_physical_address(virt_buffer_addr);
-		if (phys_buffer_addr == (uintptr_t) -1) {
-			TN_INFO("Buffer address could not be mapped to a physical address");
-			return false;
-		}
-		ring[n * 2u] = phys_buffer_addr;
+		ring[n * 2u] = phys_buffer_addr + (uintptr_t) (n * IXGBE_PACKET_SIZE_MAX);
 		// Line 1 is irrelevant for now, we'll fill it when we need to
 		ring[n * 2u + 1u] = 0u;
 	}
@@ -1186,6 +1186,7 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 
 	out_queue->device_addr = device->addr;
 	out_queue->ring_addr = ring_addr;
+	out_queue->phys_buffer_addr = phys_buffer_addr;
 	out_queue->queue_index = queue_index;
 	out_queue->packet_index = 0;
 	return true;
@@ -1203,7 +1204,7 @@ uint16_t ixgbe_receive(struct ixgbe_queue* queue)
 	} while((packet_metadata & BITL(0)) == 0);
 
 	// Write the buffer address back to the descriptor, since it got clobbered by metadata
-	uint64_t packet_addr = queue->buffer_addr + (IXGBE_PACKET_SIZE_MAX * queue->packet_index);
+	uint64_t packet_addr = queue->phys_buffer_addr + (IXGBE_PACKET_SIZE_MAX * queue->packet_index);
 	*descriptor_addr = packet_addr;
 
 	// Clear the second line of the descriptor
@@ -1268,7 +1269,7 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	// Write the packet address, since it gets clobbered on write-back
 	// NOTE: Here as well the descriptors are 16 bytes so we double the index
 	volatile uint64_t* descriptor_addr = (volatile uint64_t*)queue->ring_addr + 2u*queue->packet_index;
-	uint64_t packet_addr = queue->buffer_addr + (IXGBE_PACKET_SIZE_MAX * queue->packet_index);
+	uint64_t packet_addr = queue->phys_buffer_addr + (IXGBE_PACKET_SIZE_MAX * queue->packet_index);
 	*descriptor_addr = packet_addr;
 
 	// Write the metadata
