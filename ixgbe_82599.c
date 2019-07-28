@@ -1284,7 +1284,7 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
 	// STA is at offset 32, and its "bit 0" is Descriptor Done
 	do {
-		packet_metadata = *descriptor_addr;
+		packet_metadata = *(descriptor_addr + 1);
 	} while ((packet_metadata & BITL(32)) == 0);
 }
 
