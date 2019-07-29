@@ -4,13 +4,16 @@
 
 #include <linux/mman.h>
 
+#include "os/memory.h"
+
 // NOTE: This implementation assumes that the Linux kernel will not move hugepages,
 //       i.e. that their physical address remains constant.
 //       If this assumption were to be broken, this code would need to change.
 //       Locking a page is not sufficient - it guarantees the page won't be swapped out,
 //       not that it won't be moved.
+// TODO: Consider merging os/mem and os/hugepage, and just allocate hugepages for everything, for simplicity
 
-uintptr_t tn_hp_allocate(size_t size)
+bool tn_hp_allocate(size_t size, node_t node, uintptr_t* out_addr)
 {
 	// We only support 2MB hugepages
 	const int HUGEPAGE_SIZE_POWER = 10 + 10 + 1;
@@ -19,7 +22,7 @@ uintptr_t tn_hp_allocate(size_t size)
 	if (size < HUGEPAGE_SIZE) {
 		size = HUGEPAGE_SIZE;
 	} else if (size > HUGEPAGE_SIZE) {
-		return (uintptr_t) -1;
+		return false;
 	}
 
 	// http://man7.org/linux/man-pages//man2/munmap.2.html
@@ -41,8 +44,19 @@ uintptr_t tn_hp_allocate(size_t size)
 	);
 
 	if (page == MAP_FAILED) {
-		return (uintptr_t) -1;
+		return false;
 	}
 
-	return (uintptr_t) page;
+	node_t actual_node;
+	if (!tn_mem_get_node((uintptr_t) page, &actual_node)) {
+		return false;
+	}
+
+	// We're hoping that `node` is the current node, and that the Linux kernel will allocate memory on that node - in practice this seems to work
+	if (actual_node != node) {
+		return false;
+	}
+
+	*out_addr = (uintptr_t) page;
+	return true;
 }

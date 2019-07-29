@@ -300,8 +300,14 @@ bool ixgbe_device_get(const struct tn_pci_device pci_device, struct ixgbe_device
 		return false;
 	}
 
-	out_device->addr = addr;
+	node_t node;
+	if (!tn_pci_get_device_node(pci_device, &node)) {
+		return false;
+	}
+
 	out_device->pci_device = pci_device;
+	out_device->addr = addr;
+	out_device->node = node;
 	return true;
 }
 
@@ -979,17 +985,16 @@ bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, co
 	// "The following should be done per each receive queue:"
 
 	// "- Allocate a region of memory for the receive descriptor list."
-	const uintptr_t ring_addr = tn_hp_allocate(IXGBE_RING_SIZE * 16); // 16 bytes per descriptor, i.e. 2x64bits
-	if (ring_addr == (uintptr_t) -1) {
+	uintptr_t ring_addr;
+	if (!tn_hp_allocate(IXGBE_RING_SIZE * 16, device->node, &ring_addr)) { // 16 bytes per descriptor, i.e. 2x64bits
 		return false;
 	}
 
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
 	// The buffers are given to us as 'buffer_addr'
 	uint64_t* ring = (uint64_t*) ring_addr;
-	uintptr_t phys_buffer_addr = tn_mem_virtual_to_physical_address(buffer_addr);
-	if (phys_buffer_addr == (uintptr_t) -1) {
-		// TODO tn_mem_virt_to_phys makes it too easy to forget to handle the error... also tn_hp_allocate is the same
+	uintptr_t phys_buffer_addr;
+	if (!tn_mem_get_phys_addr(buffer_addr, &phys_buffer_addr)) {
 		TN_INFO("Buffer address could not be mapped to a physical address");
 		return false;
 	}
@@ -1003,8 +1008,8 @@ bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, co
 
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
 	// INTERPRETATION: This is a typo, the second "RDBAL" should read "RDBAH".
-	uintptr_t phys_ring_addr = tn_mem_virtual_to_physical_address(ring_addr);
-	if (phys_ring_addr == (uintptr_t) -1) {
+	uintptr_t phys_ring_addr;
+	if (!tn_mem_get_phys_addr(ring_addr, &phys_ring_addr)) {
 		TN_INFO("Ring address could not be mapped to a physical address");
 		return false;
 	}
@@ -1108,14 +1113,14 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	// "The following steps should be done once per transmit queue:"
 
 	// "- Allocate a region of memory for the transmit descriptor list."
-	const uintptr_t ring_addr = tn_hp_allocate(IXGBE_RING_SIZE * 16); // 16 bytes per descriptor, i.e. 2x64bits
-	if (ring_addr == (uintptr_t) -1) {
+	uintptr_t ring_addr;
+	if (!tn_hp_allocate(IXGBE_RING_SIZE * 16, device->node, &ring_addr)) { // 16 bytes per descriptor, i.e. 2x64bits
 		return false;
 	}
 	// Let's set up our ring.
 	uint64_t* ring = (uint64_t*) ring_addr;
-	uintptr_t phys_buffer_addr = tn_mem_virtual_to_physical_address(buffer_addr);
-	if (phys_buffer_addr == (uintptr_t) -1) {
+	uintptr_t phys_buffer_addr;
+	if (!tn_mem_get_phys_addr(buffer_addr, &phys_buffer_addr)) {
 		TN_INFO("Buffer address could not be mapped to a physical address");
 		return false;
 	}
@@ -1129,8 +1134,8 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	}
 
 	// "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
-	uintptr_t phys_ring_addr = tn_mem_virtual_to_physical_address(ring_addr);
-	if (phys_ring_addr == (uintptr_t) -1) {
+	uintptr_t phys_ring_addr;
+	if (!tn_mem_get_phys_addr(ring_addr, &phys_ring_addr)) {
 		TN_INFO("Ring address could not be mapped to a physical address");
 		return false;
 	}
@@ -1197,7 +1202,7 @@ uint16_t ixgbe_receive(struct ixgbe_queue* queue)
 	volatile uint64_t* descriptor_addr = (volatile uint64_t*) queue->ring_addr + 2u*queue->packet_index;
 	do {
 		packet_metadata = *(descriptor_addr + 1);
-	} while((packet_metadata & BITL(0)) == 0);
+	} while ((packet_metadata & BITL(0)) == 0);
 
 	// Write the buffer address back to the descriptor, since it got clobbered by metadata
 	uint64_t packet_addr = queue->phys_buffer_addr + (IXGBE_PACKET_SIZE_MAX * queue->packet_index);
@@ -1575,8 +1580,6 @@ void ixgbe_stats_reset(const uintptr_t addr)
 		ixgbe_reg_force_read(addr, regs[n]);
 	}
 }
-#include <stdio.h>
-#include <inttypes.h>
 void ixgbe_stats_probe(const uintptr_t addr)
 {
 //	bool changed=false;

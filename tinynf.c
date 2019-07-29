@@ -20,8 +20,13 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	const uintptr_t packet_buffers = tn_hp_allocate(IXGBE_PACKET_SIZE_MAX * IXGBE_RING_SIZE);
-	if (packet_buffers == (uintptr_t) -1) {
+	node_t this_node;
+	if (!tn_cpu_get_current_node(&this_node)) {
+		return 33;
+	}
+
+	uintptr_t packet_buffers;
+	if (!tn_hp_allocate(IXGBE_PACKET_SIZE_MAX * IXGBE_RING_SIZE, this_node, &packet_buffers)) {
 		return 1;
 	}
 
@@ -32,11 +37,6 @@ int main(int argc, char** argv)
 		node_t device_node;
 		if (!tn_pci_get_device_node(pci_device, &device_node)) {
 			return 10 + 100*n;
-		}
-
-		node_t this_node;
-		if (!tn_cpu_get_current_node(&this_node)) {
-			return 12 + 100*n;
 		}
 
 		if (device_node != this_node) {

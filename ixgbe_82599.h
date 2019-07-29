@@ -3,7 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include <os/pci.h>
+#include "os/cpu.h"
+#include "os/pci.h"
 
 
 // Section 7.2.3.3 Transmit Descriptor Ring:
@@ -19,8 +20,10 @@ static const uint32_t IXGBE_PACKET_SIZE_MAX = 2 * 1024;
 // This struct is not used in the processing loop.
 struct ixgbe_device
 {
-	uintptr_t addr;
 	struct tn_pci_device pci_device;
+	uintptr_t addr;
+	node_t node;
+	uint8_t _padding[4];
 };
 
 // This struct is used in the processing loop!

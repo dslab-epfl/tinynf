@@ -1,8 +1,11 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
+#include "os/cpu.h"
 
-// Returns the address of a newly-allocated hugepage of the given size, or (uintptr_t) -1 on error.
-uintptr_t tn_hp_allocate(size_t size);
+
+// Allocates a hugepage of the given size on the given node, or returns false.
+bool tn_hp_allocate(size_t size, node_t node, uintptr_t* out_addr);

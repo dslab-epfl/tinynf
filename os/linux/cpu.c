@@ -1,4 +1,4 @@
-#include <os/cpu.h>
+#include "os/cpu.h"
 
 #include <numa.h>
 #include <sched.h>
