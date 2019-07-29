@@ -1,12 +1,7 @@
-#include "config.h"
 #include "ixgbe_82599.h"
-
 #include "os/cpu.h"
 #include "os/memory.h"
-
-#include <stdbool.h>
-#include <stdio.h>
-#include <inttypes.h>
+#include "util/log.h"
 
 // Packet processing
 int main(int argc, char** argv)
@@ -16,17 +11,15 @@ int main(int argc, char** argv)
 	(void) argc;
 	(void) argv;
 
-	if(!tn_cpu_set_current(TN_CONFIG_CPU)) {
-		return -1;
-	}
-
 	node_t this_node;
 	if (!tn_cpu_get_current_node(&this_node)) {
+		TN_INFO("Couldn't get current node");
 		return 33;
 	}
 
 	struct tn_memory_block packet_buffers;
 	if (!tn_mem_allocate(IXGBE_PACKET_SIZE_MAX * IXGBE_RING_SIZE, this_node, &packet_buffers)) {
+		TN_INFO("Couldn't alloc packet buffers");
 		return 1;
 	}
 
@@ -36,40 +29,48 @@ int main(int argc, char** argv)
 		struct tn_pci_device pci_device = {.bus=0x83, .device=0x00, .function=n};
 		node_t device_node;
 		if (!tn_pci_get_device_node(pci_device, &device_node)) {
+			TN_INFO("Couldn't get device node");
 			return 10 + 100*n;
 		}
 
 		if (device_node != this_node) {
+			TN_INFO("Device is on remote node");
 			return 11 + 100*n;
 		}
 
 		struct ixgbe_device* device;
 		if (!ixgbe_device_get(pci_device, &device)) {
+			TN_INFO("Couldn't get device");
 			return 2 + 100*n;
 		}
 		if (!ixgbe_device_init(device)) {
+			TN_INFO("Couldn't init device");
 			return 3 + 100*n;
 		}
 		if (!ixgbe_device_set_promiscuous(device)) {
+			TN_INFO("Couldn't make device promiscuous");
 			return 4 + 100*n;
 		}
 
 		if (n == 0) {
 			if (!ixgbe_device_init_receive_queue(device, 0, packet_buffers.phys_addr, &queue_receive)) {
+				TN_INFO("Couldn't init RX queue");
 				return 5;
 			}
 		} else {
 			if (!ixgbe_device_init_send_queue(device, 0, packet_buffers.phys_addr, &queue_send)) {
+				TN_INFO("Couldn't init TX queue");
 				return 6;
 			}
 		}
 	}
-printf("Initialized successfully!\n");
+
+	TN_INFO("Initialized successfully!");
+
 	while (true) {
 		for (uint8_t n = 0; n < IXGBE_RING_SIZE; n++) {
 			uint16_t packet_len = ixgbe_receive(queue_receive);
 			uint8_t* packet = (uint8_t*) (packet_buffers.virt_addr + IXGBE_PACKET_SIZE_MAX * n);
-//		printf("Received a packet!\n");
 //	for (uint16_t n = 0; n < packet_len; n++) {
 //		printf("0x%02"PRIx8" ", packet[n]);
 //	}
@@ -89,7 +90,6 @@ printf("Initialized successfully!\n");
 			packet[11]= 0xFF;
 
 			ixgbe_send(queue_send, packet_len);
-//		printf("Sent a packet!\n");
 		}
 	}
 

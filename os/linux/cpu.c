@@ -4,14 +4,6 @@
 #include <sched.h>
 
 
-bool tn_cpu_set_current(cpu_t cpu)
-{
-	cpu_set_t set;
-	CPU_ZERO(&set);
-	CPU_SET(cpu, &set);
-	return sched_setaffinity(0, sizeof(cpu_set_t), &set) == 0;
-}
-
 bool tn_cpu_get_current_node(node_t* out_node)
 {
 	if (numa_available() == -1) {
