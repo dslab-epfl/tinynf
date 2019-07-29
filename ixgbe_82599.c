@@ -1,6 +1,7 @@
 #include "ixgbe_82599.h"
 
-#include "os/arch.h"
+#include "arch/barrier.h"
+#include "arch/endian.h"
 #include "os/cpu.h"
 #include "os/memory.h"
 #include "os/time.h"
