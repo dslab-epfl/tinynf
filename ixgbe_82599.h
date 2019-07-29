@@ -31,7 +31,8 @@ struct ixgbe_queue
 {
 	uintptr_t device_addr; // TODO consider having the reg address directly, less computation?
 	uintptr_t ring_addr;
-	uintptr_t phys_buffer_addr; // Required to reset descriptors after receive/send
+	uintptr_t buffer_phys_addr; // Required to reset descriptors after receive/send
+	uintptr_t headptr_addr; // TX only
 	uint8_t queue_index;
 	uint8_t packet_index; // TODO check if making index/queue uint16 or 32 or 64 makes any difference (changing index will need explicit truncation when it overflows the ring size!)
 	uint8_t _padding[6];
@@ -41,8 +42,8 @@ bool ixgbe_device_get(struct tn_pci_device pci_device, struct ixgbe_device* out_
 bool ixgbe_device_init(const struct ixgbe_device* device);
 bool ixgbe_device_set_promiscuous(const struct ixgbe_device* device);
 
-bool ixgbe_device_init_receive_queue(const struct ixgbe_device* device, uint8_t queue_index, uintptr_t buffer_addr, struct ixgbe_queue* out_queue);
-bool ixgbe_device_init_send_queue(const struct ixgbe_device* device, uint8_t queue_index, uintptr_t buffer_addr, struct ixgbe_queue* out_queue);
+bool ixgbe_device_init_receive_queue(const struct ixgbe_device* device, uint8_t queue_index, uintptr_t buffer_phys_addr, struct ixgbe_queue* out_queue);
+bool ixgbe_device_init_send_queue(const struct ixgbe_device* device, uint8_t queue_index, uintptr_t buffer_phys_addr, struct ixgbe_queue* out_queue);
 
 uint16_t ixgbe_receive(struct ixgbe_queue* queue);
 void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length);

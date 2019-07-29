@@ -2,7 +2,7 @@
 #include "ixgbe_82599.h"
 
 #include "os/cpu.h"
-#include "os/hugepage.h"
+#include "os/memory.h"
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -25,8 +25,8 @@ int main(int argc, char** argv)
 		return 33;
 	}
 
-	uintptr_t packet_buffers;
-	if (!tn_hp_allocate(IXGBE_PACKET_SIZE_MAX * IXGBE_RING_SIZE, this_node, &packet_buffers)) {
+	struct tn_memory_block packet_buffers;
+	if (!tn_mem_allocate(IXGBE_PACKET_SIZE_MAX * IXGBE_RING_SIZE, this_node, &packet_buffers)) {
 		return 1;
 	}
 
@@ -55,11 +55,11 @@ int main(int argc, char** argv)
 		}
 
 		if (n == 0) {
-			if (!ixgbe_device_init_receive_queue(&device, 0, packet_buffers, &queue_receive)) {
+			if (!ixgbe_device_init_receive_queue(&device, 0, packet_buffers.phys_addr, &queue_receive)) {
 				return 5;
 			}
 		} else {
-			if (!ixgbe_device_init_send_queue(&device, 0, packet_buffers, &queue_send)) {
+			if (!ixgbe_device_init_send_queue(&device, 0, packet_buffers.phys_addr, &queue_send)) {
 				return 6;
 			}
 		}
@@ -69,7 +69,7 @@ printf("Initialized successfully!\n");
 //	for (int n = 0; n < 50; n++) {
 		uint16_t packet_len = ixgbe_receive(&queue_receive);
 //		printf("Received a packet!\n");
-		uint8_t* packet = (uint8_t*) (packet_buffers + IXGBE_PACKET_SIZE_MAX * queue_receive.packet_index);
+		uint8_t* packet = (uint8_t*) (packet_buffers.virt_addr + IXGBE_PACKET_SIZE_MAX * queue_receive.packet_index);
 //	for (uint16_t n = 0; n < packet_len; n++) {
 //		printf("0x%02"PRIx8" ", packet[n]);
 //	}
