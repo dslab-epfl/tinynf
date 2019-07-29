@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "os/cpu.h"
 #include "os/pci.h"
 
 

@@ -1,6 +1,7 @@
 #include "ixgbe_82599.h"
 
 #include "os/arch.h"
+#include "os/cpu.h"
 #include "os/memory.h"
 #include "os/time.h"
 #include "util/log.h"
@@ -21,7 +22,7 @@ struct ixgbe_queue
 	uintptr_t ring_addr;
 	uintptr_t buffer_phys_addr; // Required to reset descriptors after receive/send
 #ifdef FEATURE_TDWBA
-	volatile uint64_t headptr; // TX only
+	volatile uint64_t* head_ptr; // TX only
 #endif
 	uint8_t queue_index;
 	uint8_t packet_index; // TODO check if making index/queue uint16 or 32 or 64 makes any difference (changing index will need explicit truncation when it overflows the ring size!)
@@ -1224,8 +1225,8 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	//	Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low (TDWBAL[n]):
 	//	"Head_WB_En, bit 0 [...] 1b = Head write-back is enabled."
 	//	"Reserved, bit 1"
-	IXGBE_REG_WRITE(device->addr, TDWBAL, queue_index, (uint32_t) ((headptr.phys_addr >> 32) | 1));
-	IXGBE_REG_WRITE(device->addr, TDWBAH, queue_index, (uint32_t) (headptr.phys_addr & 0xFFFFFFFFu));
+	IXGBE_REG_WRITE(device->addr, TDWBAH, queue_index, (uint32_t) (headptr.phys_addr >> 32));
+	IXGBE_REG_WRITE(device->addr, TDWBAL, queue_index, (uint32_t) ((headptr.phys_addr & 0xFFFFFFFFu) | 1));
 	// Disable relaxed ordering of head pointer write-back, since it could cause the head pointer to be updated backwards
 	// TODO: Can we not disable this?
 	IXGBE_REG_CLEAR(device->addr, DCATXCTRL, queue_index, TX_DESC_WB_RO_EN);
@@ -1261,7 +1262,7 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	queue->ring_addr = ring.virt_addr;
 	queue->buffer_phys_addr = buffer_phys_addr;
 #ifdef FEATURE_TDWBA
-	queue->headptr = (volatile uint64_t) headptr.virt_addr;
+	queue->head_ptr = (volatile uint64_t*) headptr.virt_addr;
 #endif
 	queue->queue_index = queue_index;
 	queue->packet_index = 0;
@@ -1361,8 +1362,7 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 
 	// Wait for the descriptor to be done
 #ifdef FEATURE_TDWBA
-	while (queue->headptr != queue->packet_index) {
-TN_INFO("headptr %"PRIu64, queue->headptr);
+	while (*(queue->head_ptr) != queue->packet_index) {
 		// Nothing. Just wait.
 	}
 #else
