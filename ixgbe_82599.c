@@ -5,6 +5,39 @@
 #include "os/time.h"
 #include "util/log.h"
 
+// This struct is not used in the processing loop.
+struct ixgbe_device
+{
+	struct tn_pci_device pci_device;
+	uintptr_t addr;
+	node_t node;
+	uint8_t _padding[4];
+};
+
+// This struct is used in the processing loop!
+struct ixgbe_queue
+{
+	uintptr_t device_addr; // TODO consider having the reg address directly, less computation?
+	uintptr_t ring_addr;
+	uintptr_t buffer_phys_addr; // Required to reset descriptors after receive/send
+#ifdef FEATURE_TDWBA
+	volatile uint64_t headptr; // TX only
+#endif
+	uint8_t queue_index;
+	uint8_t packet_index; // TODO check if making index/queue uint16 or 32 or 64 makes any difference (changing index will need explicit truncation when it overflows the ring size!)
+	uint8_t _padding[6];
+};
+
+// Section 7.2.3.3 Transmit Descriptor Ring:
+// "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
+// By making this 256, we can use 8-bit unsigned integers as ring indices without extra work
+const uint32_t IXGBE_RING_SIZE = 256;
+
+// Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
+// Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...]
+// Thus we set 8 KB as a power of 2 that can be sent and received.
+const uint32_t IXGBE_PACKET_SIZE_MAX = 2 * 1024;
+
 // Section 1.3 Features Summary:
 // 	"Number of Rx Queues (per port): 128"
 #define IXGBE_RECEIVE_QUEUES_COUNT 128u
@@ -306,7 +339,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // ---
 // TODO: Look at the ixgbe kernel driver, which is what this code depends on
 
-bool ixgbe_device_get(const struct tn_pci_device pci_device, struct ixgbe_device* const out_device)
+bool ixgbe_device_get(const struct tn_pci_device pci_device, struct ixgbe_device** out_device)
 {
 	uintptr_t addr;
 	if(!tn_pci_get_device_address(pci_device, 512 * 1024, &addr)) { // length comes from manually checking
@@ -318,9 +351,17 @@ bool ixgbe_device_get(const struct tn_pci_device pci_device, struct ixgbe_device
 		return false;
 	}
 
-	out_device->pci_device = pci_device;
-	out_device->addr = addr;
-	out_device->node = node;
+	struct tn_memory_block device_block;
+	if (!tn_mem_allocate(sizeof(struct ixgbe_device), node, &device_block)) {
+		return false;
+	}
+
+	struct ixgbe_device* device = (struct ixgbe_device*) device_block.virt_addr;
+	device->pci_device = pci_device;
+	device->addr = addr;
+	device->node = node;
+
+	*out_device = device;
 	return true;
 }
 
@@ -983,7 +1024,7 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 }
 
 // TODO very important assumption that the buffer is a single contiguous physical block! how do we enforce this?
-bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, const uint8_t queue_index, const uintptr_t buffer_phys_addr, struct ixgbe_queue* out_queue)
+bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, const uint8_t queue_index, const uintptr_t buffer_phys_addr, struct ixgbe_queue** out_queue)
 {
 	if (queue_index >= IXGBE_RECEIVE_QUEUES_COUNT) {
 		return false;
@@ -1093,15 +1134,24 @@ bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, co
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
 	IXGBE_REG_SET(device->addr, DCARXCTRL, queue_index, UNKNOWN);
 
-	out_queue->device_addr = device->addr;
-	out_queue->ring_addr = ring.virt_addr;
-	out_queue->buffer_phys_addr = buffer_phys_addr;
-	out_queue->queue_index = queue_index;
-	out_queue->packet_index = 0;
+	struct tn_memory_block queue_block;
+	if (!tn_mem_allocate(sizeof(struct ixgbe_queue), device->node, &queue_block)) {
+		TN_INFO("Could not allocate queue");
+		return false;
+	}
+
+	struct ixgbe_queue* queue = (struct ixgbe_queue*) queue_block.virt_addr;
+	queue->device_addr = device->addr;
+	queue->ring_addr = ring.virt_addr;
+	queue->buffer_phys_addr = buffer_phys_addr;
+	queue->queue_index = queue_index;
+	queue->packet_index = 0;
+
+	*out_queue = queue;
 	return true;
 }
 
-bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const uint8_t queue_index, const uintptr_t buffer_phys_addr, struct ixgbe_queue* out_queue)
+bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const uint8_t queue_index, const uintptr_t buffer_phys_addr, struct ixgbe_queue** out_queue)
 {
 	if (queue_index >= IXGBE_SEND_QUEUES_COUNT) {
 		return false;
@@ -1200,14 +1250,23 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
 	// We have nothing to transmit, so we leave TDH/TDT alone.
 
-	out_queue->device_addr = device->addr;
-	out_queue->ring_addr = ring.virt_addr;
-	out_queue->buffer_phys_addr = buffer_phys_addr;
+	struct tn_memory_block queue_block;
+	if (!tn_mem_allocate(sizeof(struct ixgbe_queue), device->node, &queue_block)) {
+		TN_INFO("Could not allocate queue");
+		return false;
+	}
+
+	struct ixgbe_queue* queue = (struct ixgbe_queue*) queue_block.virt_addr;
+	queue->device_addr = device->addr;
+	queue->ring_addr = ring.virt_addr;
+	queue->buffer_phys_addr = buffer_phys_addr;
 #ifdef FEATURE_TDWBA
-	out_queue->headptr = (volatile uint64_t) headptr.virt_addr;
+	queue->headptr = (volatile uint64_t) headptr.virt_addr;
 #endif
-	out_queue->queue_index = queue_index;
-	out_queue->packet_index = 0;
+	queue->queue_index = queue_index;
+	queue->packet_index = 0;
+
+	*out_queue = queue;
 	return true;
 }
 
