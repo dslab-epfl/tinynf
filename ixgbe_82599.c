@@ -1300,7 +1300,7 @@ uint16_t ixgbe_receive(struct ixgbe_queue* queue)
 	// Return the length
 	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
 	// Bits 32-47: "PKT_LEN holds the number of bytes posted to the packet buffer."
-	return (packet_metadata >> 32) & 0xFFFFu;
+	return (uint16_t) (packet_metadata >> 32);
 }
 
 void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
@@ -1360,7 +1360,6 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	// Increment the tail, which tells the NIC to use the descriptor
 	IXGBE_REG_WRITE(queue->device_addr, TDT, queue->queue_index, queue->packet_index);
 
-	// Wait for the descriptor to be done
 #ifdef FEATURE_TDWBA
 	while (*(queue->head_ptr) != queue->packet_index) {
 		// Nothing. Just wait.
