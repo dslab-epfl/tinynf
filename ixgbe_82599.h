@@ -32,7 +32,9 @@ struct ixgbe_queue
 	uintptr_t device_addr; // TODO consider having the reg address directly, less computation?
 	uintptr_t ring_addr;
 	uintptr_t buffer_phys_addr; // Required to reset descriptors after receive/send
-	uintptr_t headptr_addr; // TX only
+#ifdef FEATURE_TDWBA
+	volatile uint64_t headptr; // TX only
+#endif
 	uint8_t queue_index;
 	uint8_t packet_index; // TODO check if making index/queue uint16 or 32 or 64 makes any difference (changing index will need explicit truncation when it overflows the ring size!)
 	uint8_t _padding[6];

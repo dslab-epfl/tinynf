@@ -132,6 +132,12 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // This bit is reserved has no name, but must be cleared by software anyway.
 #define IXGBE_REG_DCARXCTRL_UNKNOWN BIT(12)
 
+#ifdef FEATURE_TDWBA
+// Section 8.2.3.11.2 Tx DCA Control Registers
+#define IXGBE_REG_DCATXCTRL(n) (0x0600Cu + 0x40u*n)
+#define IXGBE_REG_DCATXCTRL_TX_DESC_WB_RO_EN BIT(11)
+#endif
+
 // Section 8.2.3.9.2 DMA Tx Control
 #define IXGBE_REG_DMATXCTL(_) 0x04A80u
 #define IXGBE_REG_DMATXCTL_TE BIT(0)
@@ -271,11 +277,13 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Section 8.2.3.9.9 Transmit Descriptor Tail
 #define IXGBE_REG_TDT(n) (0x06018u + 0x40u*n)
 
+#ifdef FEATURE_TDWBA
 // Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address High
 #define IXGBE_REG_TDWBAH(n) (0x0603Cu + 0x40u*n)
 
 // Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low
 #define IXGBE_REG_TDWBAL(n) (0x06038u + 0x40u*n)
+#endif
 
 // Section 8.2.3.9.10 Transmit Descriptor Control
 #define IXGBE_REG_TXDCTL(n) (0x06028u + 0x40u*n)
@@ -1146,11 +1154,32 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	//#define IXGBE_REG_TXDCTL_WTHRESH BITS(16,22)
 	//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 36);
 	//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 8);
-	//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, WTHRESH, 4);
+	//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, WTHRESH, 4); // Must be 0 with header write-back!
 
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
-//???
-	// TODO: Same as above. Take a look at the old ixgbe driver (1.3.31.5), it uses it, and disables some relaxed ordering because of it.
+#ifdef FEATURE_TDWBA
+	struct tn_memory_block headptr;
+	if (!tn_mem_allocate(sizeof(uint64_t), device->node, &headptr)) {
+		TN_INFO("Could not allocate a headptr");
+		return false;
+	}
+	//	Section 7.2.3.5.2 Tx Head Pointer Write Back:
+	//	"The low register's LSB hold the control bits.
+	// 	 * The Head_WB_EN bit enables activation of tail write back. In this case, no descriptor write back is executed.
+	// 	 * The 30 upper bits of this register hold the lowest 32 bits of the head write-back address, assuming that the two last bits are zero."
+	if (headptr.phys_addr % 4 != 0) {
+		TN_INFO("Headptr address' last two bits are not zero"); // this really should never happen given that we're allocating 8 bytes...
+		return false;
+	}
+	//	Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low (TDWBAL[n]):
+	//	"Head_WB_En, bit 0 [...] 1b = Head write-back is enabled."
+	//	"Reserved, bit 1"
+	IXGBE_REG_WRITE(device->addr, TDWBAL, queue_index, (uint32_t) ((headptr.phys_addr >> 32) | 1));
+	IXGBE_REG_WRITE(device->addr, TDWBAH, queue_index, (uint32_t) (headptr.phys_addr & 0xFFFFFFFFu));
+	// Disable relaxed ordering of head pointer write-back, since it could cause the head pointer to be updated backwards
+	// TODO: Can we not disable this?
+	IXGBE_REG_CLEAR(device->addr, DCATXCTRL, queue_index, TX_DESC_WB_RO_EN);
+#endif
 
 	// "- Enable transmit path by setting DMATXCTL.TE.
 	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
@@ -1174,6 +1203,9 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	out_queue->device_addr = device->addr;
 	out_queue->ring_addr = ring.virt_addr;
 	out_queue->buffer_phys_addr = buffer_phys_addr;
+#ifdef FEATURE_TDWBA
+	out_queue->headptr = (volatile uint64_t) headptr.virt_addr;
+#endif
 	out_queue->queue_index = queue_index;
 	out_queue->packet_index = 0;
 	return true;
@@ -1269,11 +1301,18 @@ void ixgbe_send(struct ixgbe_queue* queue, uint16_t packet_length)
 	IXGBE_REG_WRITE(queue->device_addr, TDT, queue->queue_index, queue->packet_index);
 
 	// Wait for the descriptor to be done
+#ifdef FEATURE_TDWBA
+	while (queue->headptr != queue->packet_index) {
+TN_INFO("headptr %"PRIu64, queue->headptr);
+		// Nothing. Just wait.
+	}
+#else
 	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
 	// STA is at offset 32, and its "bit 0" is Descriptor Done
 	do {
 		packet_metadata = *(descriptor_addr + 1);
 	} while ((packet_metadata & BITL(32)) == 0);
+#endif
 }
 
 // TODO Remove everything below this line

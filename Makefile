@@ -53,6 +53,9 @@ CFLAGS += -O3
 CFLAGS += -D_GNU_SOURCE
 CFLAGS += -lnuma
 
+# Features
+CFLAGS += -DFEATURE_TDWBA
+
 # TODO add https://kristerw.blogspot.com/2017/09/useful-gcc-warning-options-not-enabled.html once we get a more recent GCC
 
 # TODO try the following for binary size (from https://stackoverflow.com/a/15314861/3311770)
