@@ -58,7 +58,7 @@ const uint32_t IXGBE_PACKET_SIZE_MAX = 2 * 1024;
 #define IXGBE_VLAN_FILTER_COUNT 64
 // Section 7.1.1.1.1 Unicast Filter:
 // 	"The Ethernet MAC address is checked against the 128 host unicast addresses"
-#define IXGBE_RECEIVE_ADDRESSES_COUNT 128
+#define IXGBE_RECEIVE_ADDRS_COUNT 128
 // Section 7.1.2.5 L3/L4 5-tuple Filters:
 // 	"There are 128 different 5-tuple filter configuration registers sets"
 #define IXGBE_5TUPLE_FILTERS_COUNT 128
@@ -343,7 +343,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 bool ixgbe_device_get(const struct tn_pci_device pci_device, struct ixgbe_device** out_device)
 {
 	uintptr_t addr;
-	if(!tn_pci_get_device_address(pci_device, 512 * 1024, &addr)) { // length comes from manually checking
+	if(!tn_pci_mmap_device(pci_device, 512 * 1024, &addr)) { // length comes from manually checking
 		return false;
 	}
 
@@ -774,7 +774,7 @@ bool ixgbe_device_init(const struct ixgbe_device* const device)
 	// INTERPRETATION: We should enable all pools with address 0, just in case, and disable everything else since we only have 1 MAC address.
 	IXGBE_REG_WRITE(device->addr, MPSAR, 0, 0xFFFFFFFF);
 	IXGBE_REG_WRITE(device->addr, MPSAR, 1, 0xFFFFFFFF);
-	for (uint32_t n = 2; n < IXGBE_RECEIVE_ADDRESSES_COUNT * 2; n++) {
+	for (uint32_t n = 2; n < IXGBE_RECEIVE_ADDRS_COUNT * 2; n++) {
 		IXGBE_REG_CLEAR(device->addr, MPSAR, n);
 	}
 

@@ -16,7 +16,7 @@
 #define PCI_CONFIG_DATA 0xCFC
 
 
-bool tn_pci_get_device_node(struct tn_pci_device device, node_t* out_node)
+bool tn_pci_get_device_node(const struct tn_pci_device device, node_t* out_node)
 {
 	const char* node_str = tn_fs_readline("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/numa_node", device.bus, device.device, device.function);
 	if (node_str == NULL) {
@@ -43,8 +43,7 @@ bool tn_pci_get_device_node(struct tn_pci_device device, node_t* out_node)
 	return true;
 }
 
-// TODO uniformize addr/address naming
-bool tn_pci_get_device_address(const struct tn_pci_device device, const uint64_t min_length, uintptr_t* out_addr)
+bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_length, uintptr_t* out_addr)
 {
 	uintptr_t dev_addr = (uintptr_t) -1;
 	const char* dev_resource_line = NULL;
@@ -106,9 +105,9 @@ end:
 
 uint32_t tn_pci_read(const struct tn_pci_device device, const uint8_t reg)
 {
-	const uint32_t address = 0x80000000 | ((uint32_t)device.bus << 16) | ((uint32_t)device.device << 11) | ((uint32_t)device.function << 8) | reg;
-	outl_p(address, PCI_CONFIG_ADDR);
+	const uint32_t addr = 0x80000000 | ((uint32_t)device.bus << 16) | ((uint32_t)device.device << 11) | ((uint32_t)device.function << 8) | reg;
+	outl_p(addr, PCI_CONFIG_ADDR);
 	const uint32_t result = inl_p(PCI_CONFIG_DATA);
-	TN_DEBUG("PCI read: 0x%08" PRIx32 " -> 0x%08" PRIx32, address, result);
+	TN_DEBUG("PCI read: 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, result);
 	return result;
 }

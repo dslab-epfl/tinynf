@@ -119,7 +119,7 @@ static bool get_node(const uintptr_t addr, node_t* out_node)
 //       If this assumption were to be broken, this code would need to change.
 //       Locking a page is not sufficient - it guarantees the page won't be swapped out,
 //       not that it won't be moved.
-bool tn_mem_allocate(size_t size, node_t node, struct tn_memory_block* out_block)
+bool tn_mem_allocate(const size_t size, const node_t node, struct tn_memory_block* out_block)
 {
 	// We only support 2MB hugepages
 	const int HUGEPAGE_SIZE_POWER = 10 + 10 + 1;
