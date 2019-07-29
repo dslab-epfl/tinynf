@@ -1,5 +1,7 @@
+#include "config.h"
 #include "ixgbe_82599.h"
 
+#include "os/cpu.h"
 #include "os/hugepage.h"
 
 #include <stdbool.h>
@@ -14,6 +16,10 @@ int main(int argc, char** argv)
 	(void) argc;
 	(void) argv;
 
+	if(!tn_cpu_set_current(TN_CONFIG_CPU)) {
+		return -1;
+	}
+
 	const uintptr_t packet_buffers = tn_hp_allocate(IXGBE_PACKET_SIZE_MAX * IXGBE_RING_SIZE);
 	if (packet_buffers == (uintptr_t) -1) {
 		return 1;
@@ -22,8 +28,23 @@ int main(int argc, char** argv)
 	struct ixgbe_queue queue_receive;
 	struct ixgbe_queue queue_send;
 	for (uint8_t n = 0; n < 2; n++) {
+		struct tn_pci_device pci_device = {.bus=0x83, .device=0x00, .function=n};
+		node_t device_node;
+		if (!tn_pci_get_device_node(pci_device, &device_node)) {
+			return 10 + 100*n;
+		}
+
+		node_t this_node;
+		if (!tn_cpu_get_current_node(&this_node)) {
+			return 12 + 100*n;
+		}
+
+		if (device_node != this_node) {
+			return 11 + 100*n;
+		}
+
 		struct ixgbe_device device;
-		if (!ixgbe_device_get(0x83, 0x00, n, &device)) {
+		if (!ixgbe_device_get(pci_device, &device)) {
 			return 2 + 100*n;
 		}
 		if (!ixgbe_device_init(&device)) {

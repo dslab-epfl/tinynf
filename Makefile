@@ -49,6 +49,9 @@ CFLAGS += -Wc++-compat
 CFLAGS += -DLOG_LEVEL=1
 # Release flags
 CFLAGS += -O3
+# Linux-specific
+CFLAGS += -D_GNU_SOURCE
+CFLAGS += -lnuma
 
 # TODO add https://kristerw.blogspot.com/2017/09/useful-gcc-warning-options-not-enabled.html once we get a more recent GCC
 
@@ -68,4 +71,4 @@ FILES := *.c os/linux/*.c
 
 $(OUTPUT): Makefile $(HEADERS) $(FILES)
 	@rm -f *.gch $(OUTPUT)
-	@$(CC) $(CFLAGS) $(FILES) -o $(OUTPUT)
+	@$(CC) $(FILES) $(CFLAGS) -o $(OUTPUT)

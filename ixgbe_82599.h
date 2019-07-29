@@ -3,6 +3,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <os/pci.h>
+
+
 // Section 7.2.3.3 Transmit Descriptor Ring:
 // "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
 // By making this 256, we can use 8-bit unsigned integers as ring indices without extra work
@@ -17,10 +20,7 @@ static const uint32_t IXGBE_PACKET_SIZE_MAX = 2 * 1024;
 struct ixgbe_device
 {
 	uintptr_t addr;
-	uint8_t pci_bus;
-	uint8_t pci_device;
-	uint8_t pci_function;
-	uint8_t _padding[5];
+	struct tn_pci_device pci_device;
 };
 
 // This struct is used in the processing loop!
@@ -34,7 +34,7 @@ struct ixgbe_queue
 	uint8_t _padding[6];
 };
 
-bool ixgbe_device_get(uint8_t bus, uint8_t device, uint8_t function, struct ixgbe_device* out_device);
+bool ixgbe_device_get(struct tn_pci_device pci_device, struct ixgbe_device* out_device);
 bool ixgbe_device_init(const struct ixgbe_device* device);
 bool ixgbe_device_set_promiscuous(const struct ixgbe_device* device);
 

@@ -3,7 +3,6 @@
 #include "os/arch.h"
 #include "os/hugepage.h"
 #include "os/memory.h"
-#include "os/pci.h"
 #include "os/time.h"
 #include "util/log.h"
 
@@ -97,8 +96,8 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) | IXGBE_REG_##reg##_##field))
 
 // PCI primitives (we do not write to PCI)
-#define IXGBE_PCIREG_READ(bus, device, function, reg) tn_pci_read(bus, device, function, IXGBE_PCIREG_##reg)
-#define IXGBE_PCIREG_CLEARED(bus, device, function, reg, field) ((IXGBE_PCIREG_READ(bus, device, function, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
+#define IXGBE_PCIREG_READ(pci_dev, reg) tn_pci_read(pci_dev, IXGBE_PCIREG_##reg)
+#define IXGBE_PCIREG_CLEARED(pci_dev, reg, field) ((IXGBE_PCIREG_READ(pci_dev, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
 
 
 // -------------------------------------------------------------
@@ -294,17 +293,15 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // ---
 // TODO: Look at the ixgbe kernel driver, which is what this code depends on
 
-bool ixgbe_device_get(const uint8_t bus, const uint8_t device, const uint8_t function, struct ixgbe_device* const out_device)
+bool ixgbe_device_get(const struct tn_pci_device pci_device, struct ixgbe_device* const out_device)
 {
-	const uintptr_t addr = tn_pci_get_device_address(bus, device, function, 512 * 1024); // length comes from manually checking
-	if (addr == (uintptr_t) -1) {
+	uintptr_t addr;
+	if(!tn_pci_get_device_address(pci_device, 512 * 1024, &addr)) { // length comes from manually checking
 		return false;
 	}
 
 	out_device->addr = addr;
-	out_device->pci_bus = bus;
-	out_device->pci_device = device;
-	out_device->pci_function = function;
+	out_device->pci_device = pci_device;
 	return true;
 }
 
@@ -475,7 +472,7 @@ static bool ixgbe_device_master_disable(const struct ixgbe_device* const device)
 	if (timed_out) {
 		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
 		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
-		if (!IXGBE_PCIREG_CLEARED(device->pci_bus, device->pci_device, device->pci_function, DEVICESTATUS, TRANSACTIONPENDING)) {
+		if (!IXGBE_PCIREG_CLEARED(device->pci_device, DEVICESTATUS, TRANSACTIONPENDING)) {
 			// Because this is recoverable, we log it as DEBUG rather than INFO
 			TN_DEBUG("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable");
 			return false;
