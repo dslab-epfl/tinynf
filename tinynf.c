@@ -1,6 +1,6 @@
 #include "ixgbe_82599.h"
-#include "os/cpu.h"
 #include "os/memory.h"
+#include "os/pci.h"
 #include "util/log.h"
 
 // Packet processing
@@ -11,14 +11,8 @@ int main(int argc, char** argv)
 	(void) argc;
 	(void) argv;
 
-	node_t this_node;
-	if (!tn_cpu_get_current_node(&this_node)) {
-		TN_INFO("Couldn't get current node");
-		return 33;
-	}
-
 	struct tn_memory_block packet_buffers;
-	if (!tn_mem_allocate(IXGBE_PACKET_SIZE_MAX * IXGBE_RING_SIZE, this_node, &packet_buffers)) {
+	if (!tn_mem_allocate(IXGBE_PACKET_SIZE_MAX * IXGBE_RING_SIZE, &packet_buffers)) {
 		TN_INFO("Couldn't alloc packet buffers");
 		return 1;
 	}
@@ -27,17 +21,6 @@ int main(int argc, char** argv)
 	struct ixgbe_queue* queue_send;
 	for (uint8_t n = 0; n < 2; n++) {
 		struct tn_pci_device pci_device = {.bus=0x83, .device=0x00, .function=n};
-		node_t device_node;
-		if (!tn_pci_get_device_node(pci_device, &device_node)) {
-			TN_INFO("Couldn't get device node");
-			return 10 + 100*n;
-		}
-
-		if (device_node != this_node) {
-			TN_INFO("Device is on remote node");
-			return 11 + 100*n;
-		}
-
 		struct ixgbe_device* device;
 		if (!ixgbe_device_get(pci_device, &device)) {
 			TN_INFO("Couldn't get device");

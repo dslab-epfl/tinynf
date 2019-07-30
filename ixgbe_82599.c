@@ -2,7 +2,6 @@
 
 #include "arch/barrier.h"
 #include "arch/endian.h"
-#include "os/cpu.h"
 #include "os/memory.h"
 #include "os/time.h"
 #include "util/log.h"
@@ -12,8 +11,6 @@ struct ixgbe_device
 {
 	struct tn_pci_device pci_device;
 	uintptr_t addr;
-	node_t node;
-	uint8_t _padding[4];
 };
 
 // This struct is used in the processing loop!
@@ -348,20 +345,14 @@ bool ixgbe_device_get(const struct tn_pci_device pci_device, struct ixgbe_device
 		return false;
 	}
 
-	node_t node;
-	if (!tn_pci_get_device_node(pci_device, &node)) {
-		return false;
-	}
-
 	struct tn_memory_block device_block;
-	if (!tn_mem_allocate(sizeof(struct ixgbe_device), node, &device_block)) {
+	if (!tn_mem_allocate(sizeof(struct ixgbe_device), &device_block)) {
 		return false;
 	}
 
 	struct ixgbe_device* device = (struct ixgbe_device*) device_block.virt_addr;
 	device->pci_device = pci_device;
 	device->addr = addr;
-	device->node = node;
 
 	*out_device = device;
 	return true;
@@ -1042,7 +1033,7 @@ bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, co
 
 	// "- Allocate a region of memory for the receive descriptor list."
 	struct tn_memory_block ring;
-	if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, device->node, &ring)) { // 16 bytes per descriptor, i.e. 2x64bits
+	if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring)) { // 16 bytes per descriptor, i.e. 2x64bits
 		return false;
 	}
 
@@ -1137,7 +1128,7 @@ bool ixgbe_device_init_receive_queue(const struct ixgbe_device* const device, co
 	IXGBE_REG_SET(device->addr, DCARXCTRL, queue_index, UNKNOWN);
 
 	struct tn_memory_block queue_block;
-	if (!tn_mem_allocate(sizeof(struct ixgbe_queue), device->node, &queue_block)) {
+	if (!tn_mem_allocate(sizeof(struct ixgbe_queue), &queue_block)) {
 		TN_INFO("Could not allocate queue");
 		return false;
 	}
@@ -1169,7 +1160,7 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 
 	// "- Allocate a region of memory for the transmit descriptor list."
 	struct tn_memory_block ring;
-	if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, device->node, &ring)) { // 16 bytes per descriptor, i.e. 2x64bits
+	if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring)) { // 16 bytes per descriptor, i.e. 2x64bits
 		return false;
 	}
 	// Let's set up our ring.
@@ -1211,7 +1202,7 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 #ifdef FEATURE_TDWBA
 	struct tn_memory_block headptr;
-	if (!tn_mem_allocate(sizeof(uint64_t), device->node, &headptr)) {
+	if (!tn_mem_allocate(sizeof(uint64_t), &headptr)) {
 		TN_INFO("Could not allocate a headptr");
 		return false;
 	}
@@ -1253,7 +1244,7 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	// We have nothing to transmit, so we leave TDH/TDT alone.
 
 	struct tn_memory_block queue_block;
-	if (!tn_mem_allocate(sizeof(struct ixgbe_queue), device->node, &queue_block)) {
+	if (!tn_mem_allocate(sizeof(struct ixgbe_queue), &queue_block)) {
 		TN_INFO("Could not allocate queue");
 		return false;
 	}

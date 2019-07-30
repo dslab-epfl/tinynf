@@ -3,8 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "os/cpu.h"
-
 
 struct tn_pci_device {
 	uint8_t bus;
@@ -13,9 +11,6 @@ struct tn_pci_device {
 	uint8_t _padding[5];
 };
 
-
-// Gets the NUMA node of the given device, or returns false.
-bool tn_pci_get_device_node(struct tn_pci_device device, node_t* out_node);
 
 // Gets the address at which the given device is memory-mapped,
 // ensuring it refers to a block of at least min_length bytes, or returns false.

@@ -6,7 +6,7 @@
 #include <stdlib.h>
 
 
-bool tn_mem_allocate(const size_t size, const node_t node, struct tn_memory_block* out_block)
+bool tn_mem_allocate(const size_t size, struct tn_memory_block* out_block)
 {
 	if (symbol_bool("mem_allocate")) {
 		void* result = malloc(size);

@@ -4,8 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "os/cpu.h"
-
 
 struct tn_memory_block {
 	uintptr_t virt_addr;
@@ -13,5 +11,5 @@ struct tn_memory_block {
 };
 
 
-// Allocates a pinned memory block of the given size on the given NUMA node, or returns false.
-bool tn_mem_allocate(size_t size, node_t node, struct tn_memory_block* out_block);
+// Allocates a pinned memory block of the given size, or returns false.
+bool tn_mem_allocate(size_t size, struct tn_memory_block* out_block);

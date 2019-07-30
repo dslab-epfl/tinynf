@@ -1,11 +1,10 @@
 #include "os/pci.h"
 
 #include "os/linux/filesystem.h"
+#include "os/linux/numa.h"
 #include "util/log.h"
 
 #include <inttypes.h>
-#include <stdbool.h>
-#include <stddef.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -16,7 +15,7 @@
 #define PCI_CONFIG_DATA 0xCFC
 
 
-bool tn_pci_get_device_node(const struct tn_pci_device device, node_t* out_node)
+static bool tn_numa_get_device_node(const struct tn_pci_device device, uint64_t* out_node)
 {
 	const char* node_str = tn_fs_readline("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/numa_node", device.bus, device.device, device.function);
 	if (node_str == NULL) {
@@ -39,7 +38,7 @@ bool tn_pci_get_device_node(const struct tn_pci_device device, node_t* out_node)
 		return false;
 	}
 
-	*out_node = (node_t) (node_chr - '0');
+	*out_node = (uint64_t) (node_chr - '0');
 	return true;
 }
 
@@ -58,6 +57,17 @@ bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_le
 			goto end;
 		}
 		tn_pci_got_ioperm = true;
+	}
+
+	// Make sure the device is on the same NUMA node as the CPU
+	uint64_t device_node;
+	if (!tn_numa_get_device_node(device, &device_node)) {
+		TN_DEBUG("Could not get PCI device node");
+		goto end;
+	}
+	if (device_node != tn_numa_get_current_node()) {
+		TN_DEBUG("PCI device is on wrong node");
+		goto end;
 	}
 
 	// Read the first line of the PCI /resource file, as a sanity check + indication of the length of the resource

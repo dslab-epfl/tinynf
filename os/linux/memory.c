@@ -1,5 +1,6 @@
 #include "os/memory.h"
 
+#include "os/linux/numa.h"
 #include "util/log.h"
 
 #include <fcntl.h>
@@ -90,7 +91,7 @@ static bool get_phys_addr(const uintptr_t addr, uintptr_t* out_phys_addr)
 	return true;
 }
 
-static bool get_node(const uintptr_t addr, node_t* out_node)
+static bool get_node(const uintptr_t addr, uint64_t* out_node)
 {
 	const uintptr_t page_size = get_page_size();
 	if (page_size == 0) {
@@ -110,7 +111,7 @@ static bool get_node(const uintptr_t addr, node_t* out_node)
 		return false;
 	}
 
-	*out_node = (node_t) status[0];
+	*out_node = (uint64_t) status[0];
 	return true;
 }
 
@@ -119,7 +120,7 @@ static bool get_node(const uintptr_t addr, node_t* out_node)
 //       If this assumption were to be broken, this code would need to change.
 //       Locking a page is not sufficient - it guarantees the page won't be swapped out,
 //       not that it won't be moved.
-bool tn_mem_allocate(const size_t size, const node_t node, struct tn_memory_block* out_block)
+bool tn_mem_allocate(const size_t size, struct tn_memory_block* out_block)
 {
 	// We only support 2MB hugepages
 	const int HUGEPAGE_SIZE_POWER = 10 + 10 + 1;
@@ -153,13 +154,12 @@ bool tn_mem_allocate(const size_t size, const node_t node, struct tn_memory_bloc
 
 	uintptr_t virt_addr = (uintptr_t) page;
 
-	node_t actual_node;
+	// HACK: We're hoping that the Linux kernel will allocate memory on our node - in practice this seems to work
+	uint64_t actual_node;
 	if (!get_node(virt_addr, &actual_node)) {
 		return false;
 	}
-
-	// HACK: We're hoping that `node` is the current node, and that the Linux kernel will allocate memory on that node - in practice this seems to work
-	if (actual_node != node) {
+	if (actual_node != tn_numa_get_current_node()) {
 		return false;
 	}
 
