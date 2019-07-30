@@ -71,9 +71,9 @@ OUTPUT := tinynf
 # Relative paths
 CFLAGS += -I.
 # Files
-HEADERS := *.h os/*.h arch/*.h
 FILES := *.c os/linux/*.c arch/x86/*.c
 
-$(OUTPUT): Makefile $(HEADERS) $(FILES)
-	@rm -f *.gch $(OUTPUT)
+
+# Generate the dependencies in Makefile format using cc -M, then keep only the dependencies (not the targets:, not the backslashes for newlines)
+$(OUTPUT): Makefile $(shell ${CC} ${FILES} ${CFLAGS} -M | sed 's/.*://g' | sed 's/\\//g')
 	@$(CC) $(FILES) $(CFLAGS) -o $(OUTPUT)

@@ -2,6 +2,7 @@
 #include "os/memory.h"
 #include "os/pci.h"
 #include "util/log.h"
+#include "util/perf.h"
 
 // Packet processing
 int main(int argc, char** argv)
@@ -50,8 +51,11 @@ int main(int argc, char** argv)
 
 	TN_INFO("Initialized successfully!");
 
+	TN_PERF_START();
+
 	while (true) {
-		for (uint8_t n = 0; n < IXGBE_RING_SIZE; n++) {
+//	for (uint64_t _ = 0; _ < 1000; _++) {
+		for (uint64_t n = 0; n < IXGBE_RING_SIZE; n++) {
 			uint16_t packet_len = ixgbe_receive(queue_receive);
 			uint8_t* packet = (uint8_t*) (packet_buffers.virt_addr + IXGBE_PACKET_SIZE_MAX * n);
 //	for (uint16_t n = 0; n < packet_len; n++) {
@@ -75,6 +79,10 @@ int main(int argc, char** argv)
 			ixgbe_send(queue_send, packet_len);
 		}
 	}
+
+	TN_PERF_DUMP();
+
+	TN_INFO("Done!");
 
 	return 0;
 }

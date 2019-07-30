@@ -20,7 +20,7 @@ struct ixgbe_queue
 	uintptr_t ring_addr;
 	uintptr_t buffer_phys_addr; // Required to reset descriptors after receive/send
 #ifdef FEATURE_TDWBA
-	volatile uint64_t* head_ptr; // TX only
+	volatile uint32_t* head_ptr; // TX only
 #endif
 	uint8_t queue_index;
 	uint8_t packet_index; // TODO check if making index/queue uint16 or 32 or 64 makes any difference (changing index will need explicit truncation when it overflows the ring size!)
@@ -1202,7 +1202,7 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 #ifdef FEATURE_TDWBA
 	struct tn_memory_block headptr;
-	if (!tn_mem_allocate(sizeof(uint64_t), &headptr)) {
+	if (!tn_mem_allocate(sizeof(uint32_t), &headptr)) {
 		TN_INFO("Could not allocate a headptr");
 		return false;
 	}
@@ -1254,7 +1254,7 @@ bool ixgbe_device_init_send_queue(const struct ixgbe_device* const device, const
 	queue->ring_addr = ring.virt_addr;
 	queue->buffer_phys_addr = buffer_phys_addr;
 #ifdef FEATURE_TDWBA
-	queue->head_ptr = (volatile uint64_t*) headptr.virt_addr;
+	queue->head_ptr = (volatile uint32_t*) headptr.virt_addr;
 #endif
 	queue->queue_index = queue_index;
 	queue->packet_index = 0;
