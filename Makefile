@@ -53,9 +53,6 @@ CFLAGS += -O3
 CFLAGS += -D_GNU_SOURCE
 CFLAGS += -lnuma
 
-# Features
-#CFLAGS += -DFEATURE_TDWBA
-
 # TODO enable LTO
 
 # TODO add https://kristerw.blogspot.com/2017/09/useful-gcc-warning-options-not-enabled.html once we get a more recent GCC

@@ -13,3 +13,6 @@ struct tn_memory_block {
 
 // Allocates a pinned memory block of the given size, or returns false.
 bool tn_mem_allocate(size_t size, struct tn_memory_block* out_block);
+
+// Frees the given memory block.
+void tn_mem_free(struct tn_memory_block block);

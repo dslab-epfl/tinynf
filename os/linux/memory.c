@@ -13,6 +13,12 @@
 #include <linux/mman.h>
 
 
+// We only support 2MB hugepages
+#define HUGEPAGE_SIZE_POWER (10 + 10 + 1)
+#define HUGEPAGE_SIZE (1u << HUGEPAGE_SIZE_POWER)
+
+
+
 // From https://stackoverflow.com/a/5761398/3311770
 // ASSUMPTION: We use uint64_t because if off_t happened to have a bigger max, we wouldn't care
 // ASSUMPTION: We are on an implementation that will not generate a signal
@@ -122,17 +128,13 @@ static bool get_node(const uintptr_t addr, uint64_t* out_node)
 //       not that it won't be moved.
 bool tn_mem_allocate(const size_t size, struct tn_memory_block* out_block)
 {
-	// We only support 2MB hugepages
-	const int HUGEPAGE_SIZE_POWER = 10 + 10 + 1;
-	const size_t HUGEPAGE_SIZE = 1U << HUGEPAGE_SIZE_POWER;
-
 	// OK if size is smaller, we'll just return too much memory
 	if (size > HUGEPAGE_SIZE) {
 		return false;
 	}
 
 	// http://man7.org/linux/man-pages//man2/munmap.2.html
-	const void* page = mmap(
+	void* page = mmap(
 		// No specific address
 		NULL,
 		// Size of the mapping
@@ -157,18 +159,27 @@ bool tn_mem_allocate(const size_t size, struct tn_memory_block* out_block)
 	// HACK: We're hoping that the Linux kernel will allocate memory on our node - in practice this seems to work
 	uint64_t actual_node;
 	if (!get_node(virt_addr, &actual_node)) {
-		return false;
+		goto error;
 	}
 	if (actual_node != tn_numa_get_current_node()) {
-		return false;
+		goto error;
 	}
 
 	uintptr_t phys_addr;
 	if (!get_phys_addr(virt_addr, &phys_addr)) {
-		return false;
+		goto error;
 	}
 
 	out_block->virt_addr = virt_addr;
 	out_block->phys_addr = phys_addr;
 	return true;
+
+error:
+	munmap(page, HUGEPAGE_SIZE);
+	return false;
+}
+
+void tn_mem_free(struct tn_memory_block block)
+{
+	munmap((void*) block.virt_addr, HUGEPAGE_SIZE);
 }
