@@ -1,6 +1,5 @@
 #include "ixgbe_82599.h"
 
-#include "arch/barrier.h"
 #include "arch/endian.h"
 #include "os/memory.h"
 #include "os/time.h"
@@ -82,14 +81,12 @@ const int _ = 0;
 static uint32_t ixgbe_reg_read(const uintptr_t addr, const uint32_t reg)
 {
 	uint32_t val_le = *((volatile uint32_t*)((char*)addr + reg));
-	tn_barrier_read();
 	uint32_t result = tn_le_to_cpu(val_le);
 	TN_DEBUG("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;
 }
 static void ixgbe_reg_write_raw(const uintptr_t reg_addr, const uint32_t value)
 {
-	tn_barrier_write();
 	*((volatile uint32_t*)reg_addr) = tn_cpu_to_le(value);
 	TN_DEBUG("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
@@ -822,9 +819,9 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 }
 
 
-// ================================================================================================================
-// PIPES
-// -----
+// =================================================================================================================
+//                                                       PIPES
+// -----------------------------------------------------------------------------------------------------------------
 //
 // Pipes are pairs of send and receive queues, which may or may not be on the same device.
 // Pipes are used by receiving a packet from the pipe, and sending it to the same pipe.
@@ -879,9 +876,6 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // |    Receiving    |
 // ------------------- (back to top - NIC receive tail)
 //
-// The initial state is that all delimiters are set to 0, except the receive tail which is set to the ring size - 1,
-// which means all packets are in the "receiving" state.
-//
 // Software must update both tails as part of normal operation, since this is the only way to mark packets
 // as available for receiving or sending.
 //
@@ -895,7 +889,18 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // Thus, while we could in theory read the send tail every time to increment it, it would incur one PCIe read
 // on top of the necessary PCIe write, which is too costly; instead, we keep it cached in the pipe struct.
 //
-// ================================================================================================================
+// There is one more packet state due to a quirk of the hardware: tails must be in the range[0..ring_size-1],
+// but tails are the exclusive end of the range of packets owned by the NIC.
+// This means that the state "all packets are owned by the NIC" is unrepresentable since it would require
+// the tail to be equal to the ring size.
+// Thus, we actually set the receive tail to the public send head minus one (modulo the ring size),
+// since if the receive tail was equal to the public send head, no packets would ever be in the receiving state.
+// This implies that there is always exactly one 'unused' packet.
+//
+// The initial state is that all delimiters are set to 0, except the receive tail which is set to the ring size - 1,
+// which means all packets are in the "receiving" state.
+//
+// =================================================================================================================
 
 struct ixgbe_pipe
 {
@@ -1174,9 +1179,6 @@ void ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, u
 	// "Header Buffer Address (64): The physical address of the header buffer with the lowest bit being Descriptor Done (DD).", 2nd line
 	*(descriptor_addr + 1) = 0;
 
-	// TODO move this somewhere?
-	ixgbe_reg_write_raw(pipe->receive_tail_addr, *(pipe->send_head_ptr));
-
 	*out_packet_index = pipe->send_tail;
 }
 
@@ -1235,4 +1237,7 @@ void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
 	// Increment the tail, modulo the ring size
 	pipe->send_tail = (pipe->send_tail + 1u) & (IXGBE_RING_SIZE - 1);
 	ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->send_tail);
+
+	// Mirror the send head to the receive tail (minus 1, see pipes description for an explanation)
+	ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
 }

@@ -53,7 +53,7 @@ int main(int argc, char** argv)
 
 	TN_INFO("Initialized successfully!");
 
-	TN_PERF_START();
+//	TN_PERF_START();
 
 	while (true) {
 //	for (uint64_t _ = 0; _ < 1000; _++) {
@@ -82,7 +82,7 @@ int main(int argc, char** argv)
 		ixgbe_send(pipe, packet_length);
 	}
 
-	TN_PERF_DUMP();
+//	TN_PERF_DUMP();
 
 	TN_INFO("Done!");
 
