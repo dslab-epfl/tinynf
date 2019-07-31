@@ -129,12 +129,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Registers, in alphabetical order, along with their fields
 // ---------------------------------------------------------
 
-// Section 8.2.3.22.19 Auto Negotiation Control Register
-#define IXGBE_REG_AUTOC(_) 0x042A0u
-#define IXGBE_REG_AUTOC_10G_PMA_PMD_PARALLEL BITS(7,8)
-#define IXGBE_REG_AUTOC_RESTART_AN BIT(12)
-#define IXGBE_REG_AUTOC_LMS BITS(13,15)
-
 // Section 8.2.3.1.1 Device Control Register
 #define IXGBE_REG_CTRL(_) 0x00000u
 #define IXGBE_REG_CTRL_MASTER_DISABLE BIT(2)
@@ -195,11 +189,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Section 8.2.3.22.8 MAC Core Control 0 Register
 #define IXGBE_REG_HLREG0(_) 0x04240u
 #define IXGBE_REG_HLREG0_LPBK BIT(15)
-
-// Section 8.2.3.22.20 Link Status Register
-#define IXGBE_REG_LINKS(_) 0x042A4u
-#define IXGBE_REG_LINKS_LINK_SPEED BITS(28,29)
-#define IXGBE_REG_LINKS_LINK_UP BIT(30)
 
 // Section 8.2.3.22.34 MAC Flow Control Register
 #define IXGBE_REG_MFLCN(_) 0x04294u
@@ -269,16 +258,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_STATUS(_) 0x00008u
 #define IXGBE_REG_STATUS_PCIE_MASTER_ENABLE_STATUS BIT(19)
 
-// Section 8.2.3.4.11 Software-Firmware Synchronization
-#define IXGBE_REG_SWFWSYNC(_) 0x10160u
-#define IXGBE_REG_SWFWSYNC_SW BITS(0,4)
-#define IXGBE_REG_SWFWSYNC_FW BITS(5,9)
-
-// Section 8.2.3.4.9 Software Semaphore Register
-#define IXGBE_REG_SWSM(_) 0x10140u
-#define IXGBE_REG_SWSM_SMBI    BIT(0)
-#define IXGBE_REG_SWSM_SWESMBI BIT(1)
-
 // Section 8.2.3.9.6 Transmit Descriptor Base Address High
 #define IXGBE_REG_TDBAH(n) (0x06004u + 0x40u*n)
 
@@ -336,113 +315,6 @@ struct ixgbe_device
 	struct tn_pci_device pci;
 };
 
-// ----------------------------------------------------
-// Section 10.5.4 Software and Firmware Synchronization
-// ----------------------------------------------------
-
-// NOTE: For simplicity, we always gain/release control of all resources
-// TODO: Do we really need this part?
-
-static void ixgbe_lock_swsm(const struct ixgbe_device* const device, bool* out_sw_malfunction, bool* out_fw_malfunction)
-{
-	// "Software checks that the software on the other LAN function does not use the software/firmware semaphore"
-	// "- Software polls the SWSM.SMBI bit until it is read as 0b or time expires (recommended expiration is ~10 ms+ expiration time used for the SWSM.SWESMBI)."
-	// "- If SWSM.SMBI is found at 0b, the semaphore is taken. Note that following this read cycle hardware auto sets the bit to 1b."
-	// "- If time expired, it is assumed that the software of the other function malfunctions. Software proceeds to the next steps checking SWESMBI for firmware use."
-	WAIT_WITH_TIMEOUT(*out_sw_malfunction, 10 * 1000 + 3000 * 1000, IXGBE_REG_CLEARED(device->addr, SWSM, _, SMBI));
-	// "Software checks that the firmware does not use the software/firmware semaphore and then takes its control"
-	// "- Software writes a 1b to the SWSM.SWESMBI bit"
-	IXGBE_REG_SET(device->addr, SWSM, _, SWESMBI);
-	// "- Software polls the SWSM.SWESMBI bit until it is read as 1b or time expires (recommended expiration is ~3 sec).
-	//    If time has expired software assumes that the firmware malfunctioned and proceeds to the next step while ignoring the firmware bits in the SW_FW_SYNC register."
-	WAIT_WITH_TIMEOUT(*out_fw_malfunction, 3000 * 1000, IXGBE_REG_CLEARED(device->addr, SWSM, _, SWESMBI));
-}
-
-static void ixgbe_unlock_swsm(const struct ixgbe_device* const device)
-{
-	// "Software releases the software/firmware semaphore by clearing the SWSM.SWESMBI and SWSM.SMBI bits"
-	IXGBE_REG_CLEAR(device->addr, SWSM, _, SWESMBI);
-	IXGBE_REG_CLEAR(device->addr, SWSM, _, SMBI);
-}
-
-static bool ixgbe_lock_resources(const struct ixgbe_device* const device)
-{
-	uint32_t attempts = 0;
-	bool sw_malfunction = false;
-	bool fw_malfunction = false;
-
-start:
-	// "Gaining Control of Shared Resource by Software"
-	// first two steps - see comments within method
-	ixgbe_lock_swsm(device, &sw_malfunction, &fw_malfunction);
-
-	// "Software takes control of the requested resource(s)"
-	// "- Software reads the firmware and software bit(s) of the requested resource(s) in the SW_FW_SYNC register."
-	uint32_t sync = IXGBE_REG_READ(device->addr, SWFWSYNC, _);
-	// "- If time has expired in the previous steps due to a malfunction firmware,
-	//    the software should clear the firmware bits in the SW_FW_SYNC register.
-	//    If time has expired in the previous steps due to malfunction software of the other LAN function,
-	//    software should clear the software bits in the SW_FW_SYNC register that it does not own."
-	if (fw_malfunction) {
-		sync &= ~IXGBE_REG_SWFWSYNC_FW;
-	}
-	if (sw_malfunction) {
-		sync &= ~IXGBE_REG_SWFWSYNC_SW;
-	}
-
-	// "- If the software and firmware bit(s) of the requested resource(s) in the SW_FW_SYNC register are cleared, it means that these resources are accessible.
-	//    In this case software sets the software bit(s) of the requested resource(s) in the SW_FW_SYNC register.
-	//    Then the SW clears the SWSM.SWESMBI and SWSM.SMBI bits (releasing the SW/FW semaphore register) and can use the specific resource(s)."
-	if ((sync & IXGBE_REG_SWFWSYNC_SW) == 0 && (sync & IXGBE_REG_SWFWSYNC_FW) == 0) {
-		sync |= IXGBE_REG_SWFWSYNC_SW;
-		IXGBE_REG_WRITE(device->addr, SWFWSYNC, _, sync);
-
-		ixgbe_unlock_swsm(device);
-
-		return true;
-	} else {
-		// "- Otherwise (either firmware or software of the other LAN function owns the resource),
-		//    software clears the SWSM.SWESMBI and SWSM.SMBI bits and then repeats the entire process after some delay (recommended 5-10 ms).
-		//    If the resources are not released by software of the other LAN function long enough (recommended expiration time is ~1 sec) software can assume that the other software malfunctioned.
-		//    In that case software should clear all software flags that it does not own and then repeat the entire process once again."
-		ixgbe_unlock_swsm(device);
-
-		attempts++;
-
-		if (attempts == 200U) {
-			TN_INFO("Max attempts for SWSM reached");
-			return false;
-		}
-
-		if (attempts == 100U) {
-			IXGBE_REG_CLEAR(device->addr, SWFWSYNC, _, SW);
-			tn_sleep_us(10 * 1000);
-			goto start;
-		}
-
-		tn_sleep_us(10 * 1000);
-		goto start;
-	}
-}
-
-// "Releasing a Shared Resource by Software"
-static void ixgbe_unlock_resources(const struct ixgbe_device* const device)
-{
-	// "The software takes control over the software/firmware semaphore as previously described for gaining shared resources."
-	bool ignored;
-	ixgbe_lock_swsm(device, &ignored, &ignored);
-
-	// "Software clears the bit(s) of the released resource(s) in the SW_FW_SYNC register."
-	IXGBE_REG_CLEAR(device->addr, SWFWSYNC, _, SW);
-
-	// see comments in the method
-	ixgbe_unlock_swsm(device);
-
-	// "Software should wait a minimum delay (recommended 5-10 ms) before trying to gain the semaphore again"
-	tn_sleep_us(10 * 1000);
-}
-
-
 // ---------------------------------------------------------
 // Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
 // ---------------------------------------------------------
@@ -458,7 +330,7 @@ static bool ixgbe_recv_disable(const struct ixgbe_device* const device, const ui
 	bool timed_out;
 	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(device->addr, RXDCTL, queue, ENABLE));
 	if (timed_out) {
-		TN_INFO("RXDCTL.ENABLE did not clear, cannot disable receive");
+		TN_DEBUG("RXDCTL.ENABLE did not clear, cannot disable receive");
 		return false;
 	}
 
@@ -477,7 +349,9 @@ static bool ixgbe_device_master_disable(const struct ixgbe_device* const device)
 {
 	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
 	for (uint8_t queue = 0; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
-		ixgbe_recv_disable(device, queue);
+		if (!ixgbe_recv_disable(device, queue)) {
+			return false;
+		}
 	}
 
 	// "Then the device driver sets the PCIe Master Disable bit [in the Device Status register] when notified of a pending master disable (or D3 entry)."
@@ -568,14 +442,14 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// We need to write 64-bit memory values, so pointers better be 64 bits!
 	// TODO enforce this at the type level? how?
 	if (UINTPTR_MAX != UINT64_MAX) {
-		TN_INFO("Wrong size of uintptr_t");
+		TN_DEBUG("Wrong size of uintptr_t");
 		return false;
 	}
 
 	struct ixgbe_device device;
 	device.pci = pci_device;
 	if(!tn_pci_mmap_device(pci_device, 512 * 1024, &(device.addr))) { // length comes from manually checking; TODO source this from the spec!
-		TN_INFO("Could not mmap device");
+		TN_DEBUG("Could not mmap device");
 		return false;
 	}
 
@@ -636,7 +510,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	bool eeprom_timed_out;
 	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device.addr, EEC, _, AUTO_RD));
 	if (eeprom_timed_out || IXGBE_REG_CLEARED(device.addr, EEC, _, EE_PRES) || !IXGBE_REG_CLEARED(device.addr, FWSM, _, EXT_ERR_IND)) {
-		TN_INFO("EEPROM auto read timed out");
+		TN_DEBUG("EEPROM auto read timed out");
 		return false;
 	}
 	// "- Wait for DMA initialization done (RDRXCTL.DMAIDONE)."
@@ -644,41 +518,13 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	bool dma_timed_out;
 	WAIT_WITH_TIMEOUT(dma_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device.addr, RDRXCTL, _, DMAIDONE));
 	if (dma_timed_out) {
-		TN_INFO("DMA init timed out");
+		TN_DEBUG("DMA init timed out");
 		return false;
 	}
 	// "- Setup the PHY and the link (see Section 4.6.4)."
-	// TODO: Can we just assume that the EEPROM contains proper config and we don't need to do anything here?
-	// Section 4.6.4.2 XAUI / BX4 / CX4 / SFI Link Setup Flow:
-	// "1. XAUI / BX4 / CX4 / SFI link electrical setup is done according to EEPROM configuration to set the analog interface to the appropriate setting."
-	// OK, nothing to do for this
-	// "2. Configure the Link Mode Select field in the AUTOC register, AUTOC.10G_PARALLEL_PMA_PMD and AUTOC2.10G_PMA_PMD_Serial to the appropriate operating mode."
-	// 	Section 8.2.3.22.19 Auto Negotiation Control Register (AUTOC):
-	// 	"The 82599 Device Firmware may access AUTOC register in parallel to software driver and a synchronization between them is needed. For more information see Section 10.5.4."
-	if(!ixgbe_lock_resources(&device)) {
-		return false;
-	}
-	// 	"10G_PMA_PMD_PARALLEL 8:7 01b* Define 10 GbE PMA/PMD over four differential pairs (Tx and Rx each). 00b = XAUI PMA/PMD."
-	IXGBE_REG_WRITE(device.addr, AUTOC, _, 10G_PMA_PMD_PARALLEL, 0);
-	// 	"LMS, Link Mode Select [...] 001b = 10 GbE parallel link"
-	IXGBE_REG_WRITE(device.addr, AUTOC, _, LMS, 3);
-	// "3. Configure any interface fields in the SERDESC register if necessary."
-	// Not necessary.
-	// "4. Restart the link using the Restart Auto Negotiation field in the AUTOC register."
-	//	 Section 8.2.3.22.19 Auto Negotiation Control Register (AUTOC):
-	// 		"Restart_AN, Restart Auto-Negotiation, Applies new link settings and restarts relative auto-negotiation process (self–clearing bit).
-	// 		 0b = No action needed. 1b = Applies new link settings and restarts auto-negotiation."
-	IXGBE_REG_SET(device.addr, AUTOC, _, RESTART_AN);
-	ixgbe_unlock_resources(&device);
-	// "5. Verify correct link status (align, link_up, speed) using the LINKS register."
-	//	Section 8.2.3.22.20 Link Status Register (LINKS):
-	//		"LINK_SPEED [...] 11b = 10 GbE"
-	//		"Link Up [...] 1b = Link is up"
-	bool link_timed_out;
-	WAIT_WITH_TIMEOUT(link_timed_out, 10 * 1000 * 1000, IXGBE_REG_READ(device.addr, LINKS, _, LINK_SPEED) == 3 && !IXGBE_REG_CLEARED(device.addr, LINKS, _, LINK_UP));
-	if (link_timed_out) {
-		return false;
-	}
+	//	Section 8.2.3.22.19 Auto Negotiation Control Register (AUTOC):
+	//	"Also programmable via EEPROM." is applied to all fields except bit 0, "Force Link Up"
+	// INTERPRETATION: AUTOC is already programmed via the EEPROM, we do not need to set up the PHY/link.
 	// "- Initialize all statistical counters (see Section 4.6.5)."
 	// ASSUMPTION: We do not care about statistics.
 	// INTERPRETATION: We don't need to do anything here.
@@ -936,7 +782,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 
 	struct tn_memory_block device_block;
 	if (!tn_mem_allocate(sizeof(struct ixgbe_device), &device_block)) {
-		TN_INFO("Could not allocate device struct");
+		TN_DEBUG("Could not allocate device struct");
 		return false;
 	}
 	struct ixgbe_device* heap_device = (struct ixgbe_device*) device_block.virt_addr;
@@ -1072,20 +918,20 @@ bool ixgbe_pipe_init(const uintptr_t buffer_phys_addr, struct ixgbe_pipe** out_p
 {
 	struct tn_memory_block ring;
 	if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring)) { // 16 bytes per descriptor, i.e. 2x64bits
-		TN_INFO("Could not allocate ring");
+		TN_DEBUG("Could not allocate ring");
 		return false;
 	}
 
 	// We later on need to ensure the ring is 128-byte aligned, see comments in set_receive/send
 	if (ring.phys_addr % 128u != 0u) {
-		TN_INFO("Ring address is not 128-byte aligned");
+		TN_DEBUG("Ring address is not 128-byte aligned");
 		tn_mem_free(ring);
 		return false;
 	}
 
 	struct tn_memory_block pipe_block;
 	if (!tn_mem_allocate(sizeof(struct ixgbe_pipe), &pipe_block)) {
-		TN_INFO("Could not allocate pipe");
+		TN_DEBUG("Could not allocate pipe");
 		tn_mem_free(ring);
 		return false;
 	}
@@ -1109,12 +955,12 @@ bool ixgbe_pipe_init(const uintptr_t buffer_phys_addr, struct ixgbe_pipe** out_p
 bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_device* const device, const uint64_t long_queue_index)
 {
 	if (pipe->receive_tail_addr != 0) {
-		TN_INFO("Pipe receive was already set");
+		TN_DEBUG("Pipe receive was already set");
 		return false;
 	}
 
 	if (long_queue_index >= IXGBE_RECEIVE_QUEUES_COUNT) {
-		TN_INFO("Receive queue does not exist");
+		TN_DEBUG("Receive queue does not exist");
 		return false;
 	}
 	_Static_assert((uint8_t) -1 >= IXGBE_RECEIVE_QUEUES_COUNT, "This code assumes receive queues fit in an uint8_t");
@@ -1122,7 +968,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 
 	// See later for details of RXDCTL.ENABLE
 	if (!IXGBE_REG_CLEARED(device->addr, RXDCTL, queue_index, ENABLE)) {
-		TN_INFO("Receive queue is already in use");
+		TN_DEBUG("Receive queue is already in use");
 		return false;
 	}
 
@@ -1175,7 +1021,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	bool queue_timed_out;
 	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, RXDCTL, queue_index, ENABLE));
 	if (queue_timed_out) {
-		TN_INFO("RXDCTL.ENABLE did not set, cannot enable queue");
+		TN_DEBUG("RXDCTL.ENABLE did not set, cannot enable queue");
 		return false;
 	}
 	// "- Bump the tail pointer (RDT) to enable descriptors fetching by setting it to the ring length minus one."
@@ -1190,7 +1036,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	bool sec_timed_out;
 	WAIT_WITH_TIMEOUT(sec_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, SECRXSTAT, _, SECRX_RDY));
 	if (sec_timed_out) {
-		TN_INFO("SECRXSTAT.SECRXRDY timed out, cannot enable queue");
+		TN_DEBUG("SECRXSTAT.SECRXRDY timed out, cannot enable queue");
 		return false;
 	}
 	//	"- Set RXCTRL.RXEN"
@@ -1219,12 +1065,12 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_device* const device, const uint64_t long_queue_index)
 {
 	if (pipe->send_tail_addr != 0) {
-		TN_INFO("Pipe send was already set");
+		TN_DEBUG("Pipe send was already set");
 		return false;
 	}
 
 	if (long_queue_index >= IXGBE_SEND_QUEUES_COUNT) {
-		TN_INFO("Send queue does not exist");
+		TN_DEBUG("Send queue does not exist");
 		return false;
 	}
 	_Static_assert((uint8_t) -1 >= IXGBE_SEND_QUEUES_COUNT, "This code assumes send queues fit in an uint8_t");
@@ -1232,7 +1078,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 
 	// See later for details of TXDCTL.ENABLE
 	if (!IXGBE_REG_CLEARED(device->addr, TXDCTL, queue_index, ENABLE)) {
-		TN_INFO("Send queue is already in use");
+		TN_DEBUG("Send queue is already in use");
 		return false;
 	}
 
@@ -1261,7 +1107,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	struct tn_memory_block headptr;
 	if (!tn_mem_allocate(sizeof(uint32_t), &headptr)) {
-		TN_INFO("Could not allocate a headptr");
+		TN_DEBUG("Could not allocate a headptr");
 		return false;
 	}
 	//	Section 7.2.3.5.2 Tx Head Pointer Write Back:
@@ -1269,7 +1115,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	// 	 * The Head_WB_EN bit enables activation of tail write back. In this case, no descriptor write back is executed.
 	// 	 * The 30 upper bits of this register hold the lowest 32 bits of the head write-back address, assuming that the two last bits are zero."
 	if (headptr.phys_addr % 4 != 0) {
-		TN_INFO("Headptr address' last two bits are not zero"); // this really should never happen given that we're allocating 8 bytes...
+		TN_DEBUG("Headptr address' last two bits are not zero"); // this really should never happen given that we're allocating 8 bytes...
 		return false;
 	}
 	//	Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low (TDWBAL[n]):
@@ -1291,7 +1137,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	bool queue_timed_out;
 	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, TXDCTL, queue_index, ENABLE));
 	if (queue_timed_out) {
-		TN_INFO("TXDCTL.ENABLE did not set, cannot enable queue");
+		TN_DEBUG("TXDCTL.ENABLE did not set, cannot enable queue");
 		return false;
 	}
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
@@ -1389,308 +1235,4 @@ void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
 	// Increment the tail, modulo the ring size
 	pipe->send_tail = (pipe->send_tail + 1u) & (IXGBE_RING_SIZE - 1);
 	ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->send_tail);
-}
-
-// TODO Remove everything below this line
-static void ixgbe_reg_force_read(const uintptr_t addr, const uint32_t reg)
-{
-	// See https://stackoverflow.com/a/13824124/3311770
-	uint32_t* ptr = (uint32_t*)((char*)addr + reg);
-	__asm__ volatile ("" : "=m" (*ptr) : "r" (*ptr));
-}
-#include <stdio.h>
-#include <inttypes.h>
-#define IXGBE_REG_RAL(n) (0x0A200u + 8u*n)
-#define IXGBE_REG_RAH(n) (0x0A204u + 8u*n)
-#define IXGBE_REG_RDH(n) (n <= 63u ? (0x01010u + 0x40u*n) : (0x0D010u + 0x40u*(n-64u)))
-#define IXGBE_REG_TDH(n) (0x06010u + 0x40u*n)
-#define IXGBE_REG_LINKS2(_) 0x04324u
-//#define IXGBE_REG_AUTOC2(_) 0x042A8u
-#define IXGBE_REG_VLNCTRL(_) 0x05088u
-void ixgbe_sanity_check(const uintptr_t addr)
-{
-	uint32_t vlnctrl = IXGBE_REG_READ(addr, VLNCTRL, _);
-	printf("vlnctrl = 0x%08"PRIx32"\n",vlnctrl);
-
-	uint32_t rxdctl0 = IXGBE_REG_READ(addr,RXDCTL,0);
-	printf("rxdcl[0] = 0x%08"PRIx32"\n",rxdctl0);
-
-	if (IXGBE_REG_CLEARED(addr, RXCTRL, _, RXEN)) {
-		printf("RXEN is cleared!\n");
-	}
-
-	if (IXGBE_REG_CLEARED(addr, RXDCTL, 0, ENABLE)) {
-		printf("RX QUEUE ENABLE is cleared!\n");
-	}
-
-	printf("txdctl = 0x%08"PRIx32"\n", IXGBE_REG_READ(addr, TXDCTL, 0));
-
-	uint32_t status = IXGBE_REG_READ(addr,STATUS,_);
-	printf("status = 0x%08"PRIx32"\n",status);
-
-ixgbe_reg_force_read(addr, IXGBE_REG_LINKS(_));
-ixgbe_reg_force_read(addr, IXGBE_REG_LINKS2(_));
-	uint32_t links = IXGBE_REG_READ(addr,LINKS,_);
-	printf("links = 0x%08"PRIx32"\n",links);
-	uint32_t links2 = IXGBE_REG_READ(addr,LINKS2,_);
-	printf("links2 = 0x%08"PRIx32"\n",links2);
-
-//	IXGBE_REG_FORCE_READ(addr, AUTOC, _);
-//	uint32_t autoc = IXGBE_REG_READ(addr,AUTOC,_);
-//	printf("autoc = 0x%08"PRIx32"\n",autoc);
-//	IXGBE_REG_FORCE_READ(addr, AUTOC2, _);
-//	uint32_t autoc2 = IXGBE_REG_READ(addr,AUTOC2,_);
-//	printf("autoc2 = 0x%08"PRIx32"\n",autoc2);
-
-	uint32_t rdbah = IXGBE_REG_READ(addr, RDBAH, 0);
-	uint32_t rdbal = IXGBE_REG_READ(addr, RDBAL, 0);
-	printf("RDBAH %"PRIu32" RDBAL %"PRIu32"\n",rdbah,rdbal);
-
-	uint32_t rdlen = IXGBE_REG_READ(addr, RDLEN, 0);
-	uint32_t rdh = IXGBE_REG_READ(addr, RDH, 0);
-	uint32_t rdt = IXGBE_REG_READ(addr, RDT, 0);
-
-	printf("rdlen %"PRIu32"\n", rdlen);
-	printf("rdh %"PRIu32" rdt %"PRIu32"\n",rdh,rdt);
-
-	uint32_t tdlen = IXGBE_REG_READ(addr, TDLEN, 0);
-	uint32_t tdh = IXGBE_REG_READ(addr, TDH, 0);
-	uint32_t tdt = IXGBE_REG_READ(addr, TDT, 0);
-
-	printf("tdlen %"PRIu32"\n", tdlen);
-	printf("tdh %"PRIu32" tdt %"PRIu32"\n",tdh,tdt);
-
-	uint32_t ral = IXGBE_REG_READ(addr, RAL, 0);
-	uint32_t rah = IXGBE_REG_READ(addr, RAH, 0);
-	printf("RAL 0x%" PRIx32 " RAH 0x%"PRIx32"\n", ral,rah);
-
-	printf("End of sanity check.\n");
-}
-
-
-	static uint32_t regs[] = {
-		0x04000, 0x04004, 0x04008,
-		0x04034, 0x04038, 0x04040,
-		0x08780,
-		0x041A4, 0x041A8,
-		0x04140 + 0,
-		0x04140 + 4,
-		0x04140 + 8,
-		0x04140 + 12,
-		0x04140 + 16,
-		0x04140 + 20,
-		0x04140 + 24,
-		0x04140 + 28,
-		0x04160 + 0,
-		0x04160 + 4,
-		0x04160 + 8,
-		0x04160 + 12,
-		0x04160 + 16,
-		0x04160 + 20,
-		0x04160 + 24,
-		0x04160 + 28,
-		0x0405C, 0x04060, 0x04064, 0x04068, 0x0406C, 0x04070, 0x04078, 0x0407C, 0x04074, 0x04088, 0x0408C,
-		0x041B0, 0x041B4, 0x041B8,
-		0x02F50, 0x02F54, 0x02F58, 0x02F5C, 0x02F60, 0x02F64, 0x02F68, 0x02F6C, 0x02F70, 0x02F74, 0x02F78, 0x02F7C,
-		0x04080,
-		0x04090, 0x04094,
-		0x087A0, 0x087A4, 0x087A8,
-		0x040A4, 0x040A8, 0x040B0, 0x040B4, 0x040B8, 0x040C0, 0x040C0, 0x040C4, 0x040D0, 0x040D4, 0x040D8, 0x040DC, 0x040E0, 0x040E4,
-			0x040E8, 0x040EC, 0x040F0, 0x040F4, 0x04010, 0x04120,
-		0x02300 + 0,
-		0x02300 + 1*4,
-		0x02300 + 2*4,
-		0x02300 + 3*4,
-		0x02300 + 4*4,
-		0x02300 + 5*4,
-		0x02300 + 6*4,
-		0x02300 + 7*4,
-		0x02300 + 8*4,
-		0x02300 + 9*4,
-		0x02300 + 10*4,
-		0x02300 + 11*4,
-		0x02300 + 12*4,
-		0x02300 + 13*4,
-		0x02300 + 14*4,
-		0x02300 + 15*4,
-		0x02300 + 16*4,
-		0x02300 + 17*4,
-		0x02300 + 18*4,
-		0x02300 + 19*4,
-		0x02300 + 20*4,
-		0x02300 + 21*4,
-		0x02300 + 22*4,
-		0x02300 + 23*4,
-		0x02300 + 24*4,
-		0x02300 + 25*4,
-		0x02300 + 26*4,
-		0x02300 + 27*4,
-		0x02300 + 28*4,
-		0x02300 + 30*4,
-		0x02300 + 31*4,
-		0x02F40,
-		0x08600 + 0*4,
-		0x08600 + 1*4,
-		0x08600 + 2*4,
-		0x08600 + 3*4,
-		0x08600 + 4*4,
-		0x08600 + 5*4,
-		0x08600 + 6*4,
-		0x08600 + 7*4,
-		0x08600 + 8*4,
-		0x08600 + 9*4,
-		0x08600 + 10*4,
-		0x08600 + 11*4,
-		0x08600 + 12*4,
-		0x08600 + 13*4,
-		0x08600 + 14*4,
-		0x08600 + 15*4,
-		0x08600 + 16*4,
-		0x08600 + 17*4,
-		0x08600 + 18*4,
-		0x08600 + 19*4,
-		0x08600 + 20*4,
-		0x08600 + 21*4,
-		0x08600 + 22*4,
-		0x08600 + 23*4,
-		0x08600 + 24*4,
-		0x08600 + 25*4,
-		0x08600 + 26*4,
-		0x08600 + 27*4,
-		0x08600 + 28*4,
-		0x08600 + 29*4,
-		0x08600 + 30*4,
-		0x08600 + 31*4,
-		0x01030+0x40*0,
-		0x01030+0x40*1,
-		0x01030+0x40*2,
-		0x01030+0x40*3,
-		0x01030+0x40*4,
-		0x01030+0x40*5,
-		0x01030+0x40*6,
-		0x01030+0x40*7,
-		0x01030+0x40*8,
-		0x01030+0x40*9,
-		0x01030+0x40*10,
-		0x01030+0x40*11,
-		0x01030+0x40*12,
-		0x01030+0x40*13,
-		0x01030+0x40*14,
-		0x01030+0x40*15,
-		0x01430+0x40*0,
-		0x01430+0x40*1,
-		0x01430+0x40*2,
-		0x01430+0x40*3,
-		0x01430+0x40*4,
-		0x01430+0x40*5,
-		0x01430+0x40*6,
-		0x01430+0x40*7,
-		0x01430+0x40*8,
-		0x01430+0x40*9,
-		0x01430+0x40*10,
-		0x01430+0x40*11,
-		0x01430+0x40*12,
-		0x01430+0x40*13,
-		0x01430+0x40*14,
-		0x01430+0x40*15,
-		0x1034+0x40*0,
-		0x1034+0x40*1,
-		0x1034+0x40*2,
-		0x1034+0x40*3,
-		0x1034+0x40*4,
-		0x1034+0x40*5,
-		0x1034+0x40*6,
-		0x1034+0x40*7,
-		0x1034+0x40*8,
-		0x1034+0x40*9,
-		0x1034+0x40*10,
-		0x1034+0x40*11,
-		0x1034+0x40*12,
-		0x1034+0x40*13,
-		0x1034+0x40*14,
-		0x1034+0x40*15,
-		0x1038+0x40*0,
-		0x1038+0x40*1,
-		0x1038+0x40*2,
-		0x1038+0x40*3,
-		0x1038+0x40*4,
-		0x1038+0x40*5,
-		0x1038+0x40*6,
-		0x1038+0x40*7,
-		0x1038+0x40*8,
-		0x1038+0x40*9,
-		0x1038+0x40*10,
-		0x1038+0x40*11,
-		0x1038+0x40*12,
-		0x1038+0x40*13,
-		0x1038+0x40*14,
-		0x1038+0x40*15,
-		0x08680+0x4*0,
-		0x08680+0x4*1,
-		0x08680+0x4*2,
-		0x08680+0x4*3,
-		0x08680+0x4*4,
-		0x08680+0x4*5,
-		0x08680+0x4*6,
-		0x08680+0x4*7,
-		0x08680+0x4*8,
-		0x08680+0x4*9,
-		0x08680+0x4*10,
-		0x08680+0x4*11,
-		0x08680+0x4*12,
-		0x08680+0x4*13,
-		0x08680+0x4*14,
-		0x08680+0x4*15,
-		0x08700+0x8*0,
-		0x08700+0x8*1,
-		0x08700+0x8*2,
-		0x08700+0x8*3,
-		0x08700+0x8*4,
-		0x08700+0x8*5,
-		0x08700+0x8*6,
-		0x08700+0x8*7,
-		0x08700+0x8*8,
-		0x08700+0x8*9,
-		0x08700+0x8*10,
-		0x08700+0x8*11,
-		0x08700+0x8*12,
-		0x08700+0x8*13,
-		0x08700+0x8*14,
-		0x08700+0x8*15,
-		0x08704+0x8*0,
-		0x08704+0x8*1,
-		0x08704+0x8*2,
-		0x08704+0x8*3,
-		0x08704+0x8*4,
-		0x08704+0x8*5,
-		0x08704+0x8*6,
-		0x08704+0x8*7,
-		0x08704+0x8*8,
-		0x08704+0x8*9,
-		0x08704+0x8*10,
-		0x08704+0x8*11,
-		0x08704+0x8*12,
-		0x08704+0x8*13,
-		0x08704+0x8*14,
-		0x08704+0x8*15,
-		0x05118, 0x0241C, 0x02424, 0x02428, 0x0242C, 0x08784, 0x08788
-	};
-void ixgbe_stats_reset(const uintptr_t addr)
-{
-	for (unsigned n = 0; n < sizeof(regs)/sizeof(uint32_t); n++) {
-		ixgbe_reg_force_read(addr, regs[n]);
-	}
-}
-void ixgbe_stats_probe(const uintptr_t addr)
-{
-//	bool changed=false;
-	for (unsigned n = 0; n < sizeof(regs)/sizeof(uint32_t); n++) {
-		uint32_t xxx = ixgbe_reg_read(addr, regs[n]);
-		if (xxx != 0 && regs[n] !=0x405c && regs[n]!=0x4074&&regs[n]!=0x4088&&regs[n]!=0x41b0&&regs[n]!=0x41b4&&regs[n]!=0x40c0&&regs[n]!=0x40d0) {
-//if(regs[n]!=0xfff1430)			changed=true;
-			printf("REG 0x%" PRIx32 " == %" PRIu32"\n", regs[n], xxx);
-		}
-	}
-//	if(changed)ixgbe_sanity_check(addr);
-//	printf("checked\n");
 }
