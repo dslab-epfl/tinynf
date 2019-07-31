@@ -6,43 +6,43 @@
 #include "util/log.h"
 
 
-// Section 7.2.3.3 Transmit Descriptor Ring:
-// "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
-// We need this to be a power of 2 so that we can do fast modulo
-#define IXGBE_RING_SIZE 256
-_Static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2");
-
-// Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
-// Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...]
-// Thus we set 8 KB as a power of 2 that can be sent and received.
-#define IXGBE_PACKET_SIZE_MAX (2 * 1024)
-
-// Section 1.3 Features Summary:
-// 	"Number of Rx Queues (per port): 128"
-#define IXGBE_RECEIVE_QUEUES_COUNT 128u
-// 	"Number of Tx Queues (per port): 128"
-#define IXGBE_SEND_QUEUES_COUNT 128u
+// Section 7.1.2.5 L3/L4 5-tuple Filters:
+// 	"There are 128 different 5-tuple filter configuration registers sets"
+#define IXGBE_5TUPLE_FILTERS_COUNT 128
 // Section 7.3.1 Interrupts Registers:
 //	"These registers are extended to 64 bits by an additional set of two registers.
 //	 EICR has an additional two registers EICR(1)... EICR(2) and so on for the EICS, EIMS, EIMC, EIAM and EITR registers."
 #define IXGBE_INTERRUPT_REGISTERS_COUNT 2u
 // Section 7.10.3.10 Switch Control:
-// 	"Unicast Table Array (PFUTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address"
-#define IXGBE_UNICAST_TABLE_ARRAY_SIZE (4 * 1024)
 //	"Multicast Table Array (MTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address."
 #define IXGBE_MULTICAST_TABLE_ARRAY_SIZE (4 * 1024)
-// Section 7.10.3.2 Pool Selection:
-// 	"64 shared VLAN filters"
-#define IXGBE_VLAN_FILTER_COUNT 64
+// Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
+// Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...]
+// Thus we set 8 KB as a power of 2 that can be sent and received.
+#define IXGBE_PACKET_SIZE_MAX (2u * 1024u)
 // Section 7.1.1.1.1 Unicast Filter:
 // 	"The Ethernet MAC address is checked against the 128 host unicast addresses"
 #define IXGBE_RECEIVE_ADDRS_COUNT 128
-// Section 7.1.2.5 L3/L4 5-tuple Filters:
-// 	"There are 128 different 5-tuple filter configuration registers sets"
-#define IXGBE_5TUPLE_FILTERS_COUNT 128
+// Section 1.3 Features Summary:
+// 	"Number of Rx Queues (per port): 128"
+#define IXGBE_RECEIVE_QUEUES_COUNT 128u
+// Section 7.2.3.3 Transmit Descriptor Ring:
+// "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
+// We need this to be a power of 2 so that we can do fast modulo
+#define IXGBE_RING_SIZE 256u
+_Static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2");
+// 	"Number of Tx Queues (per port): 128"
+#define IXGBE_SEND_QUEUES_COUNT 128u
 // Section 7.1.2 Rx Queues Assignment:
 // 	"Packets are classified into one of several (up to eight) Traffic Classes (TCs)."
 #define IXGBE_TRAFFIC_CLASSES_COUNT 8
+// Section 7.10.3.10 Switch Control:
+// 	"Unicast Table Array (PFUTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address"
+#define IXGBE_UNICAST_TABLE_ARRAY_SIZE (4 * 1024)
+// Section 7.10.3.2 Pool Selection:
+// 	"64 shared VLAN filters"
+#define IXGBE_VLAN_FILTER_COUNT 64
+
 
 // ---------
 // Utilities
