@@ -821,7 +821,7 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 
 // =================================================================================================================
 //                                                       PIPES
-// -----------------------------------------------------------------------------------------------------------------
+// =================================================================================================================
 //
 // Pipes are pairs of send and receive queues, which may or may not be on the same device.
 // Pipes are used by receiving a packet from the pipe, and sending it to the same pipe.
@@ -883,11 +883,7 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // we can mirror the public send head to the receive tail. That is, in every receive-send cycle, we update the
 // receive tail with the value of the send head, thus allowing packets to be received where old packets were sent.
 //
-// This leaves us with the task of updating the send tail.
-// It is important to remember that all NIC registers are in memory-mapped PCIe space,
-// which implies that loads and stores cannot be cached and are much slower than standard memory.
-// Thus, while we could in theory read the send tail every time to increment it, it would incur one PCIe read
-// on top of the necessary PCIe write, which is too costly; instead, we keep it cached in the pipe struct.
+// This leaves us with the task of incrementing the send tail at each receive-send cycle, which is trivial.
 //
 // There is one more packet state due to a quirk of the hardware: tails must be in the range[0..ring_size-1],
 // but tails are the exclusive end of the range of packets owned by the NIC.
@@ -899,6 +895,43 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 //
 // The initial state is that all delimiters are set to 0, except the receive tail which is set to the ring size - 1,
 // which means all packets are in the "receiving" state.
+//
+//
+// -----------------------------------------------------------------------------------------------------------------
+//                                             PERFORMANCE CONSIDERATIONS
+// -----------------------------------------------------------------------------------------------------------------
+//
+// It is important to remember that all NIC registers are in memory-mapped PCIe space,
+// which implies that loads and stores cannot be cached and are much slower than standard memory.
+// First, this means that reading the send head to mirror it to the receive tail is expensive; thankfully, the NIC
+// has a feature called "TX head pointer write back": we tell it where to DMA the send head, and it automatically
+// does it, which means we read the send head from main memory instead of PCIe.
+// Second, while we could in theory read the send tail every time to increment it, it would incur one PCIe read
+// on top of the necessary PCIe write, which is too costly; instead, we keep it cached in the pipe struct.
+//
+// This still leaves us with two PCIe writes per cycle, one per tail; they dominate the total time by far.
+// Frameworks like DPDK improve on this with batching: cycles operate on multiple packets, thus the per-packet cost
+// of PCIe writes is amortized. But we do not want batching, since it makes formal reasoning harder, and anyway we
+// want to have as simple a driver model as possible.
+//
+// We can amortize the cost of the receive tail write among many packets because of the following insight:
+// NF correctness requires at least 1 packet in the "processing", "received" or "receiving" states at all times;
+// that is, the NF should never be in a state where it cannot process nor receive packets, since it would then halt.
+// In formal terms, this means that at the end of a receive-send cycle, receive_tail != send_tail.
+// (Whether this forbidden situation represents a ring full of "sending" packets or of "sent" packets depends on the
+//  position of the send tails, but this is irrelevant for our purposes as both situations cause the NF to halt)
+// Under the assumption that NF packet processing always terminates, and that NIC packet sending always terminates,
+// we can rephrase this invariant over multiple cycles: there exists a C such that the ring initially contains
+// at least C packets in "receiving" state, and that after C cycles the ring again contains at least C packets
+// in "receiving" state. This multi-cycle invariant ensures that after a single cycle, there are either packets left
+// in the "receiving" state or in the "received" state, since a cycle moves a single packet from "receiving" to
+// "sent" (with "received" as an intermediate step), and thus C cycles will result in at most C less "receiving"
+// packets (assuming that no packets are moved from "sent" back to "receiving" during the C cycles), thus if,
+// at the end of C cycles, C packets have been moved from "sent" to "receiving" (regardless of whether this happens
+// during or at the end of the C cycles), then the NF is back to the same state as when it started, which is still
+// a correct state. Since the ring starts with ring_size-1 packets in the "receiving" state (because of the hardware
+// quirk mentioned earlier), and since we want a fast check for whether the index is a multiple of C,
+// we choose C to be ring_size/2.
 //
 // =================================================================================================================
 
@@ -1238,6 +1271,8 @@ void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
 	pipe->send_tail = (pipe->send_tail + 1u) & (IXGBE_RING_SIZE - 1);
 	ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->send_tail);
 
-	// Mirror the send head to the receive tail (minus 1, see pipes description for an explanation)
-	ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
+	// Mirror the send head to the receive tail (see pipes description for an explanation of the condition and of the -1)
+	if ((pipe->send_tail & (IXGBE_RING_SIZE / 2 - 1)) == 0) {
+		ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
+	}
 }
