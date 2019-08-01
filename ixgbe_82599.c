@@ -29,7 +29,7 @@
 // Section 7.2.3.3 Transmit Descriptor Ring:
 // "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
 // We need this to be a power of 2 so that we can do fast modulo
-#define IXGBE_RING_SIZE 256u
+#define IXGBE_RING_SIZE 1024u
 _Static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2");
 // 	"Number of Tx Queues (per port): 128"
 #define IXGBE_SEND_QUEUES_COUNT 128u
@@ -275,6 +275,8 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 
 // Section 8.2.3.9.10 Transmit Descriptor Control
 #define IXGBE_REG_TXDCTL(n) (0x06028u + 0x40u*n)
+#define IXGBE_REG_TXDCTL_PTHRESH BITS(0,6)
+#define IXGBE_REG_TXDCTL_HTHRESH BITS(8,14)
 #define IXGBE_REG_TXDCTL_ENABLE BIT(25)
 
 // Section 8.2.3.9.13 Transmit Packet Buffer Size
@@ -756,7 +758,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//				"Default values: 0x96 for TXPBSIZE0, 0x0 for TXPBSIZE1-7."
 	// INTERPRETATION: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
 	// Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
-	IXGBE_REG_WRITE(device.addr, TXPBTHRESH, 0, THRESH, 0xA0u);
+	IXGBE_REG_WRITE(device.addr, TXPBTHRESH, 0, THRESH, 0xA0u - IXGBE_PACKET_SIZE_MAX);
 	//		"- MTQC"
 	//			"- Clear both RT_Ena and VT_Ena bits in the MTQC register."
 	//			"- Set MTQC.NUM_TC_OR_Q to 00b."
@@ -916,11 +918,10 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // Although there are two methods here - receive and send - it helps to think of a pipe as a single body of code.
 // TODO look at what the code with a function pointer would compile as
 //
-// TODO rewrite next section entirely
-// -----------------------------------------------------------------------------------------------------------------
-//                                             PERFORMANCE CONSIDERATIONS
-// -----------------------------------------------------------------------------------------------------------------
 //
+// Performance considerations
+// --------------------------
+// TODO rewrite most of this
 // It is important to remember that all NIC registers are in memory-mapped PCIe space,
 // which implies that loads and stores cannot be cached and are much slower than standard memory.
 // First, this means that reading the send head to mirror it to the receive tail is expensive; thankfully, the NIC
@@ -933,36 +934,6 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // Frameworks like DPDK improve on this with batching: cycles operate on multiple packets, thus the per-packet cost
 // of PCIe writes is amortized. But we do not want batching, since it makes formal reasoning harder, and anyway we
 // want to have as simple a driver model as possible.
-//
-// We can amortize the cost of the receive tail write among many packets because of the following insight:
-// NF correctness requires at least 1 packet in the "processing", "received" or "receiving" states at all times;
-// that is, the NF should never be in a state where it cannot process nor receive packets, since it would then halt.
-// Thus, each send-receive cycle must end with at least 1 packet in the "received" or "receiving" states.
-// The simplest way to guarantee this is to increment the receive tail every time
-// Under the assumption that NF packet processing always terminates, and that NIC packet sending always terminates,
-// we can rephrase this invariant over multiple cycles: there exists a C such that the ring initially contains
-// at least C packets in receiving/ed states, and that after C cycles the ring again contains at least C packets
-// in receiving/ed states. This multi-cycle invariant ensures that after each cycle, there are packets left
-// in the receiving/ed states, since a cycle moves a single packet from "receiving" to "sent"
-// (with "received" as an intermediate step); thus C cycles will result in at most C less "receiving" packets
-// (worst-case if no packets are moved from "sent" back to "receiving" during the C cycles), thus if,
-// at the end of C cycles, C packets have been moved from "sent" to "receiving" (regardless of whether this happens
-// during or at the end of the C cycles), then the NF is back to the same state as when it started, which is still
-// a correct state. Since the ring starts with ring_size-1 packets in the "receiving" state (because of the hardware
-// quirk mentioned earlier), and since we want a fast check for whether the index is a multiple of C,
-// we choose C to be ring_size/2.
-//
-// This leaves us with the send tail write as the single expensive operation in a receive-send cycle.
-// The only way we can defer that write is if we are sure there are more packets to process, since if
-// the NF does not receive any more packets and the send tail write has not been updated after the last cycle,
-// the last cycle's packet (and possibly more) will never be sent, which would break NF correctness.
-// We cannot use the private receive head in any invariant, since we do not know it.
-// The NF has at least one more packet to process if, at the end of a cycle, receive_head != send_tail,
-// since receive_head points to the packet _after_ the last received one.
-// This means we need to keep track of the receive head; we cannot read it at every cycle, since that would incur
-// the cost of a PCIe read, which is prohibitive if not amortized.
-// Instead, we change strategy when checking for new packets; instead of checking one descriptor at a time,
-// we keep track of the receive tail by going through all descriptors with the "descriptor done" bit set.
 //
 // =================================================================================================================
 
@@ -1169,13 +1140,12 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	// Note that each descriptor is 16 bytes.
 	IXGBE_REG_WRITE(device->addr, TDLEN, queue_index, IXGBE_RING_SIZE * 16u);
 	// "- Program the TXDCTL register with the desired TX descriptor write back policy (see Section 8.2.3.9.10 for recommended values)."
-	// TODO: See if this is useful.
-	//#define IXGBE_REG_TXDCTL_PTHRESH BITS(0,6)
-	//#define IXGBE_REG_TXDCTL_HTHRESH BITS(8,14)
-	//#define IXGBE_REG_TXDCTL_WTHRESH BITS(16,22)
-	//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 36);
-	//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 8);
-	//IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, WTHRESH, 4); // Must be 0 with header write-back!
+	//	Section 8.2.3.9.10 Transmit Descriptor Control (TXDCTL[n]):
+	//	"HTHRESH should be given a non-zero value each time PTHRESH is used."
+	//	"For PTHRESH and HTHRESH recommended setting please refer to Section 7.2.3.4."
+	// INTERPRETATION: The "recommended values" are in 7.2.3.4.1 very vague; those numbers seem to work well
+	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 60);
+	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	struct tn_memory_block headptr;
 	if (!tn_mem_allocate(sizeof(uint32_t), &headptr)) {
@@ -1227,6 +1197,12 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 
 bool ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, uint64_t* out_packet_index)
 {
+	pipe->counter = (uint64_t) (pipe->counter + 1u);
+	if((pipe->counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
+		ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
+		ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
+	}
+
 	// NOTE: Since descriptors are 16 bytes, we need to double the index
 	volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->processed_delimiter;
 	uint64_t packet_metadata = *(descriptor_addr + 1);
@@ -1246,19 +1222,6 @@ bool ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, u
 
 		// Think of this as not a return, but a call to a continuation, which will itself call send as continuation
 		return true;
-	}
-
-#define TICK 1024
-	pipe->counter = (uint64_t) (pipe->counter + 1u);
-	if ((pipe->counter & (TICK-1)) == 0) {
-// === Pipe bookkeeper
-	// Mirror the send head to the receive tail
-// TODO explain this properly in design
-// TODO mention the modulo trick somewhere?
-		ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
-	} else if ((pipe->counter & (TICK-1)) == (TICK/2))  {
-// === Pipe sender
-		ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
 	}
 
 	// da capo

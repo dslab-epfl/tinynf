@@ -6,7 +6,7 @@
 // Include this here so that logging can use PRIu32 and friends
 #include <inttypes.h>
 
-#define _TN_PRINT(categ, ...) fprintf(stderr, "[%5s] ", #categ); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); fflush(stderr);
+#define _TN_PRINT(categ, ...) fprintf(stderr, "[%s] ", #categ); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); fflush(stderr);
 #endif
 
 #if LOG_LEVEL >= 2
