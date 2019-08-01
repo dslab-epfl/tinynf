@@ -59,7 +59,9 @@ int main(int argc, char** argv)
 //	for (uint64_t _ = 0; _ < 1000; _++) {
 		uint64_t packet_length;
 		uint64_t packet_index;
-		ixgbe_receive(pipe, &packet_length, &packet_index);
+		if (!ixgbe_receive(pipe, &packet_length, &packet_index)) {
+			continue;
+		}
 		uint8_t* packet = (uint8_t*) (packet_buffers.virt_addr + packet_size_max * packet_index);
 //	for (uint64_t n = 0; n < packet_length; n++) {
 //		printf("0x%02"PRIx8" ", packet[n]);

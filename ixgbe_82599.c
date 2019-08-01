@@ -1228,41 +1228,43 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 // Section 7.1.6 Advanced Receive Descriptors
 // ==========================================
 
-void ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, uint64_t* out_packet_index)
+bool ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, uint64_t* out_packet_index)
 {
-	_Static_assert(IXGBE_RING_SIZE < (uint32_t) -1, "The ring size must fit in an uint32_t otherwise counting received packets could overflow");
-	do {
-		// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format
-		// "Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done."
-		// NOTE: Since descriptors are 16 bytes, we need to double the index
-		volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->receive_head;
-		uint64_t packet_metadata = *(descriptor_addr + 1);
-		while((packet_metadata & BITL(0)) != 0) {
-			pipe->receive_head = (uint32_t) ((pipe->receive_head + 1u) & (IXGBE_RING_SIZE - 1));
-			descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->receive_head;
-			packet_metadata = *(descriptor_addr + 1);
-		}
-	} while (pipe->receive_head == pipe->send_tail);
+	// NOTE: Since descriptors are 16 bytes, we need to double the index
+	volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->send_tail;
+	uint64_t packet_metadata = *(descriptor_addr + 1);
+	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format
+	// "Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done."
+	if ((packet_metadata & BITL(0)) != 0) {
+		// "PKT_LEN (16-bit offset 32, 2nd line): PKT_LEN holds the number of bytes posted to the packet buffer."
+		*out_packet_length = packet_metadata >> 32;
+		*out_packet_index = pipe->send_tail;
 
-	// Remember, send_tail is the index of the first descriptor to be processed
-	volatile uint64_t* first_descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->send_tail;
-	// "PKT_LEN (16-bit offset 32, 2nd line): PKT_LEN holds the number of bytes posted to the packet buffer."
-	*out_packet_length = *(first_descriptor_addr + 1) >> 32;
-	*out_packet_index = pipe->send_tail;
+		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
+		// Write the descriptor again for the next use, since it got clobbered by write-back
+		// "Packet Buffer Address (64): This is the physical address of the packet buffer.", 1st line
+		*descriptor_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->send_tail);
+		// "Header Buffer Address (64): The physical address of the header buffer with the lowest bit being Descriptor Done (DD).", 2nd line
+		*(descriptor_addr + 1) = 0;
 
-	// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
-	// Write the descriptor again for the next use, since it got clobbered by write-back
-	// "Packet Buffer Address (64): This is the physical address of the packet buffer.", 1st line
-	*first_descriptor_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->send_tail);
-	// "Header Buffer Address (64): The physical address of the header buffer with the lowest bit being Descriptor Done (DD).", 2nd line
-	*(first_descriptor_addr + 1) = 0;
+		// Think of this as not a return, but a call to a continuation, which will itself call send as continuation
+		return true;
+	}
+
+	// Mirror the send head to the receive tail
+// TODO explain this properly in design
+// TODO mention the modulo trick somewhere?
+	ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
+
+	// da capo
+	return false;
 }
 
 
 // ===================================================
 // Section 7.2.3.2.4 Advanced Transmit Data Descriptor
 // ===================================================
-#include <stdio.h>
+
 void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
 {
 	// TODO YESSS we can drop packets by making a zero-length descriptor! but DD isn't set; will this be better with TWDBAL/H?
@@ -1310,15 +1312,7 @@ void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
 	// PAYLEN, bits 46-63: "PAYLEN indicates the size (in byte units) of the data buffer(s) in host memory for transmission. In a single-send packet, PAYLEN defines the entire packet size fetched from host memory."
 		(packet_length << 46);
 
-	// Increment the tail, modulo the ring size (see the pipes description for an explanation of the condition)
+	// Increment the send tail, modulo the ring size
 	pipe->send_tail = (pipe->send_tail + 1u) & (IXGBE_RING_SIZE - 1);
-	if (pipe->receive_head == pipe->send_tail) {
-		ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->send_tail);
-printf("EQUAL; NOW rh==st %"PRIu32" != %"PRIu32" ; rt %"PRIu32 " ; sh %"PRIu32"\n",pipe->receive_head, pipe->send_tail, *((volatile uint32_t*)pipe->receive_tail_addr), *(pipe->send_head_ptr));
-	}else printf("rh!=st %"PRIu32" != %"PRIu32" ; rt %"PRIu32 " ; sh %"PRIu32" ; hw st %"PRIu32"\n",pipe->receive_head, pipe->send_tail, *((volatile uint32_t*)pipe->receive_tail_addr), *(pipe->send_head_ptr), *((volatile uint32_t*) pipe->send_tail_addr));
-
-	// Mirror the send head to the receive tail (see the pipes description for an explanation of the condition and of the -1)
-	if ((pipe->send_tail & (IXGBE_RING_SIZE / 2 - 1)) == 0) {
-		ixgbe_reg_write_raw(pipe->receive_tail_addr, *(pipe->send_head_ptr));
-	}
+	ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->send_tail);
 }

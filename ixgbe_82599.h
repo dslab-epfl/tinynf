@@ -19,5 +19,5 @@ bool ixgbe_pipe_init(uintptr_t buffer_phys_addr, struct ixgbe_pipe** out_pipe);
 bool ixgbe_pipe_set_receive(struct ixgbe_pipe* pipe, const struct ixgbe_device* device, uint64_t queue_index);
 bool ixgbe_pipe_set_send(struct ixgbe_pipe* pipe, const struct ixgbe_device* device, uint64_t queue_index);
 
-void ixgbe_receive(struct ixgbe_pipe* pipe, uint64_t* out_packet_length, uint64_t* out_packet_index);
+bool ixgbe_receive(struct ixgbe_pipe* pipe, uint64_t* out_packet_length, uint64_t* out_packet_index);
 void ixgbe_send(struct ixgbe_pipe* pipe, uint64_t packet_length);
