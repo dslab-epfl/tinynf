@@ -820,13 +820,17 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 
 
 // =================================================================================================================
-//                                                       PIPES
-// =================================================================================================================
+// PIPES
+// =====
+// Pipes transfer packets from a receive queue to a send queue, optionally modifying the packet.
+// The queues need not be on the same device.
+// To keep the packet modification customizable, pipe operation is split in three parts:
+// receiving a packet, modifying it, and sending it.
+// There can only ever be one packet in a pipe at a time.
 //
-// Pipes are pairs of send and receive queues, which may or may not be on the same device.
-// Pipes are used by receiving a packet from the pipe, and sending it to the same pipe.
-// There can only ever be one packet processed by software at a time.
 //
+// Hardware background
+// -------------------
 // NIC receiving is dictated by three pointers to a ring, all zero-initialized:
 // the public receive head, private receive head and receive tail.
 // All packets between the public head and the tail are owned by the NIC, i.e. ready to be received.
@@ -837,12 +841,15 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // packets owned by the NIC are ready to be sent, and packets owned by software are sent or unused.
 //
 // Software checks for received packets not by reading the send head, which could cause data races according to
-// the spec, but by scanning for the "descriptor done" bit in a descriptor.
+// the spec, but by scanning for the "descriptor done" bit in a descriptor. Thus we do not need to ever check
+// the public send head.
 //
+//
+// Packet states
+// -------------
 // Each packet in a pipe can be in one of the following states:
 // - Sent
 // - Sending
-// - Processing
 // - Received
 // - Receiving
 // Because of the private heads used in receiving/sending, there are two additional "hidden" states:
@@ -853,11 +860,17 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // By construction, for each state, there is exactly one contiguous block of packets in that state,
 // and blocks are ordered in the same order as our state order.
 //
-// The main insight behind this implementation is that because of the "contiguous blocks" structure,
+//
+// Ring
+// ----
+// The insight behind this implementation is that because of the "contiguous blocks" structure,
+// and because packets owned by software are completely hidden from the NIC's point of view,
 // the same ring buffer can be used for receiving and sending, with the same packet buffers.
+// This implies that some packets which the NIC receive queue believes are owned by software
+// are actually owned by the NIC send queue, and vice-versa.
 // Thus there is no need to dynamically allocate or free buffers from a pool as e.g. DPDK does.
 //
-// There are thus six explicit and one implicit delimiters in the ring, one for each state (including hidden ones).
+// There are thus six delimiters in the ring, one for each state (including hidden ones).
 // Thus the ring looks like this:
 //
 // ------------------- receive tail
@@ -867,8 +880,6 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // ------------------- private send head
 // |     Sending     |
 // ------------------- send tail
-// |    Processing   |
-// ------------------- (no delimiter - "Processing" always of size 1)
 // |     Received    |
 // ------------------- public receive head
 // | Hidden Received |
@@ -876,27 +887,40 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // |    Receiving    |
 // ------------------- (back to top - NIC receive tail)
 //
-// Software must update both tails as part of normal operation, since this is the only way to mark packets
-// as available for receiving or sending.
-//
-// Another implementation insight is that since there is no reason to keep packets in the "sent" state,
-// we can mirror the public send head to the receive tail. That is, in every receive-send cycle, we update the
-// receive tail with the value of the send head, thus allowing packets to be received where old packets were sent.
-//
-// This leaves us with the task of incrementing the send tail at each receive-send cycle, which is trivial.
-//
-// There is one more packet state due to a quirk of the hardware: tails must be in the range[0..ring_size-1],
-// but tails are the exclusive end of the range of packets owned by the NIC.
-// This means that the state "all packets are owned by the NIC" is unrepresentable since it would require
-// the tail to be equal to the ring size.
-// Thus, we actually set the receive tail to the public send head minus one (modulo the ring size),
-// since if the receive tail was equal to the public send head, no packets would ever be in the receiving state.
-// This implies that there is always exactly one 'unused' packet.
-//
 // The initial state is that all delimiters are set to 0, except the receive tail which is set to the ring size - 1,
 // which means all packets are in the "receiving" state.
 //
 //
+// Ring actors
+// -----------
+// There are conceptually four concurrent actors operating on the ring:
+// - The NIC receive queue, which moves the receive heads and thus transitions packets
+//   from "receiving" to "received"; its invariant is public_receive_head <= private_receive_head <= receive_tail
+// - The NIC send queue, which moves the send heads and thus transitions packets
+//   from "sending" to "sent"; its invariant is public_send_head <= private_send_head <= send_tail
+// - The pipe's processing, which moves the send tail and thus transitions packets
+//   from "received" to "sending"; its invariant is public_send_head <= send_tail <= public_receive_head
+// - The pipe's bookkeeping, which moves the receive tail and thus transitions packets
+//   from "sent" to "receiving"; its invariant is public_receive_head <= receive_tail <= public_send_head
+// All actors can be modeled as operating on one packet at a time, even if they internally choose to operate
+// on multiple packets at a time, as long as their multi-packet operations looks like multiple single-packet
+// operations from the point of view of other actors.
+// Pipe liveness requires that at least one actor must be active at any given time.
+//
+//
+// Pipe design
+// -----------
+// We add the following constraints to the pipe, to simplify both programming and formal reasoning:
+// - The pipe processing actor must operate on a single packet at a time
+// - Both pipe actors must be executed by the same implementation thread
+//
+//
+// Pipe implementation
+// -------------------
+// Although there are two methods here - receive and send - it helps to think of a pipe as a single body of code.
+// TODO look at what the code with a function pointer would compile as
+//
+// TODO rewrite next section entirely
 // -----------------------------------------------------------------------------------------------------------------
 //                                             PERFORMANCE CONSIDERATIONS
 // -----------------------------------------------------------------------------------------------------------------
@@ -909,7 +933,7 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // Second, while we could in theory read the send tail every time to increment it, it would incur one PCIe read
 // on top of the necessary PCIe write, which is too costly; instead, we keep it cached in the pipe struct.
 //
-// This still leaves us with two PCIe writes per cycle, one per tail; they dominate the total time by far.
+// This still leaves us with two PCIe writes per send-receive cycle, one per tail; they dominate the total exec time.
 // Frameworks like DPDK improve on this with batching: cycles operate on multiple packets, thus the per-packet cost
 // of PCIe writes is amortized. But we do not want batching, since it makes formal reasoning harder, and anyway we
 // want to have as simple a driver model as possible.
@@ -917,21 +941,32 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // We can amortize the cost of the receive tail write among many packets because of the following insight:
 // NF correctness requires at least 1 packet in the "processing", "received" or "receiving" states at all times;
 // that is, the NF should never be in a state where it cannot process nor receive packets, since it would then halt.
-// In formal terms, this means that at the end of a receive-send cycle, receive_tail != send_tail.
-// (Whether this forbidden situation represents a ring full of "sending" packets or of "sent" packets depends on the
-//  position of the send tails, but this is irrelevant for our purposes as both situations cause the NF to halt)
+// Thus, each send-receive cycle must end with at least 1 packet in the "received" or "receiving" states.
+// The simplest way to guarantee this is to increment the receive tail every time
 // Under the assumption that NF packet processing always terminates, and that NIC packet sending always terminates,
 // we can rephrase this invariant over multiple cycles: there exists a C such that the ring initially contains
-// at least C packets in "receiving" state, and that after C cycles the ring again contains at least C packets
-// in "receiving" state. This multi-cycle invariant ensures that after a single cycle, there are either packets left
-// in the "receiving" state or in the "received" state, since a cycle moves a single packet from "receiving" to
-// "sent" (with "received" as an intermediate step), and thus C cycles will result in at most C less "receiving"
-// packets (assuming that no packets are moved from "sent" back to "receiving" during the C cycles), thus if,
+// at least C packets in receiving/ed states, and that after C cycles the ring again contains at least C packets
+// in receiving/ed states. This multi-cycle invariant ensures that after each cycle, there are packets left
+// in the receiving/ed states, since a cycle moves a single packet from "receiving" to "sent"
+// (with "received" as an intermediate step); thus C cycles will result in at most C less "receiving" packets
+// (worst-case if no packets are moved from "sent" back to "receiving" during the C cycles), thus if,
 // at the end of C cycles, C packets have been moved from "sent" to "receiving" (regardless of whether this happens
 // during or at the end of the C cycles), then the NF is back to the same state as when it started, which is still
 // a correct state. Since the ring starts with ring_size-1 packets in the "receiving" state (because of the hardware
 // quirk mentioned earlier), and since we want a fast check for whether the index is a multiple of C,
 // we choose C to be ring_size/2.
+//
+// This leaves us with the send tail write as the single expensive operation in a receive-send cycle.
+// The only way we can defer that write is if we are sure there are more packets to process, since if
+// the NF does not receive any more packets and the send tail write has not been updated after the last cycle,
+// the last cycle's packet (and possibly more) will never be sent, which would break NF correctness.
+// We cannot use the private receive head in any invariant, since we do not know it.
+// The NF has at least one more packet to process if, at the end of a cycle, receive_head != send_tail,
+// since receive_head points to the packet _after_ the last received one.
+// This means we need to keep track of the receive head; we cannot read it at every cycle, since that would incur
+// the cost of a PCIe read, which is prohibitive if not amortized.
+// Instead, we change strategy when checking for new packets; instead of checking one descriptor at a time,
+// we keep track of the receive tail by going through all descriptors with the "descriptor done" bit set.
 //
 // =================================================================================================================
 
@@ -943,8 +978,8 @@ struct ixgbe_pipe
 	uintptr_t receive_tail_addr;
 	volatile uint32_t* send_head_ptr;
 	uintptr_t send_tail_addr;
+	uint32_t receive_head;
 	uint32_t send_tail;
-	uint8_t _padding[4];
 };
 
 // ===================
@@ -1092,6 +1127,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	IXGBE_REG_SET(device->addr, DCARXCTRL, queue_index, UNKNOWN);
 
 	pipe->receive_tail_addr = device->addr + IXGBE_REG_RDT(queue_index);
+	pipe->receive_head = 0;
 	return true;
 }
 
@@ -1194,32 +1230,39 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 
 void ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, uint64_t* out_packet_index)
 {
-	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format
-	// "Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done."
-	// NOTE: Since descriptors are 16 bytes, we need to double the index
-	uint64_t packet_metadata;
-	volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->send_tail;
+	_Static_assert(IXGBE_RING_SIZE < (uint32_t) -1, "The ring size must fit in an uint32_t otherwise counting received packets could overflow");
 	do {
-		packet_metadata = *(descriptor_addr + 1);
-	} while ((packet_metadata & BITL(0)) == 0);
+		// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format
+		// "Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done."
+		// NOTE: Since descriptors are 16 bytes, we need to double the index
+		volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->receive_head;
+		uint64_t packet_metadata = *(descriptor_addr + 1);
+		while((packet_metadata & BITL(0)) != 0) {
+			pipe->receive_head = (uint32_t) ((pipe->receive_head + 1u) & (IXGBE_RING_SIZE - 1));
+			descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->receive_head;
+			packet_metadata = *(descriptor_addr + 1);
+		}
+	} while (pipe->receive_head == pipe->send_tail);
+
+	// Remember, send_tail is the index of the first descriptor to be processed
+	volatile uint64_t* first_descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->send_tail;
 	// "PKT_LEN (16-bit offset 32, 2nd line): PKT_LEN holds the number of bytes posted to the packet buffer."
-	*out_packet_length = packet_metadata >> 32;
+	*out_packet_length = *(first_descriptor_addr + 1) >> 32;
+	*out_packet_index = pipe->send_tail;
 
 	// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
 	// Write the descriptor again for the next use, since it got clobbered by write-back
 	// "Packet Buffer Address (64): This is the physical address of the packet buffer.", 1st line
-	*descriptor_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->send_tail);
+	*first_descriptor_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->send_tail);
 	// "Header Buffer Address (64): The physical address of the header buffer with the lowest bit being Descriptor Done (DD).", 2nd line
-	*(descriptor_addr + 1) = 0;
-
-	*out_packet_index = pipe->send_tail;
+	*(first_descriptor_addr + 1) = 0;
 }
 
 
 // ===================================================
 // Section 7.2.3.2.4 Advanced Transmit Data Descriptor
 // ===================================================
-
+#include <stdio.h>
 void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
 {
 	// TODO YESSS we can drop packets by making a zero-length descriptor! but DD isn't set; will this be better with TWDBAL/H?
@@ -1267,12 +1310,15 @@ void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
 	// PAYLEN, bits 46-63: "PAYLEN indicates the size (in byte units) of the data buffer(s) in host memory for transmission. In a single-send packet, PAYLEN defines the entire packet size fetched from host memory."
 		(packet_length << 46);
 
-	// Increment the tail, modulo the ring size
+	// Increment the tail, modulo the ring size (see the pipes description for an explanation of the condition)
 	pipe->send_tail = (pipe->send_tail + 1u) & (IXGBE_RING_SIZE - 1);
-	ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->send_tail);
+	if (pipe->receive_head == pipe->send_tail) {
+		ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->send_tail);
+printf("EQUAL; NOW rh==st %"PRIu32" != %"PRIu32" ; rt %"PRIu32 " ; sh %"PRIu32"\n",pipe->receive_head, pipe->send_tail, *((volatile uint32_t*)pipe->receive_tail_addr), *(pipe->send_head_ptr));
+	}else printf("rh!=st %"PRIu32" != %"PRIu32" ; rt %"PRIu32 " ; sh %"PRIu32" ; hw st %"PRIu32"\n",pipe->receive_head, pipe->send_tail, *((volatile uint32_t*)pipe->receive_tail_addr), *(pipe->send_head_ptr), *((volatile uint32_t*) pipe->send_tail_addr));
 
-	// Mirror the send head to the receive tail (see pipes description for an explanation of the condition and of the -1)
+	// Mirror the send head to the receive tail (see the pipes description for an explanation of the condition and of the -1)
 	if ((pipe->send_tail & (IXGBE_RING_SIZE / 2 - 1)) == 0) {
-		ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
+		ixgbe_reg_write_raw(pipe->receive_tail_addr, *(pipe->send_head_ptr));
 	}
 }
