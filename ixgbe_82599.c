@@ -974,6 +974,7 @@ struct ixgbe_pipe
 	uintptr_t receive_tail_addr;
 	volatile uint32_t* send_head_ptr;
 	uintptr_t send_tail_addr;
+	uint64_t counter;
 	uint32_t processed_delimiter;
 	uint8_t _padding[4];
 };
@@ -1012,6 +1013,7 @@ bool ixgbe_pipe_init(const uintptr_t buffer_phys_addr, struct ixgbe_pipe** out_p
 	pipe->receive_tail_addr = 0;
 	pipe->send_tail_addr = 0;
 	pipe->processed_delimiter = 0;
+	pipe->counter = 0;
 
 	*out_pipe = pipe;
 	return true;
@@ -1225,7 +1227,6 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 
 bool ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, uint64_t* out_packet_index)
 {
-// === Pipe processor part 1 ===
 	// NOTE: Since descriptors are 16 bytes, we need to double the index
 	volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->processed_delimiter;
 	uint64_t packet_metadata = *(descriptor_addr + 1);
@@ -1247,11 +1248,18 @@ bool ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, u
 		return true;
 	}
 
+#define TICK 1024
+	pipe->counter = (uint64_t) (pipe->counter + 1u);
+	if ((pipe->counter & (TICK-1)) == 0) {
 // === Pipe bookkeeper
 	// Mirror the send head to the receive tail
 // TODO explain this properly in design
 // TODO mention the modulo trick somewhere?
-	ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
+		ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
+	} else if ((pipe->counter & (TICK-1)) == (TICK/2))  {
+// === Pipe sender
+		ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
+	}
 
 	// da capo
 	return false;
@@ -1311,7 +1319,4 @@ void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
 
 	// Increment the processed delimiter, modulo the ring size
 	pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
-
-// === Pipe sender
-	ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
 }
