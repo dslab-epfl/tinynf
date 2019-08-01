@@ -831,18 +831,17 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 //
 // Hardware background
 // -------------------
-// NIC receiving is dictated by three pointers to a ring, all zero-initialized:
-// the public receive head, private receive head and receive tail.
-// All packets between the public head and the tail are owned by the NIC, i.e. ready to be received.
-// Upon packet reception, the NIC increments its private head, and later mirrors it to the public head.
-// All packets between the tail and the public head are owned by software, i.e. received or unused.
-// Software can mark packets as ready for reception by incrementing the tail.
-// NIC sending has the same three-pointers-to-ring structure:
+// NIC receiving is dictated by two pointers to a ring: the receive head and receive tail.
+// All packets between the head and the tail are owned by the NIC, i.e. ready to be received.
+// Upon packet reception, the NIC increments the head and sets a "descriptor done" bit in the packet metadata..
+// All packets between the tail and the head are owned by software, i.e. either given back by the NIC
+// because they now contain received data, or not given to the NIC yet and thus unused.
+// Software can give packets to the NIC for reception by incrementing the tail.
+// NIC sending has the same two-pointers-to-ring structure:
 // packets owned by the NIC are ready to be sent, and packets owned by software are sent or unused.
 //
 // Software checks for received packets not by reading the send head, which could cause data races according to
-// the spec, but by scanning for the "descriptor done" bit in a descriptor. Thus we do not need to ever check
-// the public send head.
+// the spec, but by scanning for the "descriptor done" bit.
 //
 //
 // Packet states
@@ -850,12 +849,9 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // Each packet in a pipe can be in one of the following states:
 // - Sent
 // - Sending
+// - Processed
 // - Received
 // - Receiving
-// Because of the private heads used in receiving/sending, there are two additional "hidden" states:
-// - Sent, but software does not know it yet
-// - Received, but software does not know it yet
-// These two hidden states respectively come after "sent" and "received" in our order.
 //
 // By construction, for each state, there is exactly one contiguous block of packets in that state,
 // and blocks are ordered in the same order as our state order.
@@ -870,22 +866,20 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // are actually owned by the NIC send queue, and vice-versa.
 // Thus there is no need to dynamically allocate or free buffers from a pool as e.g. DPDK does.
 //
-// There are thus six delimiters in the ring, one for each state (including hidden ones).
+// There are thus seven delimiters in the ring, one per state (including hidden ones).
 // Thus the ring looks like this:
 //
 // ------------------- receive tail
 // |      Sent       |
-// ------------------- public send head
-// |   Hidden Sent   |
-// ------------------- private send head
+// ------------------- send head
 // |     Sending     |
 // ------------------- send tail
+// |    Processed    |
+// ------------------- processed delimiter
 // |     Received    |
-// ------------------- public receive head
-// | Hidden Received |
-// ------------------- private receive head
+// ------------------- receive head
 // |    Receiving    |
-// ------------------- (back to top - NIC receive tail)
+// ------------------- receive tail (same as top - it's a ring!)
 //
 // The initial state is that all delimiters are set to 0, except the receive tail which is set to the ring size - 1,
 // which means all packets are in the "receiving" state.
@@ -893,15 +887,17 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 //
 // Ring actors
 // -----------
-// There are conceptually four concurrent actors operating on the ring:
-// - The NIC receive queue, which moves the receive heads and thus transitions packets
-//   from "receiving" to "received"; its invariant is public_receive_head <= private_receive_head <= receive_tail
-// - The NIC send queue, which moves the send heads and thus transitions packets
-//   from "sending" to "sent"; its invariant is public_send_head <= private_send_head <= send_tail
-// - The pipe's processing, which moves the send tail and thus transitions packets
-//   from "received" to "sending"; its invariant is public_send_head <= send_tail <= public_receive_head
-// - The pipe's bookkeeping, which moves the receive tail and thus transitions packets
-//   from "sent" to "receiving"; its invariant is public_receive_head <= receive_tail <= public_send_head
+// There are conceptually five concurrent actors operating on the ring:
+// - The NIC send queue, which increments the send head and thus transitions packets
+//   from "sending" to "sent"; its invariant is send_head <= send_tail
+// - The pipe sender, which increments the send tail and thus transitions packets
+//   from "processed" to "sending"; its invariant is send_tail <= processed_delimiter
+// - The pipe processor, which increments the processed delimiter and thus transitions packets
+//   from "received" to "processed"; its invariant is processed_delimiter <= receive_head
+// - The NIC receive queue, which increments the receive head and thus transitions packets
+//   from "receiving" to "received"; its invariant is receive_head <= receive_tail
+// - The pipe bookkeeper, which increments the receive tail and thus transitions packets
+//   from "sent" to "receiving"; its invariant is receive_tail <= send_head
 // All actors can be modeled as operating on one packet at a time, even if they internally choose to operate
 // on multiple packets at a time, as long as their multi-packet operations looks like multiple single-packet
 // operations from the point of view of other actors.
@@ -978,8 +974,8 @@ struct ixgbe_pipe
 	uintptr_t receive_tail_addr;
 	volatile uint32_t* send_head_ptr;
 	uintptr_t send_tail_addr;
-	uint32_t receive_head;
-	uint32_t send_tail;
+	uint32_t processed_delimiter;
+	uint8_t _padding[4];
 };
 
 // ===================
@@ -1015,6 +1011,7 @@ bool ixgbe_pipe_init(const uintptr_t buffer_phys_addr, struct ixgbe_pipe** out_p
 	pipe->ring_phys_addr = ring.phys_addr;
 	pipe->receive_tail_addr = 0;
 	pipe->send_tail_addr = 0;
+	pipe->processed_delimiter = 0;
 
 	*out_pipe = pipe;
 	return true;
@@ -1127,7 +1124,6 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	IXGBE_REG_SET(device->addr, DCARXCTRL, queue_index, UNKNOWN);
 
 	pipe->receive_tail_addr = device->addr + IXGBE_REG_RDT(queue_index);
-	pipe->receive_head = 0;
 	return true;
 }
 
@@ -1219,7 +1215,6 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 
 	pipe->send_head_ptr = (volatile uint32_t*) headptr.virt_addr;
 	pipe->send_tail_addr = device->addr + IXGBE_REG_TDT(queue_index);
-	pipe->send_tail = 0;
 	return true;
 }
 
@@ -1230,20 +1225,21 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 
 bool ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, uint64_t* out_packet_index)
 {
+// === Pipe processor part 1 ===
 	// NOTE: Since descriptors are 16 bytes, we need to double the index
-	volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->send_tail;
+	volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->processed_delimiter;
 	uint64_t packet_metadata = *(descriptor_addr + 1);
 	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format
 	// "Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done."
 	if ((packet_metadata & BITL(0)) != 0) {
 		// "PKT_LEN (16-bit offset 32, 2nd line): PKT_LEN holds the number of bytes posted to the packet buffer."
 		*out_packet_length = packet_metadata >> 32;
-		*out_packet_index = pipe->send_tail;
+		*out_packet_index = pipe->processed_delimiter;
 
 		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
 		// Write the descriptor again for the next use, since it got clobbered by write-back
 		// "Packet Buffer Address (64): This is the physical address of the packet buffer.", 1st line
-		*descriptor_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->send_tail);
+		*descriptor_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
 		// "Header Buffer Address (64): The physical address of the header buffer with the lowest bit being Descriptor Done (DD).", 2nd line
 		*(descriptor_addr + 1) = 0;
 
@@ -1251,6 +1247,7 @@ bool ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, u
 		return true;
 	}
 
+// === Pipe bookkeeper
 	// Mirror the send head to the receive tail
 // TODO explain this properly in design
 // TODO mention the modulo trick somewhere?
@@ -1268,12 +1265,12 @@ bool ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, u
 void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
 {
 	// TODO YESSS we can drop packets by making a zero-length descriptor! but DD isn't set; will this be better with TWDBAL/H?
-
+// === Pipe processor part 2
 	// Write the descriptor, since it got clobbered on write-back by the last use
 	// NOTE: Here as well the descriptors are 16 bytes so we double the index
-	volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->send_tail;
+	volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->processed_delimiter;
 	// "Address (64)", 1st line
-	*descriptor_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->send_tail);
+	*descriptor_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
 	// 2nd line:
 	*(descriptor_addr + 1) =
 	// "DTALEN", bits 0-15: "This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor."
@@ -1312,7 +1309,9 @@ void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
 	// PAYLEN, bits 46-63: "PAYLEN indicates the size (in byte units) of the data buffer(s) in host memory for transmission. In a single-send packet, PAYLEN defines the entire packet size fetched from host memory."
 		(packet_length << 46);
 
-	// Increment the send tail, modulo the ring size
-	pipe->send_tail = (pipe->send_tail + 1u) & (IXGBE_RING_SIZE - 1);
-	ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->send_tail);
+	// Increment the processed delimiter, modulo the ring size
+	pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
+
+// === Pipe sender
+	ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
 }
