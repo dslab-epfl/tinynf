@@ -2,6 +2,7 @@
 # C compiler, language version, POSIX version and warnings
 # --------------------------------------------------------
 # GCC
+# TODO try with clang
 CC ?= gcc
 # C11
 CFLAGS += -std=c11

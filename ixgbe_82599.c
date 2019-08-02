@@ -958,6 +958,8 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // does it, which means we read the send head from main memory instead of PCIe.
 // =================================================================================================================
 
+// TODO try using legacy descriptors, simpler, don't need to overwrite the buffer address every time;
+//      also, if fragment checksum is left unchanged, maybe we don't even need to change the second line if length doesn't change?
 struct ixgbe_pipe
 {
 	uintptr_t buffer_virt_addr;
