@@ -850,7 +850,13 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 //
 // Hardware background
 // -------------------
-// NIC receiving is dictated by two pointers to a ring: the receive head and receive tail.
+// The driver and NIC communicate via "descriptors", which are 16-byte structures.
+// The first 8 bytes, for both send and receive, are the address of the buffer to use.
+// The next 8 bytes are written by the NIC during receive, and read by the NIC during send,
+// and contain configuration data.
+// In the rest of this text, "packet" implies both a descriptor and its associated buffer.
+//
+// NIC receiving is dictated by two pointers to a descriptor ring: the receive head and receive tail.
 // All packets between the head and the tail are owned by the NIC, i.e. ready to be received.
 // Upon packet reception, the NIC increments the head and sets a "descriptor done" bit in the packet metadata..
 // All packets between the tail and the head are owned by software, i.e. either given back by the NIC
@@ -925,54 +931,51 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 //
 // Pipe design
 // -----------
-// We add the following constraints to the pipe, to simplify both programming and formal reasoning:
+// The following constraints to the pipe simplify both programming and formal reasoning:
 // - The pipe processing actor must operate on a single packet at a time
 // - Both pipe actors must be executed by the same implementation thread
+//
+// The API allows the developer to specify a receive queue and a send queue, and to run the pipe given a function
+// that is called for every packet and may modify the packet.
 //
 //
 // Pipe implementation
 // -------------------
-// Although there are two methods here - receive and send - it helps to think of a pipe as a single body of code.
-// TODO look at what the code with a function pointer would compile as
+// This implementation uses a very basic scheduling algorithm between the actors: schedule the processor N times
+// in a row, then schedule the bookkeeper once and the sender once.
+// When scheduled, the processor only performs work if processed_delimiter < receive_head, to not violate its invariant;
+// as mentioned earlier, this is actually performed using "descriptor done" bits to avoid a data race.
+// The bookkeeper and sender always mirror send_head to receive_tail and processed_delimiter to send_tail respectively.
 //
 //
 // Performance considerations
 // --------------------------
-// TODO rewrite most of this
 // It is important to remember that all NIC registers are in memory-mapped PCIe space,
 // which implies that loads and stores cannot be cached and are much slower than standard memory.
-// First, this means that reading the send head to mirror it to the receive tail is expensive; thankfully, the NIC
+//
+// This means that reading the send head to mirror it to the receive tail is expensive; thankfully, the NIC
 // has a feature called "TX head pointer write back": we tell it where to DMA the send head, and it automatically
 // does it, which means we read the send head from main memory instead of PCIe.
-// Second, while we could in theory read the send tail every time to increment it, it would incur one PCIe read
-// on top of the necessary PCIe write, which is too costly; instead, we keep it cached in the pipe struct.
-//
-// This still leaves us with two PCIe writes per send-receive cycle, one per tail; they dominate the total exec time.
-// Frameworks like DPDK improve on this with batching: cycles operate on multiple packets, thus the per-packet cost
-// of PCIe writes is amortized. But we do not want batching, since it makes formal reasoning harder, and anyway we
-// want to have as simple a driver model as possible.
-//
 // =================================================================================================================
 
 struct ixgbe_pipe
 {
+	uintptr_t buffer_virt_addr;
 	uintptr_t buffer_phys_addr;
 	uintptr_t ring_addr;
 	uintptr_t ring_phys_addr;
 	uintptr_t receive_tail_addr;
 	volatile uint32_t* send_head_ptr;
 	uintptr_t send_tail_addr;
-	uint64_t counter;
+	uint32_t counter;
 	uint32_t processed_delimiter;
-	uint8_t _padding[4];
 };
 
 // ===================
 // Pipe initialization - no HW interactions
 // ===================
 
-// TODO very important assumption that the buffer is a single contiguous physical block! how do we enforce this?
-bool ixgbe_pipe_init(const uintptr_t buffer_phys_addr, struct ixgbe_pipe** out_pipe)
+bool ixgbe_pipe_init(const struct tn_memory_block buffer, struct ixgbe_pipe** out_pipe)
 {
 	struct tn_memory_block ring;
 	if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring)) { // 16 bytes per descriptor, i.e. 2x64bits
@@ -995,7 +998,8 @@ bool ixgbe_pipe_init(const uintptr_t buffer_phys_addr, struct ixgbe_pipe** out_p
 	}
 
 	struct ixgbe_pipe* pipe = (struct ixgbe_pipe*) pipe_block.virt_addr;
-	pipe->buffer_phys_addr = buffer_phys_addr;
+	pipe->buffer_virt_addr = buffer.virt_addr;
+	pipe->buffer_phys_addr = buffer.phys_addr;
 	pipe->ring_addr = ring.virt_addr;
 	pipe->ring_phys_addr = ring.phys_addr;
 	pipe->receive_tail_addr = 0;
@@ -1206,95 +1210,80 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 }
 
 
-// ==========================================
-// Section 7.1.6 Advanced Receive Descriptors
-// ==========================================
-
-bool ixgbe_receive(struct ixgbe_pipe* const pipe, uint64_t* out_packet_length, uint64_t* out_packet_index)
+void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 {
-	pipe->counter = (uint64_t) (pipe->counter + 1u);
-	if((pipe->counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
-		ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
-		ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
-	}
+	while (true)
+	{
+		pipe->counter = (uint32_t) (pipe->counter + 1u);
 
-	// NOTE: Since descriptors are 16 bytes, we need to double the index
-	volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->processed_delimiter;
-	uint64_t packet_metadata = *(descriptor_addr + 1);
-	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format
-	// "Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done."
-	if ((packet_metadata & BITL(0)) != 0) {
-		// "PKT_LEN (16-bit offset 32, 2nd line): PKT_LEN holds the number of bytes posted to the packet buffer."
-		*out_packet_length = packet_metadata >> 32;
-		*out_packet_index = pipe->processed_delimiter;
+		if((pipe->counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
+			ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
+			ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
+		}
+
+		// NOTE: Since descriptors are 16 bytes, we need to double the index
+		volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->processed_delimiter;
+		uint64_t packet_metadata = *(descriptor_addr + 1);
+		// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
+		// "Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done."
+		if ((packet_metadata & BITL(0)) == 0) {
+			continue;
+		}
 
 		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
-		// Write the descriptor again for the next use, since it got clobbered by write-back
+		// Write the packet address again, since it got clobbered by write-back
 		// "Packet Buffer Address (64): This is the physical address of the packet buffer.", 1st line
-		*descriptor_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
-		// "Header Buffer Address (64): The physical address of the header buffer with the lowest bit being Descriptor Done (DD).", 2nd line
-		*(descriptor_addr + 1) = 0;
+		uintptr_t packet_phys_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
+		*descriptor_addr = packet_phys_addr;
 
-		// Think of this as not a return, but a call to a continuation, which will itself call send as continuation
-		return true;
+		// "PKT_LEN (16-bit offset 32, 2nd line): PKT_LEN holds the number of bytes posted to the packet buffer."
+		uint64_t receive_packet_length = packet_metadata >> 32;
+		uintptr_t packet_virt_addr = pipe->buffer_virt_addr + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
+		// TODO YESSS we can drop packets by making a zero-length descriptor! but DD isn't set; will this be better with TWDBAL/H?
+		uint64_t send_packet_length = handler((uint8_t*) packet_virt_addr, receive_packet_length);
+
+		// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
+		// "Address (64)", 1st line
+		// We've already written it earlier
+		// 2nd line:
+		*(descriptor_addr + 1) =
+		// "DTALEN", bits 0-15: "This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor."
+			send_packet_length |
+		// "RSV", bits 16-17: "Reserved"
+			// All zero
+		// "MAC", bits 18-19: "ILSec (bit 0) — Apply LinkSec on packet. [...] 1588 (bit 1) — IEEE1588 time stamp packet."
+			// All zero
+		// "DTYP", bits 20-23: "0011b for advanced data descriptor."
+			BITL(20) | BITL(20+1) |
+		// "DCMD", bits 24-31:
+			// "TSE (bit 7) — Transmit Segmentation Enable [...]
+			//  VLE (bit 6) — VLAN Packet Enable [...]
+			//  DEXT (bit 5) — Descriptor Extension: This bit must be one to indicate advanced descriptor format
+			//  Rsv (bit 4) — Reserved [...]
+			//  RS (bit 3) — Report Status: signals hardware to report the DMA completion status indication
+			//  Rsv (bit 2) — Reserved
+			//  IFCS (bit 1) — Insert FCS:
+			//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
+			//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
+			//  EOP (bit 0) — End of Packet"
+			// Thus, we must set bits 5, 3, 1 and 0
+			BITL(24+5) | BITL(24+3) | BITL(24+1) | BITL(24) |
+		// STA, bits 32-35: "Rsv (bit 3:1) — Reserved. DD (bit 0) — Descriptor Done"
+			// All zero
+		// IDX, bits 36-38: "If no offload is required and the CC bit is cleared, this field is not relevant"
+			// All zero
+		// CC, bit 39: "Check Context bit — When set, a Tx context descriptor indicated by IDX index should be used for this packet(s)"
+			// Zero
+		// POPTS, bits 40-45:
+			// "Rsv (bits 5:3) — Reserved
+			//  IPSEC (bit 2) — Ipsec offload request
+			//  TXSM (bit 1) — Insert TCP/UDP Checksum
+			//  IXSM (bit 0) — Insert IP Checksum:"
+			// All zero
+		// PAYLEN, bits 46-63: "PAYLEN indicates the size (in byte units) of the data buffer(s) in host memory for transmission. In a single-send packet, PAYLEN defines the entire packet size fetched from host memory."
+			(send_packet_length << 46);
+
+		// Increment the processed delimiter, modulo the ring size
+		pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
 	}
-
-	// da capo
-	return false;
-}
-
-
-// ===================================================
-// Section 7.2.3.2.4 Advanced Transmit Data Descriptor
-// ===================================================
-
-void ixgbe_send(struct ixgbe_pipe* const pipe, uint64_t packet_length)
-{
-	// TODO YESSS we can drop packets by making a zero-length descriptor! but DD isn't set; will this be better with TWDBAL/H?
-// === Pipe processor part 2
-	// Write the descriptor, since it got clobbered on write-back by the last use
-	// NOTE: Here as well the descriptors are 16 bytes so we double the index
-	volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->processed_delimiter;
-	// "Address (64)", 1st line
-	*descriptor_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
-	// 2nd line:
-	*(descriptor_addr + 1) =
-	// "DTALEN", bits 0-15: "This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor."
-		packet_length |
-	// "RSV", bits 16-17: "Reserved"
-		// All zero
-	// "MAC", bits 18-19: "ILSec (bit 0) — Apply LinkSec on packet. [...] 1588 (bit 1) — IEEE1588 time stamp packet."
-		// All zero
-	// "DTYP", bits 20-23: "0011b for advanced data descriptor."
-		BITL(20) | BITL(20+1) |
-	// "DCMD", bits 24-31:
-	// "TSE (bit 7) — Transmit Segmentation Enable [...]
-	//  VLE (bit 6) — VLAN Packet Enable [...]
-	//  DEXT (bit 5) — Descriptor Extension: This bit must be one to indicate advanced descriptor format
-	//  Rsv (bit 4) — Reserved [...]
-	//  RS (bit 3) — Report Status: signals hardware to report the DMA completion status indication
-	//  Rsv (bit 2) — Reserved
-	//  IFCS (bit 1) — Insert FCS:
-	//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
-	//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
-	//  EOP (bit 0) — End of Packet"
-		// Thus, we must set bits 5, 3, 1 and 0
-		BITL(24+5) | BITL(24+3) | BITL(24+1) | BITL(24) |
-	// STA, bits 32-35: "Rsv (bit 3:1) — Reserved. DD (bit 0) — Descriptor Done"
-		// All zero
-	// IDX, bits 36-38: "If no offload is required and the CC bit is cleared, this field is not relevant"
-		// All zero
-	// CC, bit 39: "Check Context bit — When set, a Tx context descriptor indicated by IDX index should be used for this packet(s)"
-		// Zero
-	// POPTS, bits 40-45:
-	// "Rsv (bits 5:3) — Reserved
-	//  IPSEC (bit 2) — Ipsec offload request
-	//  TXSM (bit 1) — Insert TCP/UDP Checksum
-	//  IXSM (bit 0) — Insert IP Checksum:"
-		// All zero
-	// PAYLEN, bits 46-63: "PAYLEN indicates the size (in byte units) of the data buffer(s) in host memory for transmission. In a single-send packet, PAYLEN defines the entire packet size fetched from host memory."
-		(packet_length << 46);
-
-	// Increment the processed delimiter, modulo the ring size
-	pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
 }

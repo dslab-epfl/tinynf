@@ -4,25 +4,46 @@
 #include "util/log.h"
 #include "util/perf.h"
 
+static uint64_t tinynf_packet_handler(uint8_t* packet, uint64_t packet_length)
+{
+//	for (uint64_t n = 0; n < packet_length; n++) {
+//		printf("0x%02"PRIx8" ", packet[n]);
+//	}
+	// SRC MAC (90:e2:ba:55:14:11)
+	packet[0] = 0x90;
+	packet[1] = 0xE2;
+	packet[2] = 0xBA;
+	packet[3] = 0x55;
+	packet[4] = 0x14;
+	packet[5] = 0x11;
+	// DST MAC
+	packet[6] = 0xFF;
+	packet[7] = 0xFF;
+	packet[8] = 0xFF;
+	packet[9] = 0xFF;
+	packet[10]= 0xFF;
+	packet[11]= 0xFF;
+
+	return packet_length;
+}
+
 // Packet processing
 int main(int argc, char** argv)
 {
-	setvbuf(stdout, NULL, _IONBF, 0);
-
 	(void) argc;
 	(void) argv;
 
 	uint64_t ring_size = ixgbe_get_ring_size();
 	uint64_t packet_size_max = ixgbe_get_packet_size_max();
 
-	struct tn_memory_block packet_buffers;
-	if (!tn_mem_allocate(packet_size_max * ring_size, &packet_buffers)) {
+	struct tn_memory_block packets_buffer;
+	if (!tn_mem_allocate(packet_size_max * ring_size, &packets_buffer)) {
 		TN_INFO("Couldn't alloc packet buffers");
 		return 1;
 	}
 
 	struct ixgbe_pipe* pipe;
-	if (!ixgbe_pipe_init(packet_buffers.phys_addr, &pipe)) {
+	if (!ixgbe_pipe_init(packets_buffer, &pipe)) {
 		TN_INFO("Couldn't init pipe");
 		return 2;
 	}
@@ -52,41 +73,11 @@ int main(int argc, char** argv)
 	}
 
 	TN_INFO("Initialized successfully!");
-
 //	TN_PERF_START();
 
-	while (true) {
-//	for (uint64_t _ = 0; _ < 1000; _++) {
-		uint64_t packet_length;
-		uint64_t packet_index;
-		if (!ixgbe_receive(pipe, &packet_length, &packet_index)) {
-			continue;
-		}
-		uint8_t* packet = (uint8_t*) (packet_buffers.virt_addr + packet_size_max * packet_index);
-//	for (uint64_t n = 0; n < packet_length; n++) {
-//		printf("0x%02"PRIx8" ", packet[n]);
-//	}
-		// SRC MAC (90:e2:ba:55:14:11)
-		packet[0] = 0x90;
-		packet[1] = 0xE2;
-		packet[2] = 0xBA;
-		packet[3] = 0x55;
-		packet[4] = 0x14;
-		packet[5] = 0x11;
-		// DST MAC
-		packet[6] = 0xFF;
-		packet[7] = 0xFF;
-		packet[8] = 0xFF;
-		packet[9] = 0xFF;
-		packet[10]= 0xFF;
-		packet[11]= 0xFF;
-
-		ixgbe_send(pipe, packet_length);
-	}
+	ixgbe_pipe_run(pipe, tinynf_packet_handler);
 
 //	TN_PERF_DUMP();
-
-	TN_INFO("Done!");
-
-	return 0;
+//	TN_INFO("Done!");
+//	return 0;
 }
