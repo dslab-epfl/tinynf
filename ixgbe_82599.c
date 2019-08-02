@@ -105,7 +105,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0U)
 #define IXGBE_REG_CLEAR4(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field))
 #define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR4, IXGBE_REG_CLEAR3, _UNUSED)(__VA_ARGS__)
-// TODO better name than "set", since set implies to a specific value? what's the opposite of clear?
 #define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) | IXGBE_REG_##reg##_##field))
 
 // PCI primitives (we do not write to PCI)
@@ -439,11 +438,7 @@ static void ixgbe_device_disable_interrupts(const struct ixgbe_device* const dev
 bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_device** out_device)
 {
 	// We need to write 64-bit memory values, so pointers better be 64 bits!
-	// TODO enforce this at the type level? how?
-	if (UINTPTR_MAX != UINT64_MAX) {
-		TN_DEBUG("Wrong size of uintptr_t");
-		return false;
-	}
+	_Static_assert(UINTPTR_MAX == UINT64_MAX, "uintptr_t must have the same size as uint64_t");
 
 	struct ixgbe_device device;
 	device.pci = pci_device;
