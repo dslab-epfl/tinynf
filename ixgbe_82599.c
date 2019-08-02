@@ -6,6 +6,36 @@
 #include "util/log.h"
 
 
+// ASSUMPTIONS
+// ===========
+// We make the following assumptions, which we later refer to by name:
+// CRC: We want CRC stripped when receiving and generated on the entire packet when sending
+// DCA: We want Direct Cache Access (DCA), for performance
+// DROP: We want to drop packets if we can't process them fast enough, for predictable behavior
+// NOCARE: We do not care about the following:
+//         - Statistics
+//         - Receive Side Coalescing (RSC)
+//         - NFS
+// NOWANT: We do not want the following:
+//         - Flexible filters
+//         - VLAN handling
+//         - Multicast filtering
+//         - Receive checksum offloading
+//         - Receive side scaling (RSS)
+//         - 5-tuple filtering
+//         - L2 ethertype filtering
+//         - SR-IO
+//         - VMDq
+//         - Jumbo packet handling
+//         - LinkSec packet handling
+//         - Loopback
+//         - Global double VLAN mode
+//         - Interrupts
+//         - Debugging features
+// REPORT: We prefer more error reporting when faced with an explicit choice, but do not attempt to do extra configuration for this
+// TRUST: We trust the defaults for low-level hardware details (e.g., the MDC speed)
+// TXPAD: We want all sent frames to be at least 64 bytes
+
 // Section 7.1.2.5 L3/L4 5-tuple Filters:
 // 	"There are 128 different 5-tuple filter configuration registers sets"
 #define IXGBE_5TUPLE_FILTERS_COUNT 128
@@ -520,8 +550,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//	"Also programmable via EEPROM." is applied to all fields except bit 0, "Force Link Up"
 	// INTERPRETATION: AUTOC is already programmed via the EEPROM, we do not need to set up the PHY/link.
 	// "- Initialize all statistical counters (see Section 4.6.5)."
-	// ASSUMPTION: We do not care about statistics.
-	// INTERPRETATION: We don't need to do anything here.
+	// By assumption NOCARE, we don't need to do anything here.
 	// "- Initialize receive (see Section 4.6.7)."
 	// Section 4.6.7 Receive Initialization
 	//	"Initialize the following register tables before receive and transmit is enabled:"
@@ -590,8 +619,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//		 Software must also enable the filter in the WUFC register, and enable the overall wake-up functionality must be enabled by setting the PME_En bit in the PMCSR or the WUC register."
 	//	Section 8.2.3.24.2 Wake Up Filter Control Register (WUFC):
 	//		"FLX{0-5}: Bits {16-21}; Init val 0b; Flexible Filter {0-5} Enable"
-	// ASSUMPTION: We do not want flexible filters.
-	// INTERPRETATION: Since WUFC.FLX{0-5} are disabled by default, and FHFT(n) only matters if the corresponding WUFC.FLX is enabled, we do not need to do anything as we do not want flexible filters.
+	// INTERPRETATION: Since WUFC.FLX{0-5} are disabled by default, and FHFT(n) only matters if the corresponding WUFC.FLX is enabled, we do not need to do anything by assumption NOWANT
 	//	"After all memories in the filter units previously indicated are initialized, enable ECC reporting by setting the RXFECCERR0.ECCFLT_EN bit."
 	//	Section 8.2.3.7.23 Rx Filter ECC Err Insertion 0 (RXFECCERR0):
 	//		"Filter ECC Error indication Enablement.
@@ -603,43 +631,35 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// We do not touch FCTRL here, if the user wants promiscuous mode they will call the appropriate function.
 	//	Section 8.2.3.7.2 VLAN Control Register (VLNCTRL):
 	//		"Bit 30, VLAN Filter Enable, Init val 0b; 0b = Disabled."
-	// ASSUMPTION: We do not want VLAN handling.
-	// INTERPRETATION: Since we do not want VLAN handling, we do not need to set up VLNCTRL.
+	// We do not need to set up VLNCTRL by assumption NOWANT
 	//	Section 8.2.3.7.2 Multicast Control Register (MCSTCTRL):
 	//		"Bit 2, Multicast Filter Enable, Init val 0b; 0b = The multicast table array filter (MTA[n]) is disabled."
-	// ASSUMPTION: We do not want multicast filtering.
-	// INTERPRETATION: Since multicast filtering is disabled by default, we do not need to set up MCSTCTRL.
+	// Since multicast filtering is disabled by default, we do not need to set up MCSTCTRL by assumption NOWANT
 	// 	Section 8.2.3.7.5 Receive Checksum Control (RXCSUM):
 	//		"Bit 12, Init val 0b, IP Payload Checksum Enable."
 	//		"Bit 13, Init val 0b, RSS/Fragment Checksum Status Selection."
 	//		"The Receive Checksum Control register controls the receive checksum offloading features of the 82599."
-	// ASSUMPTION: We do not want receive checksum offloading.
-	// INTERPRETATION: Since checksum offloading is disabled by default, we do not need to set up RXCSUM.
+	// Since checksum offloading is disabled by default, we do not need to set up RXCSUM by assumption NOWANT
 	//	Section 8.2.3.7.13 RSS Queues Per Traffic Class Register (RQTC):
 	//		"RQTC{0-7}, This field is used only if MRQC.MRQE equals 0100b or 0101b."
 	//	Section 8.2.3.7.12 Multiple Receive Queues Command Register (MRQC):
 	//		"MRQE, Init val 0x0"
-	// ASSUMPTION: We do not want RSS.
-	// INTERPRETATION: Since RSS is disabled by default, we do not need to do anything.
+	// Since RSS is disabled by default, we do not need to do anything by assumption NOWANT
 	//	Section 8.2.3.7.6 Receive Filter Control Register (RFCTL):
 	//		"Bit 5, Init val 0b; RSC Disable. The default value is 0b (RSC feature is enabled)."
 	//		"Bit 6, Init val 0b; NFS Write disable."
 	//		"Bit 7, Init val 0b; NFS Read disable."
-	// ASSUMPTION: We do not care about RSC.
-	// ASSUMPTION: We do not care about NFS.
-	// INTERPRETATION: We do not need to write to RFCTL.
+	// We do not need to write to RFCTL by assumption NOWANT
 	// We already initialized MPSAR earlier.
 	//	Section 4.6.10.1.1 Global Filtering and Offload Capabilities:
 	//		"In RSS mode, the RSS key (RSSRK) and redirection table (RETA) should be programmed."
-	// INTERPRETATION: Since we do not want RSS, we do not need to touch RSSRK or RETA.
+	// Since we do not want RSS, we do not need to touch RSSRK or RETA.
 	//	Section 8.2.3.7.19 Five tuple Queue Filter (FTQF[n]):
 	//		All bits have an unspecified default value.
 	//		"Mask, bits 29:25: Mask bits for the 5-tuple fields (1b = don’t compare)."
 	//		"Queue Enable, bit 31; When set, enables filtering of Rx packets by the 5-tuple defined in this filter to the queue indicated in register L34TIMIR."
-	// ASSUMPTION: We do not want 5-tuple filtering.
-	// INTERPRETATION: We clear Queue Enable, and set the mask to 0b11111 just in case. We then do not need to deal with SAQF, DAQF, SDPQF, SYNQF.
+	// We clear Queue Enable. We then do not need to deal with SAQF, DAQF, SDPQF, SYNQF, by assumption NOWANT
 	for (uint32_t n = 0; n < IXGBE_5TUPLE_FILTERS_COUNT; n++) {
-		IXGBE_REG_SET(device.addr, FTQF, n, MASK);
 		IXGBE_REG_CLEAR(device.addr, FTQF, n, QUEUE_ENABLE);
 	}
 	//	Section 7.1.2.3 L2 Ethertype Filters:
@@ -647,16 +667,14 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//		 1. If the Filter Enable bit is cleared, the filter is disabled and the following steps are ignored."
 	//	Section 8.2.3.7.21 EType Queue Filter (ETQF[n]):
 	//		"Bit 31, Filter Enable, Init val 0b; 0b = The filter is disabled for any functionality."
-	// ASSUMPTION: We do not want L2 ethertype filtering.
-	// INTERPRETATION: Since filters are disabled by default, we do not need to do anything to ETQF and ETQS.
+	// Since filters are disabled by default, we do not need to do anything to ETQF and ETQS by assumption NOWANT
 	//	Section 8.2.3.8.8 Receive DMA Control Register (RDRXCTL):
 	//		The only non-reserved, non-RO bit is "CRCStrip, bit 1, Init val 0; 0b = No CRC Strip by HW."
-	// ASSUMPTION: We do not want HW CRC strip.
-	// INTERPRETATION: We do not need to change RDRXCTL.
+	// By assumption CRC, we enable CRCStrip
+	IXGBE_REG_SET(device.addr, RDRXCTL, _, CRC_STRIP);
 	//	Section 8.2.3.8.12 RSC Data Buffer Control Register (RSCDBU):
 	//		The only non-reserved bit is "RSCACKDIS, bit 7, init val 0b; Disable RSC for ACK Packets."
-	// ASSUMPTION: We do not care of disabling RSC for ACK packets.
-	// INTERPRETATION: We do not need to change RSCDBU.
+	// We do not need to change RSCDBU by assumption NOCARE
 	//	"Program RXPBSIZE, MRQC, PFQDE, RTRUP2TC, MFLCN.RPFCE, and MFLCN.RFCE according to the DCB and virtualization modes (see Section 4.6.11.3)."
 	//	Section 4.6.11.3.4 DCB-Off, VT-Off:
 	//		"Set the configuration bits as specified in Section 4.6.11.3.1 with the following exceptions:"
@@ -665,7 +683,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//		Section 8.2.3.8.9 Receive Packet Buffer Size (RXPBSIZE[n]):
 	//			"SIZE, Init val 0x200"
 	//			"The default size of PB[1-7] is also 512 KB but it is meaningless in non-DCB mode."
-	// INTERPRETATION: We do not need to change PB[0]. Let's stay on the safe side and clear PB[1-7] to 0 anyway.
+	// INTERPRETATION: We do not need to change PB[0] but must clear PB[1-7]
 	for (uint32_t n = 1; n < IXGBE_TRAFFIC_CLASSES_COUNT; n++) {
 		IXGBE_REG_CLEAR(device.addr, RXPBSIZE, n);
 	}
@@ -674,8 +692,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// 			Section 8.2.3.7.12 Multiple Receive Queues Command Register (MRQC): "MRQE, Init Val 0x0; 0000b = RSS disabled"
 	// Thus we do not need to modify MRQC.
 	//		(from 4.6.11.3.1) "Queue Drop Enable (PFQDE) — In SR-IO the QDE bit should be set to 1b in the PFQDE register for all queues. In VMDq mode, the QDE bit should be set to 0b for all queues."
-	// ASSUMPTION: We do not need SR-IO or VMDq.
-	// INTERPRETATION: We do not need to change PFQDE.
+	// We do not need to change PFQDE by assumption NOWANT
 	//		"- Rx UP to TC (RTRUP2TC), UPnMAP=0b, n=0,...,7"
 	//		Section 8.2.3.10.4 DCB Receive User Priority to Traffic Class (RTRUP2TC): All init vals = 0
 	// Thus we do not need to modify RTRUP2TC.
@@ -692,10 +709,9 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//	"Enable jumbo reception by setting HLREG0.JUMBOEN in one of the following two cases:
 	//	 1. Jumbo packets are expected. Set the MAXFRS.MFS to expected max packet size.
 	//	 2. LinkSec encapsulation is expected."
-	// ASSUMPTION: We do not want jumbo or LinkSec packets.
-	// Thus we do not have anything to do here.
+	// We do not have anything to do here by assumption NOWANT
 	//	"Enable receive coalescing if required as described in Section 4.6.7.2."
-	// Since we do not require it, we do not need to do anything.
+	// We do not need to do anything here by assumption NOWANT
 
 	// We do not set up receive queues at this point.
 
@@ -704,48 +720,39 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//		"- Program the HLREG0 register according to the required MAC behavior."
 	//		Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0):
 	//			"TXCRCEN, Init val 1b; Tx CRC Enable, Enables a CRC to be appended by hardware to a Tx packet if requested by user."
-	// INTERPRETATION: We do not need to explicitly disable this, since it only allows the user to request it, but does not do it automatically.
+	// By assumption CRC, we want this default behavior.
 	//			"RXCRCSTRP [...] Rx CRC STRIP [...] 1b = Strip CRC by HW (Default)."
-	// ASSUMPTION: We want CRC stripping.
-	// Thus we do not need to change this.
+	// We do not need to change this by assumption CRC
 	//			"JUMBOEN [...] Jumbo Frame Enable [...] 0b = Disable jumbo frames (default)."
-	// ASSUMPTION: We do not want jumbo frames.
-	// Thus we do not need to change this.
+	// We do not need to change this by assumption NOWANT
 	//			"TXPADEN, Init val 1b; Tx Pad Frame Enable. Pad short Tx frames to 64 bytes if requested by user."
-	// INTERPRETATION: We do not need to explicitly disable this, since it only allows the user to request it, but does not do it automatically.
+	// We do not need to change this by assumption TXPAD
 	//			"LPBK, Init val 0b; LOOPBACK. Turn On Loopback Where Transmit Data Is Sent Back Through Receiver."
-	// ASSUMPTION: We do not want loopback.
-	// Thus we do not need to change this.
+	// We do not need to change this by assumption NOWANT
 	//			"MDCSPD [...] MDC SPEED."
 	//			"CONTMDC [...] Continuous MDC"
-	// ASSUMPTION: We trust the defaults for low-level hardware details.
-	// Thus we do not need to change these.
+	// We do not need to change these by assumption TRUST
 	//			"PREPEND [...] Number of 32-bit words starting after the preamble and SFD, to exclude from the CRC generator and checker (default – 0x0)."
-	// ASSUMPTION: We want CRC generation/stripping, and do not want to skip anything from the generation/checking.
-	// Thus we do not need to change this.
+	// We do not need to change this by assumption CRC
 	//			"RXLNGTHERREN, Init val 1b [...] Rx Length Error Reporting. 1b = Enable reporting of rx_length_err events"
-	// ASSUMPTION: We want as much error reporting as possible.
-	// Thus we do not need to change this.
+	// We do not need to change this by assumption REPORT
 	//			"RXPADSTRIPEN [...] 0b = [...] (default). 1b = [...] (debug only)."
-	// We are not debugging so we do not need to change this.
+	// We do not need to change this by assumption NOWANT
 	//		"- Program TCP segmentation parameters via registers DMATXCTL (while maintaining TE bit cleared), DTXTCPFLGL, and DTXTCPFLGH; and DCA parameters via DCA_TXCTRL."
 	//			Section 8.2.3.9.2 DMA Tx Control (DMATXCTL):
 	//				There is only one field besides TE that the user should modify: "GDV, Init val 0b, Global Double VLAN Mode."
-	// ASSUMPTION: We do not want global double VLAN mode.
-	// Thus we do not need to change DMATXCTL for now.
+	// We do not need to change DMATXCTL for now by assumption NOWANT
 	//			Section 8.2.3.9.3 DMA Tx TCP Flags Control Low (DTXTCPFLGL),
 	//			Section 8.2.3.9.4 DMA Tx TCP Flags Control High (DTXTCPFLGH):
 	//				"This register holds the mask bits for the TCP flags in Tx segmentation."
-	// INTERPRETATION: The default values make sense for TCP.
-	// Thus we do not need to modify DTXTCPFLGL/H.
+	// We do not need to modify DTXTCPFLGL/H by assumption TRUST.
 	//			Section 8.2.3.11.2 Tc DCA Control Registers (DCA_TXCTRL[n]):
 	//				"Tx Descriptor DCA EN, Init val 0b; Descriptor DCA Enable. When set, hardware enables DCA for all Tx descriptors written back into memory.
 	//				 When cleared, hardware does not enable DCA for descriptor write-backs. This bit is cleared as a default and also applies to head write back when enabled."
 	//				"CPUID, Init val 0x0, Physical ID (see complete description in Section 3.1.3.1.2)
 	//				 Legacy DCA capable platforms — the device driver, upon discovery of the physical CPU ID and CPU bus ID, programs the CPUID field with the physical CPU and bus ID associated with this Tx queue.
 	//				 DCA 1.0 capable platforms — the device driver programs a value, based on the relevant APIC ID, associated with this Tx queue."
-	// ASSUMPTION: We want DCA, since it helps performance.
-	// TODO: Actually implement it.
+	// TODO: Actually implement it by assumption DCA
 	// TODO: DCA for RX as well.
 	// TODO: Benchmark with DCA enabled and disabled.
 	//				There are fields dealing with relaxed ordering; Section 3.1.4.5.3 Relaxed Ordering states that it "enables the system to optimize performance", with no apparent correctness impact.
@@ -783,12 +790,10 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// INTERPRETATION: Section 4.6.11.3 does not refer to MNGTXMAP, but since it's a management-related register we can ignore it here.
 	//		"- Clear RTTDCS.ARBDIS to 0b"
 	IXGBE_REG_CLEAR(device.addr, RTTDCS, _, ARBDIS);
-	// INTERPRETATION: The spec forgot to mention it earlier, but MTQC requires ARBDIS to be disabled (see Section 7.2.1.2.1 Tx Queues Assignment).
 	// We've already done DCB/VT config earlier, no need to do anything here.
 	// "- Enable interrupts (see Section 4.6.3.1)."
 	// 	Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
-	// ASSUMPTION: We do not want interrupts.
-	// INTERPRETATION: We don't need to do anything here.
+	// We don't need to do anything here by assumption NOWANT
 
 	struct tn_memory_block device_block;
 	if (!tn_mem_allocate(sizeof(struct ixgbe_device), &device_block)) {
@@ -1060,13 +1065,12 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	//		"DESCTYPE, Define the descriptor type in Rx: [...] 001b = Advanced descriptor one buffer."
 	IXGBE_REG_WRITE(device->addr, SRRCTL, queue_index, DESCTYPE, 1);
 	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
-	// ASSUMPTION: We want to drop packets if we can't process them fast enough, to have predictable behavior.
+	// We enable this because of assumption DROP
 	IXGBE_REG_SET(device->addr, SRRCTL, queue_index, DROP_EN);
 	// "- If header split is required for this queue, program the appropriate PSRTYPE for the appropriate headers."
 	// Section 7.1.10 Header Splitting: "Header Splitting mode might cause unpredictable behavior and should not be used with the 82599."
 	// "- Program RSC mode for the queue via the RSCCTL register."
 	// Nothing to do, we do not want RSC.
-	// TODO: Write all assumptions in a single place, then refer to them by ID or something.
 	// "- Program RXDCTL with appropriate values including the queue Enable bit. Note that packets directed to a disabled queue are dropped."
 	IXGBE_REG_SET(device->addr, RXDCTL, queue_index, ENABLE);
 	// "- Poll the RXDCTL register until the Enable bit is set. The tail should not be bumped before this bit was read as 1b."
@@ -1099,8 +1103,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	// INTERPRETATION: This refers to RX_DIS, not SECRX_DIS, since it's RX_DIS being cleared that enables the receive data path.
 	IXGBE_REG_CLEAR(device->addr, SECRXCTRL, _, RX_DIS);
 	//	"- If software uses the receive descriptor minimum threshold Interrupt, that value should be set."
-	// ASSUMPTION: We don't want interrupts.
-	// Nothing to do.
+	// We do not have to set this by assumption NOWANT
 	// "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
 	// Section 8.2.3.1.3 Extended Device Control Register (CTRL_EXT): Bit 16 == "NS_DIS, No Snoop Disable"
 	IXGBE_REG_SET(device->addr, CTRLEXT, _, NSDIS);
