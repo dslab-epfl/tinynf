@@ -15,6 +15,12 @@
 #define PCI_CONFIG_DATA 0xCFC
 
 
+static void free_str(const char* str)
+{
+	// Weird casting required to free const pointers
+	free((void*)(uintptr_t)str);
+}
+
 static bool tn_numa_get_device_node(const struct tn_pci_device device, uint64_t* out_node)
 {
 	const char* node_str = tn_fs_readline("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/numa_node", device.bus, device.device, device.function);
@@ -26,8 +32,7 @@ static bool tn_numa_get_device_node(const struct tn_pci_device device, uint64_t*
 	const char node_chr = node_str[0];
 	const char node_delim = node_str[1];
 
-	// TODO helper method to free const pointers, and to access memory in general
-	free((void*)(uintptr_t)node_str);
+	free_str(node_str);
 
 	if (node_delim != '\n') {
 		TN_DEBUG("Long NUMA node, not supported");
@@ -101,8 +106,7 @@ bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_le
 	dev_addr = tn_fs_mmap("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource0", device.bus, device.device, device.function);
 
 end:
-	// This odd casting is required to free a const pointer without warnings
-	free((void*)(uintptr_t)dev_resource_line);
+	free_str(dev_resource_line);
 	if (dev_addr == (uintptr_t) -1) {
 		TN_DEBUG("PCI mmap failed");
 		return false;
