@@ -705,12 +705,29 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//		Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0):
 	//			"TXCRCEN, Init val 1b; Tx CRC Enable, Enables a CRC to be appended by hardware to a Tx packet if requested by user."
 	// INTERPRETATION: We do not need to explicitly disable this, since it only allows the user to request it, but does not do it automatically.
+	//			"RXCRCSTRP [...] Rx CRC STRIP [...] 1b = Strip CRC by HW (Default)."
+	// ASSUMPTION: We want CRC stripping.
+	// Thus we do not need to change this.
+	//			"JUMBOEN [...] Jumbo Frame Enable [...] 0b = Disable jumbo frames (default)."
+	// ASSUMPTION: We do not want jumbo frames.
+	// Thus we do not need to change this.
 	//			"TXPADEN, Init val 1b; Tx Pad Frame Enable. Pad short Tx frames to 64 bytes if requested by user."
 	// INTERPRETATION: We do not need to explicitly disable this, since it only allows the user to request it, but does not do it automatically.
 	//			"LPBK, Init val 0b; LOOPBACK. Turn On Loopback Where Transmit Data Is Sent Back Through Receiver."
 	// ASSUMPTION: We do not want loopback.
 	// Thus we do not need to change this.
-	//			There are two more registers for MDC, and one for CRC, which we do not care about here. TODO be a bit more formal for this... too lazy right now...
+	//			"MDCSPD [...] MDC SPEED."
+	//			"CONTMDC [...] Continuous MDC"
+	// ASSUMPTION: We trust the defaults for low-level hardware details.
+	// Thus we do not need to change these.
+	//			"PREPEND [...] Number of 32-bit words starting after the preamble and SFD, to exclude from the CRC generator and checker (default – 0x0)."
+	// ASSUMPTION: We want CRC generation/stripping, and do not want to skip anything from the generation/checking.
+	// Thus we do not need to change this.
+	//			"RXLNGTHERREN, Init val 1b [...] Rx Length Error Reporting. 1b = Enable reporting of rx_length_err events"
+	// ASSUMPTION: We want as much error reporting as possible.
+	// Thus we do not need to change this.
+	//			"RXPADSTRIPEN [...] 0b = [...] (default). 1b = [...] (debug only)."
+	// We are not debugging so we do not need to change this.
 	//		"- Program TCP segmentation parameters via registers DMATXCTL (while maintaining TE bit cleared), DTXTCPFLGL, and DTXTCPFLGH; and DCA parameters via DCA_TXCTRL."
 	//			Section 8.2.3.9.2 DMA Tx Control (DMATXCTL):
 	//				There is only one field besides TE that the user should modify: "GDV, Init val 0b, Global Double VLAN Mode."
