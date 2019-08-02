@@ -15,24 +15,17 @@
 #define PCI_CONFIG_DATA 0xCFC
 
 
-static void free_str(const char* str)
-{
-	// Weird casting required to free const pointers
-	free((void*)(uintptr_t)str);
-}
-
 static bool tn_numa_get_device_node(const struct tn_pci_device device, uint64_t* out_node)
 {
-	const char* node_str = tn_fs_readline("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/numa_node", device.bus, device.device, device.function);
-	if (node_str == NULL) {
+	char* node_str;
+	if (!tn_fs_readline(&node_str, "/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/numa_node", device.bus, device.device, device.function)) {
 		TN_DEBUG("Could not read PCI numa node");
 		return false;
 	}
 
 	const char node_chr = node_str[0];
 	const char node_delim = node_str[1];
-
-	free_str(node_str);
+	free(node_str);
 
 	if (node_delim != '\n') {
 		TN_DEBUG("Long NUMA node, not supported");
@@ -49,8 +42,7 @@ static bool tn_numa_get_device_node(const struct tn_pci_device device, uint64_t*
 
 bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_length, uintptr_t* out_addr)
 {
-	uintptr_t dev_addr = (uintptr_t) -1;
-	const char* dev_resource_line = NULL;
+	char* dev_resource_line = NULL;
 
 	// Make sure we can talk to the devices
 	// Note that we need access to port 0x80 in order to use the _p version of inl/outl
@@ -59,7 +51,7 @@ bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_le
 	if (!tn_pci_got_ioperm) {
 		if (ioperm(0x80, 1, 1) < 0 || ioperm(PCI_CONFIG_ADDR, 4, 1) < 0 || ioperm(PCI_CONFIG_DATA, 4, 1) < 0) {
 			TN_DEBUG("PCI ioperms failed");
-			goto end;
+			goto error;
 		}
 		tn_pci_got_ioperm = true;
 	}
@@ -68,24 +60,23 @@ bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_le
 	uint64_t device_node;
 	if (!tn_numa_get_device_node(device, &device_node)) {
 		TN_DEBUG("Could not get PCI device node");
-		goto end;
+		goto error;
 	}
 	if (device_node != tn_numa_get_current_node()) {
 		TN_DEBUG("PCI device is on wrong node");
-		goto end;
+		goto error;
 	}
 
 	// Read the first line of the PCI /resource file, as a sanity check + indication of the length of the resource
-	dev_resource_line = tn_fs_readline("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource", device.bus, device.device, device.function);
-	if (dev_resource_line == NULL) {
+	if (!tn_fs_readline(&dev_resource_line, "/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource", device.bus, device.device, device.function)) {
 		TN_DEBUG("Could not read PCI resource line");
-		goto end;
+		goto error;
 	}
 	// We expect 3 64-bit hex numbers (2 chars prefix, 16 chars number), 2 spaces, 1 newline, 1 NULL char == 58
 	// e.g. 0x00003800ffa80000 0x00003800ffafffff 0x000000000014220c
 	if (dev_resource_line[56] != '\n') {
 		TN_DEBUG("Unexpected PCI resource line format");
-		goto end;
+		goto error;
 	}
 	const uint64_t dev_phys_addr = strtoull(dev_resource_line, NULL, 16);
 	// Offset to 2nd number: 18-char number + 1 space
@@ -93,28 +84,31 @@ bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_le
 	const uint64_t dev_phys_length = (dev_phys_addr_end - dev_phys_addr + 1);
 	if (dev_phys_length < min_length) {
 		TN_DEBUG("Not enough PCI memory, expected at least %" PRIu64 " but got %" PRIu64, min_length, dev_phys_length);
-		goto end;
+		goto error;
 	}
 	// Offset to 3rd number: 2 * (18-char number + 1 space)
 	const uint64_t dev_resource_flags = strtoull(dev_resource_line + 2 * (18 + 1), NULL, 16);
 	if ((dev_resource_flags & 0x200) == 0) {
 		TN_DEBUG("First PCI line is not memory");
-		goto end;
+		goto error;
 	}
 
-	// Now map the /resource0 file so we can access it
-	dev_addr = tn_fs_mmap("/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource0", device.bus, device.device, device.function);
+	free(dev_resource_line);
 
-end:
-	free_str(dev_resource_line);
-	if (dev_addr == (uintptr_t) -1) {
-		TN_DEBUG("PCI mmap failed");
-		return false;
+	// Now map the /resource0 file so we can access it
+	uintptr_t dev_addr;
+	if (!tn_fs_mmap(&dev_addr, "/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource0", device.bus, device.device, device.function)) {
+		TN_DEBUG("Could not mmap PCI resource");
+		goto error;
 	}
 
 	TN_INFO("PCI device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, device.bus, device.device, device.function, dev_addr);
 	*out_addr = dev_addr;
 	return true;
+
+error:
+	free(dev_resource_line);
+	return false;
 }
 
 uint32_t tn_pci_read(const struct tn_pci_device device, const uint8_t reg)
