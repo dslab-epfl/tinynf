@@ -750,7 +750,6 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// TODO: Benchmark with DCA enabled and disabled.
 	//				There are fields dealing with relaxed ordering; Section 3.1.4.5.3 Relaxed Ordering states that it "enables the system to optimize performance", with no apparent correctness impact.
 	// INTERPRETATION: Relaxed ordering has no correctness issues, and thus should be enabled.
-	// TODO: Benchmark with relaxed ordering enabled and disabled.
 	//		"- Set RTTDCS.ARBDIS to 1b."
 	IXGBE_REG_SET(device.addr, RTTDCS, _, ARBDIS);
 	//		"- Program DTXMXSZRQ, TXPBSIZE, TXPBTHRESH, MTQC, and MNGTXMAP, according to the DCB and virtualization modes (see Section 4.6.11.3)."
