@@ -88,11 +88,11 @@ static uint32_t ixgbe_reg_read(const uintptr_t addr, const uint32_t reg)
 static void ixgbe_reg_write_raw(const uintptr_t reg_addr, const uint32_t value)
 {
 	*((volatile uint32_t*)reg_addr) = tn_cpu_to_le(value);
-	TN_DEBUG("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
 static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint32_t value)
 {
 	ixgbe_reg_write_raw(addr + reg, value);
+	TN_DEBUG("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
 
 #define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))

@@ -93,8 +93,6 @@ bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_le
 		goto error;
 	}
 
-	free(dev_resource_line);
-
 	// Now map the /resource0 file so we can access it
 	uintptr_t dev_addr;
 	if (!tn_fs_mmap(&dev_addr, "/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/resource0", device.bus, device.device, device.function)) {
@@ -102,6 +100,7 @@ bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_le
 		goto error;
 	}
 
+	free(dev_resource_line);
 	TN_INFO("PCI device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, device.bus, device.device, device.function, dev_addr);
 	*out_addr = dev_addr;
 	return true;
