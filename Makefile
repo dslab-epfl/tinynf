@@ -44,6 +44,10 @@ CFLAGS += -Wunsafe-loop-optimizations
 CFLAGS += -Wdisabled-optimization
 # Warn on code that wouldn't compile under C++
 CFLAGS += -Wc++-compat
+# Warn on duplicated conditions and branches in if chains
+CFLAGS += -Wduplicated-cond -Wduplicated-branches
+# Warn on odd uses of logical operators
+CFLAGS += -Wlogical-op
 # Debug flags
 #CFLAGS += -O0 -g -rdynamic
 CFLAGS += -DLOG_LEVEL=1
@@ -53,9 +57,7 @@ CFLAGS += -O3
 CFLAGS += -D_GNU_SOURCE
 CFLAGS += -lnuma
 
-# TODO enable LTO on a modern GCC and check perf; on 5.4 -flto makes it worse!
-
-# TODO add https://kristerw.blogspot.com/2017/09/useful-gcc-warning-options-not-enabled.html once we get a more recent GCC
+# TODO enable LTO on a modern GCC and check perf; on 7 -flto makes it worse!
 
 # TODO try the following for binary size (from https://stackoverflow.com/a/15314861/3311770)
 # and check for impact on perf (esp. -Os)
