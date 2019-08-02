@@ -12,22 +12,10 @@
 
 #include <linux/mman.h>
 
-
 // We only support 2MB hugepages
 #define HUGEPAGE_SIZE_POWER (10 + 10 + 1)
 #define HUGEPAGE_SIZE (1u << HUGEPAGE_SIZE_POWER)
 
-
-
-// From https://stackoverflow.com/a/5761398/3311770
-// ASSUMPTION: We use uint64_t because if off_t happened to have a bigger max, we wouldn't care
-// ASSUMPTION: We are on an implementation that will not generate a signal
-static uint64_t max_off_t(void)
-{
-	int64_t x;
-	for (x = INTMAX_MAX; (off_t) x != x; x = x/2) {}
-	return (uint64_t) x; // cast is safe because division by 2 cannot cause x to be negative.
-}
 
 // Gets the page size, or returns 0 on error
 static uintptr_t get_page_size(void)
@@ -55,8 +43,8 @@ static bool get_phys_addr(const uintptr_t addr, uintptr_t* out_phys_addr)
 
 	const uintptr_t page = addr / page_size;
 	const uintptr_t map_offset = page * sizeof(uint64_t);
-	if (map_offset > max_off_t()) {
-		TN_INFO("Map offset is larger than maximum off_t");
+	if (map_offset != (uintptr_t) (off_t) map_offset) {
+		TN_INFO("Map offset does not fit in off_t");
 		return false;
 	}
 
