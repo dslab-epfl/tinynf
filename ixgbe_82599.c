@@ -201,7 +201,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 
 // Section 8.2.3.7.19 Five tuple Queue Filter
 #define IXGBE_REG_FTQF(n) (0x0E600u + 4u*n)
-#define IXGBE_REG_FTQF_MASK BITS(25,29)
 #define IXGBE_REG_FTQF_QUEUE_ENABLE BIT(31)
 
 // Section 8.2.3.4.10 Firmware Semaphore Register
@@ -245,7 +244,9 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_RDLEN(n) (n <= 63u ? (0x01008u + 0x40u*n) : (0x0D008 + 0x40u*(n-64u)))
 
 // Section 8.2.3.8.8 Receive DMA Control Register
+// INTERPRETATION: Bit 0, which is not mentioned in the table, is reserved
 #define IXGBE_REG_RDRXCTL(_) 0x02F00u
+#define IXGBE_REG_RDRXCTL_CRC_STRIP BIT(1)
 #define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
 
 // Section 8.2.3.8.5 Receive Descriptor Tail
