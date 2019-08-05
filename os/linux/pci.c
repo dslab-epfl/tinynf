@@ -62,7 +62,7 @@ bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_le
 		TN_DEBUG("Could not get PCI device node");
 		goto error;
 	}
-	if (device_node != tn_numa_get_current_node()) {
+	if (!tn_numa_is_current_node(device_node)) {
 		TN_DEBUG("PCI device is on wrong node");
 		goto error;
 	}

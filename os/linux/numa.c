@@ -1,15 +1,14 @@
 #include "os/linux/numa.h"
 
-#include "util/log.h"
-
+#include <inttypes.h>
 #include <sched.h>
-#include <stdbool.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #include <linux/version.h>
 
 
-uint64_t tn_numa_get_current_node()
+bool tn_numa_is_current_node(uint64_t node)
 {
 	// From http://man7.org/linux/man-pages/man3/sched_getcpu.3.html
 	// "Errors: ENOSYS This kernel does not implement getcpu(2)."
@@ -23,36 +22,26 @@ uint64_t tn_numa_get_current_node()
 #error This code assumes x86-64
 #endif
 #else
-#error This code assumes Linux 2.6.19
+#error This code assumes Linux >= 2.6.19
 #endif
 
-	uint64_t index = 0;
-	while (true) {
-		// First make sure the node exists
-		char buffer[128];
-		snprintf(buffer, sizeof(buffer)/sizeof(char), "/sys/devices/system/node/node%"PRIu64, index);
-		if (access(buffer, F_OK) == -1) {
-			TN_INFO("Couldn't find a NUMA node for the current CPU, assuming single node");
-			return 0;
-		}
-
-		// Then check if the current CPU is on it
-		snprintf(buffer, sizeof(buffer)/sizeof(char), "/sys/devices/system/cpu/cpu%d/node%"PRIu64, cpu, index);
-		if (access(buffer, F_OK) == 0) {
-			return index;
-		}
-
-		index = (uint64_t) (index + 1u);
-	}
-
-	// Unreachable
+	char buffer[128];
+	snprintf(buffer, sizeof(buffer)/sizeof(char), "/sys/devices/system/cpu/cpu%d/node%"PRIu64, cpu, node);
+	return access(buffer, F_OK) == 0;
 }
 
-uint64_t tn_numa_get_addr_node(uintptr_t addr)
+bool tn_numa_get_addr_node(uintptr_t addr, uint64_t* out_node)
 {
+	// Hacky, because we don't want to depend on libnuma.
+	// 239 is the syscall for get_mempolicy
+	// 3 is a combination of the MPOL_F_NODE and MPOL_F_ADDR flags
+	// "If flags specifies both MPOL_F_NODE and MPOL_F_ADDR, get_mempolicy() will return the node ID of the node on which the address addr is allocated into the location pointed to by mode."
+	// http://man7.org/linux/man-pages/man2/get_mempolicy.2.html
 	int node = -1;
-	if(syscall(239, &node, NULL, 0, (void*) addr, 3) != 0) {
-		TN_INFO("wtf?");
+	if (syscall(239, &node, NULL, 0, (void*) addr, 3) == 0) {
+		*out_node = (uint64_t) node;
+		return true;
 	}
-	return (uint64_t) node;
+
+	return false;
 }

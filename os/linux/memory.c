@@ -120,7 +120,11 @@ bool tn_mem_allocate(const size_t size, struct tn_memory_block* out_block)
 	uintptr_t virt_addr = (uintptr_t) page;
 
 	// HACK: We're hoping that the Linux kernel will allocate memory on our node - in practice this seems to work
-	if (tn_numa_get_current_node() != tn_numa_get_addr_node(virt_addr)) {
+	uint64_t node;
+	if (!tn_numa_get_addr_node(virt_addr, &node)) {
+		goto error;
+	}
+	if (!tn_numa_is_current_node(node)) {
 		goto error;
 	}
 
