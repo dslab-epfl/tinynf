@@ -110,7 +110,7 @@ const int _ = 0;
 // Register primitives
 static uint32_t ixgbe_reg_read(const uintptr_t addr, const uint32_t reg)
 {
-	uint32_t val_le = *((volatile uint32_t*)((char*)addr + reg));
+	uint32_t val_le = *((volatile uint32_t*)(addr + reg));
 	uint32_t result = tn_le_to_cpu(val_le);
 	TN_DEBUG("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;

@@ -3,7 +3,7 @@
 # --------------------------------------------------------
 # GCC
 # TODO try with clang
-CC ?= gcc
+CC := gcc
 # C11
 CFLAGS += -std=c11
 # POSIX-2008
@@ -23,8 +23,7 @@ CFLAGS += -Wstrict-prototypes
 # Warn on unsafe pointer casts
 CFLAGS += -Wcast-qual
 # Warn on pointer casts that require alignment changes
-# TODO: Add '=strict' once we move to a GCC version that supports it
-CFLAGS += -Wcast-align
+#CFLAGS += -Wcast-align=strict
 # Warn on multiple decls in the same scope, even if it's legal
 CFLAGS += -Wredundant-decls
 # Warn on shadowing
