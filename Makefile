@@ -55,7 +55,6 @@ CFLAGS += -DLOG_LEVEL=1
 CFLAGS += -O3
 # Linux-specific
 CFLAGS += -D_GNU_SOURCE
-CFLAGS += -lnuma
 
 # TODO enable LTO on a modern GCC and check perf; on 7 -flto makes it worse!
 

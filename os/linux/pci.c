@@ -15,7 +15,7 @@
 #define PCI_CONFIG_DATA 0xCFC
 
 
-static bool tn_numa_get_device_node(const struct tn_pci_device device, uint64_t* out_node)
+static bool get_device_node(const struct tn_pci_device device, uint64_t* out_node)
 {
 	char* node_str;
 	if (!tn_fs_readline(&node_str, "/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/numa_node", device.bus, device.device, device.function)) {
@@ -58,7 +58,7 @@ bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_le
 
 	// Make sure the device is on the same NUMA node as the CPU
 	uint64_t device_node;
-	if (!tn_numa_get_device_node(device, &device_node)) {
+	if (!get_device_node(device, &device_node)) {
 		TN_DEBUG("Could not get PCI device node");
 		goto error;
 	}

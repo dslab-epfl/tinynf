@@ -4,7 +4,6 @@
 #include "util/log.h"
 
 #include <fcntl.h>
-#include <numa.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -85,30 +84,6 @@ static bool get_phys_addr(const uintptr_t addr, uintptr_t* out_phys_addr)
 	return true;
 }
 
-static bool get_node(const uintptr_t addr, uint64_t* out_node)
-{
-	const uintptr_t page_size = get_page_size();
-	if (page_size == 0) {
-		TN_INFO("Could not retrieve the page size");
-		return false;
-	}
-
-	void* aligned_addr = (void*) (addr - (addr % page_size));
-	int status[1];
-	if (numa_move_pages(0, 1, &aligned_addr, NULL, status, 0) != 0) {
-		TN_INFO("Could not get NUMA page info");
-		return false;
-	}
-
-	if (status[0] < 0) {
-		TN_INFO("NUMA page info failed");
-		return false;
-	}
-
-	*out_node = (uint64_t) status[0];
-	return true;
-}
-
 // NOTE: This implementation assumes that the Linux kernel will not move hugepages,
 //       i.e. that their physical address remains constant.
 //       If this assumption were to be broken, this code would need to change.
@@ -145,11 +120,7 @@ bool tn_mem_allocate(const size_t size, struct tn_memory_block* out_block)
 	uintptr_t virt_addr = (uintptr_t) page;
 
 	// HACK: We're hoping that the Linux kernel will allocate memory on our node - in practice this seems to work
-	uint64_t actual_node;
-	if (!get_node(virt_addr, &actual_node)) {
-		goto error;
-	}
-	if (actual_node != tn_numa_get_current_node()) {
+	if (tn_numa_get_current_node() != tn_numa_get_addr_node(virt_addr)) {
 		goto error;
 	}
 
