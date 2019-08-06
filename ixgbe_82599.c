@@ -104,9 +104,6 @@ _Static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must b
 // Operations on the NIC
 // ---------------------
 
-// To facilitate writing code that operates on queue-independent registers
-const int _ = 0;
-
 // Register primitives
 static uint32_t ixgbe_reg_read(const uintptr_t addr, const uint32_t reg)
 {

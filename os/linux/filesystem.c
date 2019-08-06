@@ -79,7 +79,7 @@ bool tn_fs_mmap(uintptr_t* out_addr, const char* path_format, ...)
 	const void* addr = mmap(NULL, (size_t) stat.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	close(fd);
 	if (addr == MAP_FAILED) {
-		TN_DEBUG("Mmap failed %d", errno);
+		TN_DEBUG("Mmap failed");
 		return false;
 	}
 

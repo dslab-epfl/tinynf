@@ -45,7 +45,7 @@ bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_le
 	char* dev_resource_line = NULL;
 
 	// Make sure we can talk to the devices
-	// Note that we need access to port 0x80 in order to use the _p version of inl/outl
+	// We access port 0x80 to wait after an outl, since it's the POST port so safe to do anything with (it's what glibc uses in the _p versions of outl/inl)
 	// Also note that since reading an int32 is 4 bytes, we need to access 4 consecutive ports for PCI config/data.
 	static bool tn_pci_got_ioperm = false;
 	if (!tn_pci_got_ioperm) {
@@ -113,8 +113,10 @@ error:
 uint32_t tn_pci_read(const struct tn_pci_device device, const uint8_t reg)
 {
 	const uint32_t addr = 0x80000000 | ((uint32_t)device.bus << 16) | ((uint32_t)device.device << 11) | ((uint32_t)device.function << 8) | reg;
-	outl_p(addr, PCI_CONFIG_ADDR);
-	const uint32_t result = inl_p(PCI_CONFIG_DATA);
+	outl(addr, PCI_CONFIG_ADDR);
+	// Wait til the outl is done
+	outb(0x80, 0);
+	const uint32_t result = inl(PCI_CONFIG_DATA);
 	TN_DEBUG("PCI read: 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, result);
 	return result;
 }

@@ -2,7 +2,6 @@
 #include "os/memory.h"
 #include "os/pci.h"
 #include "util/log.h"
-#include "util/perf.h"
 
 static uint64_t tinynf_packet_handler(uint8_t* packet, uint64_t packet_length)
 {
@@ -73,11 +72,9 @@ int main(int argc, char** argv)
 	}
 
 	TN_INFO("Initialized successfully!");
-//	TN_PERF_START();
 
 	ixgbe_pipe_run(pipe, tinynf_packet_handler);
 
-//	TN_PERF_DUMP();
 //	TN_INFO("Done!");
 //	return 0;
 }

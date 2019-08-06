@@ -10,8 +10,8 @@ struct perf_measurement {
 	const char* name;
 };
 
-uint64_t perf_index;
-struct perf_measurement perf_measurements[10 * 1024 * 1024];
+static uint64_t perf_index;
+static struct perf_measurement perf_measurements[10 * 1024 * 1024];
 
 #define TN_PERF_RECORD(text) _mm_mfence(); _mm_lfence(); perf_measurements[perf_index].tsc = __rdtsc(); perf_measurements[perf_index].name = text; perf_index++; _mm_lfence();
 

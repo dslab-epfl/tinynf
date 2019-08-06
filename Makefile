@@ -1,77 +1,43 @@
-# --------------------------------------------------------
-# C compiler, language version, POSIX version and warnings
-# --------------------------------------------------------
-# GCC
-# TODO try with clang
-CC := gcc
-# C11
-CFLAGS += -std=c11
-# POSIX-2008
-CFLAGS += -D_POSIX_C_SOURCE=200809
-# All standard warnings
-CFLAGS += -Wall -Wextra
-# ISO compliance
-CFLAGS += -pedantic -pedantic-errors
-# Warn on signed/unsigned conversion issues, as well as narrowing conversion issues
-CFLAGS += -Wconversion
-# Warn on unused macros
-CFLAGS += -Wunused-macros
-# Warn on non-static functions that do not have a prototype in a header
-CFLAGS += -Wmissing-prototypes
-# Warn on old-style function prototypes like foo() instead of foo(void)
-CFLAGS += -Wstrict-prototypes
-# Warn on unsafe pointer casts
-CFLAGS += -Wcast-qual
-# Warn on pointer casts that require alignment changes
-#CFLAGS += -Wcast-align=strict
-# Warn on multiple decls in the same scope, even if it's legal
-CFLAGS += -Wredundant-decls
-# Warn on shadowing
-CFLAGS += -Wshadow
-# Give string constants the 'const char[]' type to catch writes to them
-CFLAGS += -Wwrite-strings
-# Warn if a requested inline cannot be performed
-CFLAGS += -Winline
-# Warn if a struct is requested to be packed but this has no effect
-CFLAGS += -Wpacked
-# Warn if a struct is padded
-CFLAGS += -Wpadded
-# Warn if a user-supplied include dir does not exist
-CFLAGS += -Wmissing-include-dirs
-# Warn if a loop cannot be optimized because of a lack of information
-CFLAGS += -Wunsafe-loop-optimizations
-# Warn if GCC bails out on an optimization
-CFLAGS += -Wdisabled-optimization
-# Warn on code that wouldn't compile under C++
-CFLAGS += -Wc++-compat
-# Warn on duplicated conditions and branches in if chains
-CFLAGS += -Wduplicated-cond -Wduplicated-branches
-# Warn on odd uses of logical operators
-CFLAGS += -Wlogical-op
-# Debug flags
-#CFLAGS += -O0 -g -rdynamic
-CFLAGS += -DLOG_LEVEL=1
-# Release flags
-CFLAGS += -O3
-# Linux-specific
-CFLAGS += -D_GNU_SOURCE
+# Configuration
+DEBUG := false
+ARCH := x86
+OS := linux
 
-# TODO enable LTO on a modern GCC and check perf; on 7 -flto makes it worse!
+# Toolchain
+CC := clang-8 # clang has -Weverything, no need to manually list warnings we want; hardcode version for reproducibility
+LD := ld.gold # produces slightly smaller binaries
+STRIP := strip
 
-# TODO try the following for binary size (from https://stackoverflow.com/a/15314861/3311770)
-# and check for impact on perf (esp. -Os)
-# CFLAGS += -Os -ffunction-sections -fdata-sections -Wl,--gc-sections
-# strip -s -R .comment -R .gnu.version --strip-unneeded
-# and take a look at https://software.intel.com/en-us/blogs/2013/01/17/x86-gcc-code-size-optimizations
-
-OUTPUT := tinynf
-
-# Relative paths
-CFLAGS += -I.
 # Files
-FILES := *.c os/linux/*.c arch/x86/*.c
+FILES := $(shell echo *.c os/$(OS)/*.c arch/$(ARCH)/*.c)
 
+# Required arguments
+CFLAGS += -std=c11 -D_POSIX_C_SOURCE=200809
+CFLAGS += -Weverything
+CFLAGS += -Wno-extra-semi-stmt # Allow macros to be used as if they were statements
+CFLAGS += -I. # Allow repo root relative paths
+STRIPFLAGS := -R .comment
+
+# Debug / release mode
+ifeq ($(DEBUG),true)
+STRIP := true # don't strip
+CFLAGS += -O0 -g -rdynamic
+CFLAGS += -DLOG_LEVEL=2
+else
+CFLAGS += -O3
+CFLAGS += -DLOG_LEVEL=1
+endif
+
+# OS handling
+ifeq ($(OS),linux)
+CFLAGS += -D_GNU_SOURCE
+CFLAGS += -Wno-format-nonliteral # We have format strings parameters; this warning is for potential security issues, we trust all code
+endif
+
+# TODO lto stuff?
+#CFLAGS += -static -flto -ffunction-sections -fdata-sections -Wl,--gc-sections
 
 # Generate the dependencies in Makefile format using cc -M, then keep only the dependencies (not the targets:, not the backslashes for newlines)
-$(OUTPUT): Makefile $(shell ${CC} ${FILES} ${CFLAGS} -M | sed 's/.*://g' | sed 's/\\//g')
-	@$(CC) $(FILES) $(CFLAGS) -o $(OUTPUT)
+tinynf: Makefile $(shell ${CC} ${FILES} $(CFLAGS) -M | sed 's/.*://g' | sed 's/\\//g')
+	@$(CC) $(FILES) $(CFLAGS) -o $@
+	@$(STRIP) $(STRIPFLAGS) $@

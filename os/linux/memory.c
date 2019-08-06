@@ -8,7 +8,6 @@
 #include <unistd.h>
 
 #include <sys/mman.h>
-
 #include <linux/mman.h>
 
 // We only support 2MB hugepages
