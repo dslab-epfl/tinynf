@@ -5,7 +5,6 @@ OS := linux
 
 # Toolchain
 CC := clang-8 # clang has -Weverything, no need to manually list warnings we want; hardcode version for reproducibility
-LD := ld.gold # produces slightly smaller binaries
 STRIP := strip
 
 # Files
@@ -33,9 +32,6 @@ ifeq ($(OS),linux)
 CFLAGS += -D_GNU_SOURCE
 CFLAGS += -Wno-format-nonliteral # We have format strings parameters; this warning is for potential security issues, we trust all code
 endif
-
-# TODO lto stuff?
-#CFLAGS += -static -flto -ffunction-sections -fdata-sections -Wl,--gc-sections
 
 # Generate the dependencies in Makefile format using cc -M, then keep only the dependencies (not the targets:, not the backslashes for newlines)
 tinynf: Makefile $(shell ${CC} ${FILES} $(CFLAGS) -M | sed 's/.*://g' | sed 's/\\//g')
