@@ -90,13 +90,13 @@ _Static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must b
 // Poll until the given condition holds, or the given timeout occurs; store whether a timeout occurred in result_name
 #define WAIT_WITH_TIMEOUT(result_name, timeout_in_us, condition) \
 		result_name = true; \
-		tn_sleep_us(timeout_in_us % 10); \
+		tn_sleep_us((timeout_in_us) % 10); \
 		for (uint8_t i = 0; i < 10; i++) { \
 			if (condition) { \
 				result_name = false; \
 				break; \
 			} \
-			tn_sleep_us(timeout_in_us / 10); \
+			tn_sleep_us((timeout_in_us) / 10); \
 		}
 
 
@@ -162,12 +162,12 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_CTRLEXT_NSDIS BIT(16)
 
 // Section 8.2.3.11.1 Rx DCA Control Register
-#define IXGBE_REG_DCARXCTRL(n) (n <= 63u ? (0x0100Cu + 0x40u*n) : (0x0D00Cu + 0x40u*(n-64u)))
+#define IXGBE_REG_DCARXCTRL(n) ((n) <= 63u ? (0x0100Cu + 0x40u*(n)) : (0x0D00Cu + 0x40u*((n)-64u)))
 // This bit is reserved has no name, but must be cleared by software anyway.
 #define IXGBE_REG_DCARXCTRL_UNKNOWN BIT(12)
 
 // Section 8.2.3.11.2 Tx DCA Control Registers
-#define IXGBE_REG_DCATXCTRL(n) (0x0600Cu + 0x40u*n)
+#define IXGBE_REG_DCATXCTRL(n) (0x0600Cu + 0x40u*(n))
 #define IXGBE_REG_DCATXCTRL_TX_DESC_WB_RO_EN BIT(11)
 
 // Section 8.2.3.9.2 DMA Tx Control
@@ -184,11 +184,11 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_EEC_AUTO_RD BIT(9)
 
 // Section 8.2.3.5.9 Extended Interrupt Mask Clear Registers
-#define IXGBE_REG_EIMC(n) (0x00AB0u + 4u*n)
+#define IXGBE_REG_EIMC(n) (0x00AB0u + 4u*(n))
 #define IXGBE_REG_EIMC_MASK BITS(0,31)
 
 // Section 8.2.3.3.4 Flow Control Receive Threshold High
-#define IXGBE_REG_FCRTH(n) (0x03260u + 4u*n)
+#define IXGBE_REG_FCRTH(n) (0x03260u + 4u*(n))
 #define IXGBE_REG_FCRTH_RTH BITS(5,18)
 
 // Section 8.2.3.7.1 Filter Control Register (FCTRL)
@@ -197,7 +197,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_FCTRL_UPE BIT(9)
 
 // Section 8.2.3.7.19 Five tuple Queue Filter
-#define IXGBE_REG_FTQF(n) (0x0E600u + 4u*n)
+#define IXGBE_REG_FTQF(n) (0x0E600u + 4u*(n))
 #define IXGBE_REG_FTQF_QUEUE_ENABLE BIT(31)
 
 // Section 8.2.3.4.10 Firmware Semaphore Register
@@ -217,28 +217,28 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_MFLCN_RFCE BIT(3)
 
 // Section 8.2.3.7.10 MAC Pool Select Array
-#define IXGBE_REG_MPSAR(n) (0x0A600u + 4u*n)
+#define IXGBE_REG_MPSAR(n) (0x0A600u + 4u*(n))
 
 // Section 8.2.3.7.7 Multicast Table Array
-#define IXGBE_REG_MTA(n) (0x05200u + 4u*n)
+#define IXGBE_REG_MTA(n) (0x05200u + 4u*(n))
 
 // Section 8.2.3.27.17 PF Unicast Table Array
-#define IXGBE_REG_PFUTA(n) (0x0F400u + 4u*n)
+#define IXGBE_REG_PFUTA(n) (0x0F400u + 4u*(n))
 
 // Section 8.2.3.27.15 PF VM VLAN Pool Filter
-#define IXGBE_REG_PFVLVF(n) (0x0F100u + 4u*n)
+#define IXGBE_REG_PFVLVF(n) (0x0F100u + 4u*(n))
 
 // Section 8.2.3.27.16 PF VM VLAN Pool Filter Bitmap
-#define IXGBE_REG_PFVLVFB(n) (0x0F200u + 4u*n)
+#define IXGBE_REG_PFVLVFB(n) (0x0F200u + 4u*(n))
 
 // Section 8.2.3.8.2 Receive Descriptor Base Address High
-#define IXGBE_REG_RDBAH(n) (n <= 63u ? (0x01004u + 0x40u*n) : (0x0D004u + 0x40u*(n-64u)))
+#define IXGBE_REG_RDBAH(n) ((n) <= 63u ? (0x01004u + 0x40u*(n)) : (0x0D004u + 0x40u*((n)-64u)))
 
 // Section 8.2.3.8.1 Receive Descriptor Base Address Low
-#define IXGBE_REG_RDBAL(n) (n <= 63u ? (0x01000u + 0x40u*n) : (0x0D000u + 0x40u*(n-64u)))
+#define IXGBE_REG_RDBAL(n) ((n) <= 63u ? (0x01000u + 0x40u*(n)) : (0x0D000u + 0x40u*((n)-64u)))
 
 // Section 8.2.3.8.3 Receive Descriptor Length
-#define IXGBE_REG_RDLEN(n) (n <= 63u ? (0x01008u + 0x40u*n) : (0x0D008 + 0x40u*(n-64u)))
+#define IXGBE_REG_RDLEN(n) ((n) <= 63u ? (0x01008u + 0x40u*(n)) : (0x0D008 + 0x40u*((n)-64u)))
 
 // Section 8.2.3.8.8 Receive DMA Control Register
 // INTERPRETATION: Bit 0, which is not mentioned in the table, is reserved
@@ -247,7 +247,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
 
 // Section 8.2.3.8.5 Receive Descriptor Tail
-#define IXGBE_REG_RDT(n) (n <= 63u ? (0x01018u + 0x40u*n) : (0x0D018u + 0x40u*(n-64u)))
+#define IXGBE_REG_RDT(n) ((n) <= 63u ? (0x01018u + 0x40u*(n)) : (0x0D018u + 0x40u*((n)-64u)))
 
 // Section 8.2.3.10.2 DCB Transmit Descriptor Plane Control and Status
 #define IXGBE_REG_RTTDCS(_) 0x04900u
@@ -258,11 +258,11 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_RXCTRL_RXEN BIT(0)
 
 // Section 8.2.3.8.6 Receive Descriptor Control
-#define IXGBE_REG_RXDCTL(n) (n <= 63u ? (0x01028u + 0x40u*n) : (0x0D028u + 0x40u*(n-64u)))
+#define IXGBE_REG_RXDCTL(n) ((n) <= 63u ? (0x01028u + 0x40u*(n)) : (0x0D028u + 0x40u*((n)-64u)))
 #define IXGBE_REG_RXDCTL_ENABLE BIT(25)
 
 // Section 8.2.3.8.9 Receive Packet Buffer Size
-#define IXGBE_REG_RXPBSIZE(n) (0x03C00u + 4u*n)
+#define IXGBE_REG_RXPBSIZE(n) (0x03C00u + 4u*(n))
 
 // Section 8.2.3.12.5 Security Rx Control
 #define IXGBE_REG_SECRXCTRL(_) 0x08D00u
@@ -273,7 +273,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_SECRXSTAT_SECRX_RDY BIT(0)
 
 // Section 8.2.3.8.7 Split Receive Control Registers
-#define IXGBE_REG_SRRCTL(n) (n <= 63u ? (0x01014u + 0x40u*n) : (0x0D014u + 0x40u*(n-64u)))
+#define IXGBE_REG_SRRCTL(n) ((n) <= 63u ? (0x01014u + 0x40u*(n)) : (0x0D014u + 0x40u*((n)-64u)))
 #define IXGBE_REG_SRRCTL_BSIZEPACKET BITS(0,4)
 #define IXGBE_REG_SRRCTL_DESCTYPE BITS(25,27)
 #define IXGBE_REG_SRRCTL_DROP_EN BIT(28)
@@ -283,34 +283,34 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_STATUS_PCIE_MASTER_ENABLE_STATUS BIT(19)
 
 // Section 8.2.3.9.6 Transmit Descriptor Base Address High
-#define IXGBE_REG_TDBAH(n) (0x06004u + 0x40u*n)
+#define IXGBE_REG_TDBAH(n) (0x06004u + 0x40u*(n))
 
 // Section 8.2.3.9.5 Transmit Descriptor Base Address Low
-#define IXGBE_REG_TDBAL(n) (0x06000u + 0x40u*n)
+#define IXGBE_REG_TDBAL(n) (0x06000u + 0x40u*(n))
 
 // Section 8.2.3.9.7 Transmit Descriptor Length
-#define IXGBE_REG_TDLEN(n) (0x06008u + 0x40u*n)
+#define IXGBE_REG_TDLEN(n) (0x06008u + 0x40u*(n))
 
 // Section 8.2.3.9.9 Transmit Descriptor Tail
-#define IXGBE_REG_TDT(n) (0x06018u + 0x40u*n)
+#define IXGBE_REG_TDT(n) (0x06018u + 0x40u*(n))
 
 // Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address High
-#define IXGBE_REG_TDWBAH(n) (0x0603Cu + 0x40u*n)
+#define IXGBE_REG_TDWBAH(n) (0x0603Cu + 0x40u*(n))
 
 // Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low
-#define IXGBE_REG_TDWBAL(n) (0x06038u + 0x40u*n)
+#define IXGBE_REG_TDWBAL(n) (0x06038u + 0x40u*(n))
 
 // Section 8.2.3.9.10 Transmit Descriptor Control
-#define IXGBE_REG_TXDCTL(n) (0x06028u + 0x40u*n)
+#define IXGBE_REG_TXDCTL(n) (0x06028u + 0x40u*(n))
 #define IXGBE_REG_TXDCTL_PTHRESH BITS(0,6)
 #define IXGBE_REG_TXDCTL_HTHRESH BITS(8,14)
 #define IXGBE_REG_TXDCTL_ENABLE BIT(25)
 
 // Section 8.2.3.9.13 Transmit Packet Buffer Size
-#define IXGBE_REG_TXPBSIZE(n) (0x0CC00u + 4u*n)
+#define IXGBE_REG_TXPBSIZE(n) (0x0CC00u + 4u*(n))
 
 // Section 8.2.3.9.16 Tx Packet Buffer Threshold
-#define IXGBE_REG_TXPBTHRESH(n) (0x04950u + 4u*n)
+#define IXGBE_REG_TXPBTHRESH(n) (0x04950u + 4u*(n))
 #define IXGBE_REG_TXPBTHRESH_THRESH BITS(0,9)
 
 
