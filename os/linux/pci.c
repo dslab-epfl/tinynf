@@ -110,13 +110,31 @@ error:
 	return false;
 }
 
-uint32_t tn_pci_read(const struct tn_pci_device device, const uint8_t reg)
+static uint32_t get_pci_reg_addr(const struct tn_pci_device device, const uint8_t reg)
 {
-	const uint32_t addr = 0x80000000 | ((uint32_t)device.bus << 16) | ((uint32_t)device.device << 11) | ((uint32_t)device.function << 8) | reg;
+	return 0x80000000u | ((uint32_t)device.bus << 16) | ((uint32_t)device.device << 11) | ((uint32_t)device.function << 8) | reg;
+}
+
+static void pci_address(const uint32_t addr)
+{
 	outl(addr, PCI_CONFIG_ADDR);
 	// Wait til the outl is done
 	outb(0x80, 0);
+}
+
+uint32_t tn_pci_read(const struct tn_pci_device device, const uint8_t reg)
+{
+	const uint32_t addr = get_pci_reg_addr(device, reg);
+	pci_address(addr);
 	const uint32_t result = inl(PCI_CONFIG_DATA);
 	TN_DEBUG("PCI read: 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, result);
 	return result;
+}
+
+void tn_pci_write(const struct tn_pci_device device, const uint8_t reg, const uint32_t value)
+{
+	const uint32_t addr = get_pci_reg_addr(device, reg);
+	pci_address(addr);
+	outl(PCI_CONFIG_DATA, value);
+	TN_DEBUG("PCI write: 0x%08" PRIx32 " := 0x%08" PRIx32, addr, value);
 }

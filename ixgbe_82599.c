@@ -32,6 +32,7 @@
 //         - Global double VLAN mode
 //         - Interrupts
 //         - Debugging features
+// PCIBRIDGES: All PCI bridges can be ignored, i.e. they do not enforce power savings modes or any other limitations
 // REPORT: We prefer more error reporting when faced with an explicit choice, but do not attempt to do extra configuration for this
 // TRUST: We trust the defaults for low-level hardware details (e.g., the MDC speed)
 // TXPAD: We want all sent frames to be at least 64 bytes
@@ -136,8 +137,9 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR4, IXGBE_REG_CLEAR3, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) | IXGBE_REG_##reg##_##field))
 
-// PCI primitives (we do not write to PCI)
+// PCI primitives
 #define IXGBE_PCIREG_READ(pci_dev, reg) tn_pci_read(pci_dev, IXGBE_PCIREG_##reg)
+#define IXGBE_PCIREG_WRITE(pci_dev, reg, field, value) tn_pci_write(pci_dev, IXGBE_PCIREG_##reg, ((IXGBE_PCIREG_READ(pci_dev, reg) & ~IXGBE_PCIREG_##reg##_##field) | (((value) << TRAILING_ZEROES(IXGBE_PCIREG_##reg##_##field)) & IXGBE_PCIREG_##reg##_##field)))
 #define IXGBE_PCIREG_CLEARED(pci_dev, reg, field) ((IXGBE_PCIREG_READ(pci_dev, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
 
 
@@ -145,10 +147,28 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // PCI registers, in alphabetical order, along with their fields
 // -------------------------------------------------------------
 
-// Section 9.3.10.6 Device Status Register
+// Section 9.3.2 PCIe Configuration Space Summary: "0x10 Base Address Register 0" (32 bit)
+#define IXGBE_PCIREG_BAR0 0x10
+
+// Section 9.3.3.3 Command Register (16 bit)
+// Section 9.3.3.4 Status Register (16 bit, which we do not use)
+#define IXGBE_PCIREG_COMMAND 0x04
+#define IXGBE_PCIREG_COMMAND_BUS_MASTER_ENABLE BIT(2)
+
+// Section 9.3.10.6 Device Status Register (16 bit)
+// Section 9.3.10.7 Link Capabilities Register (16 bit, which we do not use)
 #define IXGBE_PCIREG_DEVICESTATUS 0xAAu
 #define IXGBE_PCIREG_DEVICESTATUS_TRANSACTIONPENDING BIT(5)
 
+// Section 9.3.3.1 Vendor ID Register (16 bit)
+// Section 9.3.3.2 Device ID Register (16 bit)
+#define IXGBE_PCIREG_ID 0x00u
+
+// Section 9.3.7.1.4 Power Management Control / Status Register (16 bit)
+// Section 9.3.7.1.5 PMCSR_BSE Bridge Support Extensions Register (8 bit, hardwired to 0)
+// Section 9.3.7.1.6 Data Register (8 bit, which we do not use)
+#define IXGBE_PCIREG_PMCSR 0x44u
+#define IXGBE_PCIREG_PMCSR_POWER_STATE BITS(0,1)
 
 // ---------------------------------------------------------
 // Registers, in alphabetical order, along with their fields
@@ -464,6 +484,33 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 {
 	// We need to write 64-bit memory values, so pointers better be 64 bits!
 	_Static_assert(UINTPTR_MAX == UINT64_MAX, "uintptr_t must have the same size as uint64_t");
+
+	// First make sure the PCI device is really what we expect: 82599ES 10-Gigabit SFI/SFP+ Network Connection
+	// According to https://cateee.net/lkddb/web-lkddb/IXGBE.html, this means vendor ID (bottom 16 bits) 8086, device ID (top 16 bits) 10fb
+	uint32_t pci_id = IXGBE_PCIREG_READ(pci_device, ID);
+	if (pci_id != ((0x10FBu << 16) | 0x8086u)) {
+		TN_DEBUG("PCI device is not what was expected");
+		return false;
+	}
+
+	// Section 5.2.1 Introduction to the 82599 Power States
+	// Text version of the state diagram: "[State Dr] --INIT_FROM_EEPROM--> [State D0u] --ENABLE_MASTER--> [State D0a] --WRITE_11_TO_POWER_STATE--> [State D3] --WRITE_00_TO_POWER_STATE--> [State D0a]
+	// Thus, to make sure we are in D0active, we need to write 11 then 00 to power state and enable bus master
+	// By assumption PCIBRIDGES, the bridges will not get in our way
+	IXGBE_PCIREG_WRITE(pci_device, PMCSR, POWER_STATE, 3);
+	IXGBE_PCIREG_WRITE(pci_device, PMCSR, POWER_STATE, 0);
+	IXGBE_PCIREG_WRITE(pci_device, COMMAND, BUS_MASTER_ENABLE, 1);
+
+	// Section 8.2.2 Registers Summary PF — BAR 0
+	// As the section title indicate, registers are at the address pointed to by BAR 0, which is the only one we care about
+	uint32_t pci_bar0 = IXGBE_PCIREG_READ(pci_device, BAR0);
+/* TODO is this useful? we know the size already...
+	// To detect which bits are RW in the BAR, we write all-1s and check what's returned, given that the lower 4 bits are reserved, see https://stackoverflow.com/a/39618552
+	IXGBE_PCIREG_WRITE(pci_device, BAR0, BITS(0,31));
+	uint32_t pci_bar0_detect = IXGBE_PCIREG_READ(pci_device, BAR0);
+	pci_bar0_detect &= ~BITS(0,3);
+	pci_bar0_detect = (uint32_t) (~pci_bar0_detect + 1u); // will not overflow because pci_bar0_detect's top bit cannot be a zero
+*/
 
 	struct ixgbe_device device;
 	device.pci = pci_device;
