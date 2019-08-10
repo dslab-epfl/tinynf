@@ -87,17 +87,19 @@ _Static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must b
 #define BITS(start, end) (((end) == 31 ? 0u : (0xFFFFFFFFu << ((end) + 1))) ^ (0xFFFFFFFFu << (start)))
 #define TRAILING_ZEROES(n) __builtin_ctzll(n)
 
-// Poll until the given condition holds, or the given timeout occurs; store whether a timeout occurred in result_name
-#define WAIT_WITH_TIMEOUT(result_name, timeout_in_us, condition) \
-		result_name = true; \
+// Like if(...) but polls with a timeout, and executes the body only if the condition is still true after the timeout
+static bool timed_out;
+#define IF_AFTER_TIMEOUT(timeout_in_us, condition) \
+		timed_out = true; \
 		tn_sleep_us((timeout_in_us) % 10); \
 		for (uint8_t i = 0; i < 10; i++) { \
-			if (condition) { \
-				result_name = false; \
+			if (!condition) { \
+				timed_out = false; \
 				break; \
 			} \
 			tn_sleep_us((timeout_in_us) / 10); \
-		}
+		} \
+		if (timed_out)
 
 
 // ---------------------
@@ -353,9 +355,7 @@ static bool ixgbe_recv_disable(const struct ixgbe_device* const device, const ui
 	// "The 82599 clears the RXDCTL.ENABLE bit only after all pending memory accesses to the descriptor ring are done.
 	//  The driver should poll this bit before releasing the memory allocated to this queue."
 	// INTERPRETATION: There is no mention of what to do if the 82599 never clears the bit; 1s seems like a decent timeout
-	bool timed_out;
-	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(device->addr, RXDCTL, queue, ENABLE));
-	if (timed_out) {
+	IF_AFTER_TIMEOUT(1000 * 1000, !IXGBE_REG_CLEARED(device->addr, RXDCTL, queue, ENABLE)) {
 		TN_DEBUG("RXDCTL.ENABLE did not clear, cannot disable receive");
 		return false;
 	}
@@ -387,11 +387,8 @@ static bool ixgbe_device_master_disable(const struct ixgbe_device* const device)
 	//  The driver then reads the change made to the PCIe Master Disable bit and then polls the PCIe Master Enable Status bit.
 	//  Once the bit is cleared, it is guaranteed that no requests are pending from this function."
 	// INTERPRETATION: The next sentence refers to "a given time"; let's say 1 second should be plenty...
-	bool timed_out;
-	WAIT_WITH_TIMEOUT(timed_out, 1000 * 1000, IXGBE_REG_CLEARED(device->addr, STATUS, _, PCIE_MASTER_ENABLE_STATUS));
-
 	// "The driver might time out if the PCIe Master Enable Status bit is not cleared within a given time."
-	if (timed_out) {
+	IF_AFTER_TIMEOUT(1000 * 1000, !IXGBE_REG_CLEARED(device->addr, STATUS, _, PCIE_MASTER_ENABLE_STATUS)) {
 		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
 		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
 		if (!IXGBE_PCIREG_CLEARED(device->pci, DEVICESTATUS, TRANSACTIONPENDING)) {
@@ -525,21 +522,21 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	IXGBE_REG_WRITE(device.addr, FCRTH, 0, RTH, 512 * 1024 - 0x6000);
 	// "- Wait for EEPROM auto read completion."
 	// INTERPRETATION: This refers to Section 8.2.3.2.1 EEPROM/Flash Control Register (EEC), Bit 9 "EEPROM Auto-Read Done"
+	// INTERPRETATION: No timeout is mentioned, so we use 1s.
+	IF_AFTER_TIMEOUT(1000 * 1000, IXGBE_REG_CLEARED(device.addr, EEC, _, AUTO_RD)) {
+		TN_DEBUG("EEPROM auto read timed out");
+		return false;
+	}
 	// INTERPRETATION: We also need to check bit 8 of the same register, "EEPROM Present", which indicates "EEPROM is present and has the correct signature field. This bit is read-only.",
 	//                 since bit 9 "is also set when the EEPROM is not present or whether its signature field is not valid."
 	// INTERPRETATION: We also need to check whether the EEPROM has a valid checksum, using the FWSM's register EXT_ERR_IND, where "0x00 = No error"
-	// INTERPRETATION: No timeout is mentioned, so we use 1s.
-	bool eeprom_timed_out;
-	WAIT_WITH_TIMEOUT(eeprom_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device.addr, EEC, _, AUTO_RD));
-	if (eeprom_timed_out || IXGBE_REG_CLEARED(device.addr, EEC, _, EE_PRES) || !IXGBE_REG_CLEARED(device.addr, FWSM, _, EXT_ERR_IND)) {
-		TN_DEBUG("EEPROM auto read timed out");
+	if (IXGBE_REG_CLEARED(device.addr, EEC, _, EE_PRES) || !IXGBE_REG_CLEARED(device.addr, FWSM, _, EXT_ERR_IND)) {
+		TN_DEBUG("EEPROM not present or invalid");
 		return false;
 	}
 	// "- Wait for DMA initialization done (RDRXCTL.DMAIDONE)."
 	// INTERPRETATION: Once again, no timeout mentioned, so we use 1s
-	bool dma_timed_out;
-	WAIT_WITH_TIMEOUT(dma_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device.addr, RDRXCTL, _, DMAIDONE));
-	if (dma_timed_out) {
+	IF_AFTER_TIMEOUT(1000 * 1000, IXGBE_REG_CLEARED(device.addr, RDRXCTL, _, DMAIDONE)) {
 		TN_DEBUG("DMA init timed out");
 		return false;
 	}
@@ -1080,9 +1077,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	// "- Poll the RXDCTL register until the Enable bit is set. The tail should not be bumped before this bit was read as 1b."
 	// INTERPRETATION: No timeout is mentioned here, let's say 1s to be safe.
 	// TODO: Categorize all interpretations (e.g. "no timeout", "clear typo", ...)
-	bool queue_timed_out;
-	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, RXDCTL, queue_index, ENABLE));
-	if (queue_timed_out) {
+	IF_AFTER_TIMEOUT(1000 * 1000, IXGBE_REG_CLEARED(device->addr, RXDCTL, queue_index, ENABLE)) {
 		TN_DEBUG("RXDCTL.ENABLE did not set, cannot enable queue");
 		return false;
 	}
@@ -1095,9 +1090,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	IXGBE_REG_SET(device->addr, SECRXCTRL, _, RX_DIS);
 	//	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
 	// INTERPRETATION: Another undefined timeout, assuming 1s as usual
-	bool sec_timed_out;
-	WAIT_WITH_TIMEOUT(sec_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, SECRXSTAT, _, SECRX_RDY));
-	if (sec_timed_out) {
+	IF_AFTER_TIMEOUT(1000 * 1000, IXGBE_REG_CLEARED(device->addr, SECRXSTAT, _, SECRX_RDY)) {
 		TN_DEBUG("SECRXSTAT.SECRXRDY timed out, cannot enable queue");
 		return false;
 	}
@@ -1194,9 +1187,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	//    Poll the TXDCTL register until the Enable bit is set."
 	// INTERPRETATION: No timeout is mentioned here, let's say 1s to be safe.
 	IXGBE_REG_SET(device->addr, TXDCTL, queue_index, ENABLE);
-	bool queue_timed_out;
-	WAIT_WITH_TIMEOUT(queue_timed_out, 1000 * 1000, !IXGBE_REG_CLEARED(device->addr, TXDCTL, queue_index, ENABLE));
-	if (queue_timed_out) {
+	IF_AFTER_TIMEOUT(1000 * 1000, IXGBE_REG_CLEARED(device->addr, TXDCTL, queue_index, ENABLE)) {
 		TN_DEBUG("TXDCTL.ENABLE did not set, cannot enable queue");
 		return false;
 	}
