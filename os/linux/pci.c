@@ -14,6 +14,21 @@
 #define PCI_CONFIG_ADDR 0xCF8
 #define PCI_CONFIG_DATA 0xCFC
 
+static bool get_ioport_access(void)
+{
+	// Make sure we can talk to the devices
+	// We access port 0x80 to wait after an outl, since it's the POST port so safe to do anything with (it's what glibc uses in the _p versions of outl/inl)
+	// Also note that since reading an int32 is 4 bytes, we need to access 4 consecutive ports for PCI config/data.
+	static bool got_ioperm = false;
+	if (!got_ioperm) {
+		if (ioperm(0x80, 1, 1) < 0 || ioperm(PCI_CONFIG_ADDR, 4, 1) < 0 || ioperm(PCI_CONFIG_DATA, 4, 1) < 0) {
+			TN_DEBUG("PCI ioperms failed");
+		} else {
+			got_ioperm = true;
+		}
+	}
+	return got_ioperm;
+}
 
 static bool get_device_node(const struct tn_pci_device device, uint64_t* out_node)
 {
@@ -43,18 +58,6 @@ static bool get_device_node(const struct tn_pci_device device, uint64_t* out_nod
 bool tn_pci_mmap_device(const struct tn_pci_device device, const uint64_t min_length, uintptr_t* out_addr)
 {
 	char* dev_resource_line = NULL;
-
-	// Make sure we can talk to the devices
-	// We access port 0x80 to wait after an outl, since it's the POST port so safe to do anything with (it's what glibc uses in the _p versions of outl/inl)
-	// Also note that since reading an int32 is 4 bytes, we need to access 4 consecutive ports for PCI config/data.
-	static bool tn_pci_got_ioperm = false;
-	if (!tn_pci_got_ioperm) {
-		if (ioperm(0x80, 1, 1) < 0 || ioperm(PCI_CONFIG_ADDR, 4, 1) < 0 || ioperm(PCI_CONFIG_DATA, 4, 1) < 0) {
-			TN_DEBUG("PCI ioperms failed");
-			goto error;
-		}
-		tn_pci_got_ioperm = true;
-	}
 
 	// Make sure the device is on the same NUMA node as the CPU
 	uint64_t device_node;
@@ -119,11 +122,15 @@ static void pci_address(const uint32_t addr)
 {
 	outl(addr, PCI_CONFIG_ADDR);
 	// Wait til the outl is done
-	outb(0x80, 0);
+	outb(0, 0x80);
 }
 
 uint32_t tn_pci_read(const struct tn_pci_device device, const uint8_t reg)
 {
+	if (!get_ioport_access()) {
+		return 0xFFFFFFFFu; // same as reading unknown reg
+	}
+
 	const uint32_t addr = get_pci_reg_addr(device, reg);
 	pci_address(addr);
 	const uint32_t result = inl(PCI_CONFIG_DATA);
@@ -133,8 +140,12 @@ uint32_t tn_pci_read(const struct tn_pci_device device, const uint8_t reg)
 
 void tn_pci_write(const struct tn_pci_device device, const uint8_t reg, const uint32_t value)
 {
+	if (!get_ioport_access()) {
+		return;
+	}
+
 	const uint32_t addr = get_pci_reg_addr(device, reg);
 	pci_address(addr);
-	outl(PCI_CONFIG_DATA, value);
+	outl(value, PCI_CONFIG_DATA);
 	TN_DEBUG("PCI write: 0x%08" PRIx32 " := 0x%08" PRIx32, addr, value);
 }

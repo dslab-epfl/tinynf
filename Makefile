@@ -1,5 +1,5 @@
 # Configuration
-DEBUG := false
+DEBUG := true
 ARCH := x86
 OS := linux
 
@@ -20,7 +20,7 @@ STRIPFLAGS := -R .comment
 # Debug / release mode
 ifeq ($(DEBUG),true)
 STRIP := true # don't strip
-CFLAGS += -O0 -g -rdynamic
+CFLAGS += -O0 -g
 CFLAGS += -DLOG_LEVEL=2
 else
 CFLAGS += -O3
