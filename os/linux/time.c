@@ -14,6 +14,7 @@ void tn_sleep_us(uint64_t microseconds)
 	request.tv_sec = (int64_t)(microseconds / 1000000);
 	request.tv_nsec = (int64_t)(microseconds % 1000000) * 1000;
 
+	// TODO if the kernel misbehaves we'll halt forever, not nice, we should crash instead with some kind of retry limit
 	while (true) {
 		// Note that usleep was removed in POSIX-2008
 		// Also, we don't care if we end up sleeping more than requested due to interrupts and restarts.

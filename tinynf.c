@@ -46,8 +46,8 @@ int main(int argc, char** argv)
 		TN_INFO("Couldn't init pipe");
 		return 2;
 	}
-	for (uint8_t n = 1; n < 2; n++) {
-		struct tn_pci_device pci_device = {.bus=0x85, .device=0x00, .function=n};
+	for (uint8_t n = 0; n < 2; n++) {
+		struct tn_pci_device pci_device = {.bus=0x83, .device=0x00, .function=n};
 		struct ixgbe_device* device;
 		if (!ixgbe_device_init(pci_device, &device)) {
 			TN_INFO("Couldn't init device");

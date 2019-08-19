@@ -32,6 +32,7 @@
 //         - Global double VLAN mode
 //         - Interrupts
 //         - Debugging features
+// PCIBARS: The PCI BARs have been pre-configured to valid values, and will not collide with any other memory we may handle
 // PCIBRIDGES: All PCI bridges can be ignored, i.e. they do not enforce power savings modes or any other limitations
 // REPORT: We prefer more error reporting when faced with an explicit choice, but do not attempt to do extra configuration for this
 // TRUST: We trust the defaults for low-level hardware details (e.g., the MDC speed)
@@ -139,10 +140,8 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 
 // PCI primitives
 #define IXGBE_PCIREG_READ(pci_dev, reg) tn_pci_read(pci_dev, IXGBE_PCIREG_##reg)
-#define IXGBE_PCIREG_WRITE3(pci_dev, reg, value) tn_pci_write(pci_dev, IXGBE_PCIREG_##reg, value)
-#define IXGBE_PCIREG_WRITE4(pci_dev, reg, field, value) tn_pci_write(pci_dev, IXGBE_PCIREG_##reg, ((IXGBE_PCIREG_READ(pci_dev, reg) & ~IXGBE_PCIREG_##reg##_##field) | (((value) << TRAILING_ZEROES(IXGBE_PCIREG_##reg##_##field)) & IXGBE_PCIREG_##reg##_##field)))
-#define IXGBE_PCIREG_WRITE(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_PCIREG_WRITE4, IXGBE_PCIREG_WRITE3, _UNUSED)(__VA_ARGS__)
 #define IXGBE_PCIREG_CLEARED(pci_dev, reg, field) ((IXGBE_PCIREG_READ(pci_dev, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
+#define IXGBE_PCIREG_SET(pci_dev, reg, field) tn_pci_write(pci_dev, IXGBE_PCIREG_##reg, (IXGBE_PCIREG_READ(pci_dev, reg) | IXGBE_PCIREG_##reg##_##field))
 
 
 // -------------------------------------------------------------
@@ -156,7 +155,9 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Section 9.3.3.3 Command Register (16 bit)
 // Section 9.3.3.4 Status Register (16 bit, which we do not use)
 #define IXGBE_PCIREG_COMMAND 0x04u
+#define IXGBE_PCIREG_COMMAND_MEMORY_ACCESS_ENABLE BIT(1)
 #define IXGBE_PCIREG_COMMAND_BUS_MASTER_ENABLE BIT(2)
+#define IXGBE_PCIREG_COMMAND_INTERRUPT_DISABLE BIT(10)
 
 // Section 9.3.10.6 Device Status Register (16 bit)
 // Section 9.3.10.7 Link Capabilities Register (16 bit, which we do not use)
@@ -489,20 +490,28 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	_Static_assert(UINTPTR_MAX == UINT64_MAX, "uintptr_t must have the same size as uint64_t");
 
 	// First make sure the PCI device is really what we expect: 82599ES 10-Gigabit SFI/SFP+ Network Connection
-	// According to https://cateee.net/lkddb/web-lkddb/IXGBE.html, this means vendor ID (bottom 16 bits) 8086, device ID (top 16 bits) 10fb
+	// According to https://cateee.net/lkddb/web-lkddb/IXGBE.html, this means vendor ID (bottom 16 bits) 8086, device ID (top 16 bits) 10FB
 	uint32_t pci_id = IXGBE_PCIREG_READ(pci_device, ID);
 	if (pci_id != ((0x10FBu << 16) | 0x8086u)) {
 		TN_DEBUG("PCI device is not what was expected");
 		return false;
 	}
 
-	// Section 5.2.1 Introduction to the 82599 Power States
-	// Text version of the state diagram: "[State Dr] --INIT_FROM_EEPROM--> [State D0u] --ENABLE_MASTER--> [State D0a] --WRITE_11_TO_POWER_STATE--> [State D3] --WRITE_00_TO_POWER_STATE--> [State D0a]
-	// Thus, to make sure we are in D0active, we need to write 11 then 00 to power state and enable bus master
 	// By assumption PCIBRIDGES, the bridges will not get in our way
-	IXGBE_PCIREG_WRITE(pci_device, PMCSR, POWER_STATE, 3);
-	IXGBE_PCIREG_WRITE(pci_device, PMCSR, POWER_STATE, 0);
-	IXGBE_PCIREG_WRITE(pci_device, COMMAND, BUS_MASTER_ENABLE, 1);
+	// By assumption PCIBARS, the PCI BARs have been configured already
+	// Section 9.3.7.1.4 Power Management Control / Status Register (PMCSR):
+	// "No_Soft_Reset. This bit is always set to 0b to indicate that the 82599 performs an internal reset upon transitioning from D3hot to D0 via software control of the PowerState bits."
+	// Thus, we cannot ask the device to go from D3 to D0 without resetting it, which would mean losing the BARs.
+	if (!IXGBE_PCIREG_CLEARED(pci_device, PMCSR, POWER_STATE)) {
+		TN_DEBUG("PCI device not in D0.");
+		return false;
+	}
+	// We assume nothing about bus master being enabled, so we must set it just in case.
+	IXGBE_PCIREG_SET(pci_device, COMMAND, BUS_MASTER_ENABLE);
+	// Same for memory reads, i.e. actually using the BARs.
+	IXGBE_PCIREG_SET(pci_device, COMMAND, MEMORY_ACCESS_ENABLE);
+	// Finally, since we don't want interrupts and certainly not legacy ones, we must make sure they're disabled
+	IXGBE_PCIREG_SET(pci_device, COMMAND, INTERRUPT_DISABLE);
 
 	// Section 8.2.2 Registers Summary PF — BAR 0: As the section title indicate, registers are at the address pointed to by BAR 0, which is the only one we care about
 	uint32_t pci_bar0low = IXGBE_PCIREG_READ(pci_device, BAR0_LOW);
@@ -511,35 +520,14 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 		TN_DEBUG("BAR0 is not a 64-bit BAR");
 		return false;
 	}
- 	// To detect which bits are RW in the BAR, we write all-1s and check what's returned, given that the lower 4 bits are reserved, see https://stackoverflow.com/a/39618552
-	// The upper 32 bits are always 0, we don't need to worry about those
-	IXGBE_PCIREG_WRITE(pci_device, BAR0_LOW, BITS(0,31));
-	uint32_t pci_bar0_detect = IXGBE_PCIREG_READ(pci_device, BAR0_LOW);
-	pci_bar0_detect &= ~BITS(0,3);
-	uint32_t pci_bar0_size = (uint32_t) (~pci_bar0_detect + 1u); // will not overflow because pci_bar0_detect's top bit cannot be a zero
-	IXGBE_PCIREG_WRITE(pci_device, BAR0_LOW, pci_bar0low);
-	uint64_t pci_bar0 = (uint64_t) (pci_bar0low & 0xFFFFFFF0u) | ((uint64_t) IXGBE_PCIREG_READ(pci_device, BAR0_HIGH) << 32);
-	TN_INFO("BAR0 = 0x%016"PRIx64" size=%"PRIu32, pci_bar0, pci_bar0_size);
-return false;
-	// We now know the size, and need to tell the device where to intercept memory reads from
-/*	// This needs to be an address that nobody else is using, so let's allocate memory and use that (we won't use the actual allocated memory, but we're guaranteed nobody else will either)
-	struct tn_memory_block bar0_block;
-	if (!tn_mem_allocate(pci_bar0_size, &bar0_block)) {
-		TN_DEBUG("Could not reserve space for PCI BAR0");
-		return false;
-	}
-*/
+	uint32_t pci_bar0high = IXGBE_PCIREG_READ(pci_device, BAR0_HIGH);
+	// We do not need to detect the size, since we know exactly which device we're dealing with. (This also means we don't write to BARs, one less chance to mess everything up)
 
 	struct ixgbe_device device;
 	device.pci = pci_device;
-	device.addr = 0x0100000000000000u + pci_device.function * 0x0010000000000000u;
-	IXGBE_PCIREG_WRITE(pci_device, BAR0_LOW, (device.addr & 0xFFFFFFFFu));
-	IXGBE_PCIREG_WRITE(pci_device, BAR0_HIGH, ((device.addr >> 32) & 0xFFFFFFFFu));
-
-/*	if(!tn_pci_mmap_device(pci_device, 512 * 1024, &(device.addr))) { // length comes from manually checking; TODO source this from the spec!
-		TN_DEBUG("Could not mmap device");
-		return false;
-	}*/
+	// Section 9.3.6.1 Memory and IO Base Address Registers:
+	// As indicated in Table 9-4, the low 4 bits are read-only and not part of the address
+	device.addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
