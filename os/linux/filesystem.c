@@ -36,7 +36,7 @@ bool tn_fs_readline(char** out_line, const char* path_format, ...)
 		goto error;
 	}
 
-	line = (char*) malloc(LINE_SIZE);
+	line = (char*) calloc(LINE_SIZE, sizeof(char));
 	const char* fgets_result = fgets(line, LINE_SIZE, file);
 	if (fgets_result == NULL) {
 		TN_DEBUG("Couldn't read a line");
