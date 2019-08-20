@@ -6,7 +6,6 @@
 
 #include <inttypes.h>
 #include <stdlib.h>
-#include <unistd.h>
 
 #include <sys/io.h>
 

@@ -4,7 +4,6 @@
 #include "util/log.h"
 
 #include <fcntl.h>
-#include <sys/types.h>
 #include <unistd.h>
 
 #include <sys/mman.h>

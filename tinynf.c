@@ -2,6 +2,7 @@
 #include "os/memory.h"
 #include "os/pci.h"
 #include "util/log.h"
+#include <stdint.h>
 
 static uint64_t tinynf_packet_handler(uint8_t* packet, uint64_t packet_length)
 {

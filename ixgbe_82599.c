@@ -1,7 +1,6 @@
 #include "ixgbe_82599.h"
 
 #include "arch/endian.h"
-#include "os/memory.h"
 #include "os/time.h"
 #include "util/log.h"
 
