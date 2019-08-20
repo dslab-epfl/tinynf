@@ -4,13 +4,11 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
 #include <time.h>
 
 void tn_sleep_us(uint64_t microseconds)
 {
 	struct timespec request;
-	memset(&request, 0, sizeof(struct timespec));
 	request.tv_sec = (int64_t)(microseconds / 1000000);
 	request.tv_nsec = (int64_t)(microseconds % 1000000) * 1000;
 
