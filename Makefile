@@ -1,5 +1,5 @@
 # Configuration
-DEBUG := true
+DEBUG := false
 ARCH := x86
 OS := linux
 

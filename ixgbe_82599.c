@@ -526,7 +526,12 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	device.pci = pci_device;
 	// Section 9.3.6.1 Memory and IO Base Address Registers:
 	// As indicated in Table 9-4, the low 4 bits are read-only and not part of the address
-	device.addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
+	uintptr_t dev_phys_addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
+	// Section 8.1 Address Regions: "Region Size" of "Internal registers memories and Flash (memory BAR)" is "128 KB + Flash_Size"
+	// Thus we can ask for 128KB, since we don't know the flash size (and don't need it thus no need to actually check it)
+	if (!tn_mem_map(dev_phys_addr, 128 * 1024, &device.addr)) {
+		return false;
+	}
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"

@@ -5,6 +5,7 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <stddef.h>
 
 #include <sys/mman.h>
 #include <linux/mman.h>
@@ -34,7 +35,7 @@ static bool get_phys_addr(const uintptr_t addr, uintptr_t* out_phys_addr)
 {
 	const uintptr_t page_size = get_page_size();
 	if (page_size == 0) {
-		TN_INFO("Could not retrieve the page size");
+		TN_INFO("Could not retrieve the page size"); // TODO adopt a policy for log levels and stick to it
 		return false;
 	}
 
@@ -87,7 +88,7 @@ static bool get_phys_addr(const uintptr_t addr, uintptr_t* out_phys_addr)
 //       If this assumption were to be broken, this code would need to change.
 //       Locking a page is not sufficient - it guarantees the page won't be swapped out,
 //       not that it won't be moved.
-bool tn_mem_allocate(const size_t size, struct tn_memory_block* out_block)
+bool tn_mem_allocate(const uint64_t size, struct tn_memory_block* out_block)
 {
 	// OK if size is smaller, we'll just return too much memory
 	if (size > HUGEPAGE_SIZE) {
@@ -143,4 +144,40 @@ error:
 void tn_mem_free(struct tn_memory_block block)
 {
 	munmap((void*) block.virt_addr, HUGEPAGE_SIZE);
+}
+
+bool tn_mem_map(uintptr_t address, uint64_t size, uintptr_t* mapped_address)
+{
+	if (size > SIZE_MAX) {
+		return false;
+	}
+	if (address != (uintptr_t) (off_t) address) {
+		return false;
+	}
+
+	int mem_fd = open("/dev/mem", O_SYNC | O_RDWR);
+	if (mem_fd == -1) {
+		return false;
+	}
+
+	void* mapped = mmap(
+		// No specific address
+		NULL,
+		// Size of the mapping (cast OK because we checked above)
+		(size_t) size,
+		// R/W page
+		PROT_READ | PROT_WRITE,
+		// Only for the current process
+		MAP_PRIVATE,
+		// /dev/mem
+		mem_fd,
+		// Offset is the address (cast OK because we checked above)
+		(off_t) address
+	);
+	if (mapped == MAP_FAILED) {
+		return false;
+	}
+
+	*mapped_address = (uintptr_t) mapped;
+	return true;
 }
