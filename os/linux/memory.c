@@ -167,8 +167,8 @@ bool tn_mem_map(uintptr_t address, uint64_t size, uintptr_t* mapped_address)
 		(size_t) size,
 		// R/W page
 		PROT_READ | PROT_WRITE,
-		// Only for the current process
-		MAP_PRIVATE,
+		// Send updates to the underlying "file"
+		MAP_SHARED,
 		// /dev/mem
 		mem_fd,
 		// Offset is the address (cast OK because we checked above)

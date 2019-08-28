@@ -532,6 +532,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	if (!tn_mem_map(dev_phys_addr, 128 * 1024, &device.addr)) {
 		return false;
 	}
+	TN_INFO("Device %02"PRIx8":%02"PRIx8".%"PRIx8" mapped to 0x%016"PRIxPTR, device.pci.bus, device.pci.device, device.pci.function, device.addr);
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
