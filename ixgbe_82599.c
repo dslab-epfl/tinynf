@@ -40,6 +40,10 @@
 // TRUST: We trust the defaults for low-level hardware details (e.g., the MDC speed)
 // TXPAD: We want all sent frames to be at least 64 bytes
 
+// This is the only constant not based on any spec, and that can be redefined at will
+#define IXGBE_PIPE_MAX_SENDS 16
+static_assert(IXGBE_PIPE_MAX_SENDS % 16 == 0, "Pipes' max send must be a multiple of 16 so that send heads are in their own cache line");
+
 // Section 7.1.2.5 L3/L4 5-tuple Filters:
 // 	"There are 128 different 5-tuple filter configuration registers sets"
 #define IXGBE_5TUPLE_FILTERS_COUNT 128
@@ -1052,6 +1056,14 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // This is doable because transmit descriptors can be set to drop a packet by "sending" it with length zero;
 // thus, the packet can be sent to whichever queues by setting its real length in these queues' descriptors,
 // and not send to the other queues by setting a zero length on those queues' descriptors.
+// In practice, this means we cannot use the same descriptor ring for all queues, though the contents only differ
+// in the packet length of the send descriptors.
+// The overall transmit head is the earliest of the transmit queues' heads, and all transmit tails have the same value.
+// Computing the former is non-trivial, because transmit heads are modulo the ring size;
+// thus, the minimum of two transmit heads can only be computed with knowledge of another ring item;
+// since we know the processed delimiter comes after the transmit heads,
+// transmit_head_1 <% transmit_head_2 <=> (transmit_head_1 - processed_delimiter) < (transmit_head_2 - processed_delimiter)
+// where <% represents "comes before in the modulo ring".
 // =================================================================================================================
 
 struct ixgbe_pipe
@@ -1059,19 +1071,21 @@ struct ixgbe_pipe
 	// Technically it's volatile since the hardware does DMA, but we don't access the buffer contents in the driver,
 	// and when the packet is accessed by a handler the hardware cannot touch it due to how pipes work
 	uint8_t* buffer;
-	volatile uint64_t* ring;
+	volatile uint64_t* receive_ring;
 	uintptr_t receive_tail_addr;
-	uintptr_t send_tail_addr;
 	uint64_t scheduling_counter;
 	uint32_t processed_delimiter; // Must be 32-bit since it gets written to the send tails
 	uint8_t _padding0[4];
+	uint64_t send_queues_count;
 	// Physical addresses are only used during setup, not during the loop
-	uintptr_t ring_phys_addr;
 	uintptr_t buffer_phys_addr;
-	// send_head must be 16-byte aligned, regardless of the uintptr_t size; see alignment remarks in send queue setup
+	uintptr_t* send_head_phys_addrs;
+	// The definition of IXGBE_PIPE_MAX_SENDS ensures those are all aligned properly
+	// send heads must be 16-byte aligned, regardless of the uintptr_t size; see alignment remarks in send queue setup
 	// (there is also a runtime check so in case uintptr_t is not 64 bits this code will not silently fail)
-	volatile uint32_t send_head;
-	uint8_t _padding1[4];
+	volatile uint32_t send_heads[IXGBE_PIPE_MAX_SENDS];
+	volatile uint64_t* send_rings[IXGBE_PIPE_MAX_SENDS]; // TODO if we use 1gb hugepages we can alloc many rings, make this "base", and use base+n instead of storing separately
+	uintptr_t send_tail_addrs[IXGBE_PIPE_MAX_SENDS];
 };
 
 // ===================
@@ -1080,31 +1094,15 @@ struct ixgbe_pipe
 
 bool ixgbe_pipe_init(const struct tn_memory_block buffer, struct ixgbe_pipe** out_pipe)
 {
-	struct tn_memory_block ring;
-	if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring)) { // 16 bytes per descriptor, i.e. 2x64bits
-		TN_DEBUG("Could not allocate ring");
-		return false;
-	}
-
-	// We later on need to ensure the ring is 128-byte aligned, see comments in set_receive/send
-	if (ring.phys_addr % 128u != 0u) {
-		TN_DEBUG("Ring address is not 128-byte aligned");
-		tn_mem_free(ring);
-		return false;
-	}
-
 	struct tn_memory_block pipe_block;
 	if (!tn_mem_allocate(sizeof(struct ixgbe_pipe), &pipe_block)) {
 		TN_DEBUG("Could not allocate pipe");
-		tn_mem_free(ring);
 		return false;
 	}
 
 	struct ixgbe_pipe* pipe = (struct ixgbe_pipe*) pipe_block.virt_addr;
 	pipe->buffer = (uint8_t*) buffer.virt_addr;
 	pipe->buffer_phys_addr = buffer.phys_addr;
-	pipe->ring = (uint64_t*) ring.virt_addr;
-	pipe->ring_phys_addr = ring.phys_addr;
 
 	*out_pipe = pipe;
 	return true;
@@ -1137,24 +1135,30 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 
 	// "The following should be done per each receive queue:"
 	// "- Allocate a region of memory for the receive descriptor list."
-	// Already done, in 'pipe->ring_{virt,phys}_addr'
+	struct tn_memory_block ring_block;
+	if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring_block)) { // 16 bytes per descriptor, i.e. 2x64bits
+		TN_DEBUG("Could not allocate ring");
+		return false;
+	}
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
 	// The buffers' start physical address are given to us as 'pipe->buffer_phys_addr'
+	volatile uint64_t* ring = (volatile uint64_t*) ring_block.virt_addr;
 	for (uintptr_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.1.5 Legacy Receive Descriptor Format:
 		// "Buffer Address (64-bit offset 0, 1st line)"
-		pipe->ring[n * 2u] = pipe->buffer_phys_addr + n * IXGBE_PACKET_SIZE_MAX;
+		ring[n * 2u] = pipe->buffer_phys_addr + n * IXGBE_PACKET_SIZE_MAX;
 		// All other fields are only for write-back except End Of Packet (bit 33), Descriptor Done (bit 32),
 		// which must be 0 as per table in "EOP (End of Packet) and DD (Descriptor Done)"
-		pipe->ring[n * 2u + 1u] = 0u;
+		ring[n * 2u + 1u] = 0u;
 	}
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
 	// INTERPRETATION: This is a typo, the second "RDBAL" should read "RDBAH".
 	// 	Section 8.2.3.8.1 Receive Descriptor Base Address Low (RDBAL[n]):
 	// 	"The receive descriptor base address must point to a 128 byte-aligned block of data."
-	// Already done when allocating the pipe
-	IXGBE_REG_WRITE(device->addr, RDBAH, queue_index, (uint32_t) (pipe->ring_phys_addr >> 32));
-	IXGBE_REG_WRITE(device->addr, RDBAL, queue_index, (uint32_t) (pipe->ring_phys_addr & 0xFFFFFFFFu));
+	// This alignment is guaranteed by the tn_mem_alloc contract as long as the size is large enough
+	static_assert(IXGBE_RING_SIZE * 16 >= 128, "The ring address should be 128-byte aligned");
+	IXGBE_REG_WRITE(device->addr, RDBAH, queue_index, (uint32_t) (ring_block.phys_addr >> 32));
+	IXGBE_REG_WRITE(device->addr, RDBAL, queue_index, (uint32_t) (ring_block.phys_addr & 0xFFFFFFFFu));
 	// "- Set the length register to the size of the descriptor ring (register RDLEN)."
 	// Section 8.2.3.8.3 Receive DEscriptor Length (RDLEN[n]):
 	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer."
@@ -1209,6 +1213,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
 	IXGBE_REG_SET(device->addr, DCARXCTRL, queue_index, UNKNOWN);
 
+	pipe->receive_ring = ring;
 	pipe->receive_tail_addr = device->addr + IXGBE_REG_RDT(queue_index);
 	return true;
 }
@@ -1218,10 +1223,10 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 // Section 4.6.8 Transmit Initialization
 // =====================================
 
-bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_device* const device, const uint64_t long_queue_index)
+bool ixgbe_pipe_add_send(struct ixgbe_pipe* const pipe, const struct ixgbe_device* const device, const uint64_t long_queue_index)
 {
-	if (pipe->send_tail_addr != 0) {
-		TN_DEBUG("Pipe send was already set");
+	if (pipe->send_queues_count == IXGBE_PIPE_MAX_SENDS) {
+		TN_DEBUG("The pipe is already using ");
 		return false;
 	}
 
@@ -1240,13 +1245,25 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 
 	// "The following steps should be done once per transmit queue:"
 	// "- Allocate a region of memory for the transmit descriptor list."
-	// Already done, in 'pipe->ring_{virt,phys}_addr'
+	struct tn_memory_block ring_block;
+	if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring_block)) { // 16 bytes per descriptor, i.e. 2x64bits
+		TN_DEBUG("Could not allocate ring");
+		return false;
+	}
+	// In order to not have to do it later, let's program the descriptors' buffer address here
+	volatile uint64_t* ring = (volatile uint64_t*) ring_block.virt_addr;
+	for (uintptr_t n = 0; n < IXGBE_RING_SIZE; n++) {
+		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
+		// "Buffer Address (64)", 1st line offset 0
+		ring[n * 2u] = pipe->buffer_phys_addr + n * IXGBE_PACKET_SIZE_MAX;
+	}
 	// "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
 	// 	Section 8.2.3.9.5 Transmit Descriptor Base Address Low (TDBAL[n]):
 	// 	"The Transmit Descriptor Base Address must point to a 128 byte-aligned block of data."
-	// Already done when allocating the pipe
-	IXGBE_REG_WRITE(device->addr, TDBAH, queue_index, (uint32_t) (pipe->ring_phys_addr >> 32));
-	IXGBE_REG_WRITE(device->addr, TDBAL, queue_index, (uint32_t) (pipe->ring_phys_addr & 0xFFFFFFFFu));
+	// This alignment is guaranteed by the tn_mem_alloc contract as long as the size is large enough
+	static_assert(IXGBE_RING_SIZE * 16 >= 128, "The ring address should be 128-byte aligned");
+	IXGBE_REG_WRITE(device->addr, TDBAH, queue_index, (uint32_t) (ring_block.phys_addr >> 32));
+	IXGBE_REG_WRITE(device->addr, TDBAL, queue_index, (uint32_t) (ring_block.phys_addr & 0xFFFFFFFFu));
 	// "- Set the length register to the size of the descriptor ring (TDLEN)."
 	// 	Section 8.2.3.9.7 Transmit Descriptor Length (TDLEN[n]):
 	// 	"This register sets the number of bytes allocated for descriptors in the circular descriptor buffer."
@@ -1261,8 +1278,8 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	uintptr_t head_phys_addr;
-	if (!tn_mem_virt_to_phys((uintptr_t) &(pipe->send_head), &head_phys_addr)) {
-		TN_DEBUG("Could not get phys addr of send head");
+	if (!tn_mem_virt_to_phys((uintptr_t) &(pipe->send_heads[pipe->send_queues_count]), &head_phys_addr)) {
+		TN_DEBUG("Could not get the physical address of the send head");
 		return false;
 	}
 	//	Section 7.2.3.5.2 Tx Head Pointer Write Back:
@@ -1273,7 +1290,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	//	Section 8.2.3.9.11 Tx Descriptor completion Write Back Address Low (TDWBAL[n]): "the actual address is Qword aligned"
 	// INTERPRETATION: Obvious contradiction here, Dword or Qword? Empirically, the answer is... 16 bytes. Write-back has no effect otherwise.
 	if (head_phys_addr % 16u != 0) {
-		TN_DEBUG("Head phys addr's last two bits are not zero"); // this really should never happen given that it's an 8 bytes alloc...
+		TN_DEBUG("Send head's physical address is not aligned properly");
 		return false;
 	}
 	//	Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low (TDWBAL[n]):
@@ -1282,7 +1299,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	IXGBE_REG_WRITE(device->addr, TDWBAH, queue_index, (uint32_t) (head_phys_addr >> 32));
 	IXGBE_REG_WRITE(device->addr, TDWBAL, queue_index, (uint32_t) ((head_phys_addr & 0xFFFFFFFFu) | 1));
 	// Disable relaxed ordering of head pointer write-back, since it could cause the head pointer to be updated backwards
-	// TODO: Can we not disable this?
+	// TODO: Can we not disable this? Or find a good reason in the data sheet why we should do this?
 	IXGBE_REG_CLEAR(device->addr, DCATXCTRL, queue_index, TX_DESC_WB_RO_EN);
 	// "- Enable transmit path by setting DMATXCTL.TE.
 	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
@@ -1299,7 +1316,9 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
 	// Nothing to transmit yet, so leave TDT alone.
 
-	pipe->send_tail_addr = device->addr + IXGBE_REG_TDT(queue_index);
+	pipe->send_rings[pipe->send_queues_count] = ring;
+	pipe->send_tail_addrs[pipe->send_queues_count] = device->addr + IXGBE_REG_TDT(queue_index);
+	pipe->send_queues_count = pipe->send_queues_count + 1u;
 	return true;
 }
 
@@ -1310,55 +1329,76 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 		pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
 		if((pipe->scheduling_counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
-			ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
-			ixgbe_reg_write_raw(pipe->receive_tail_addr, (pipe->send_head - 1) & (IXGBE_RING_SIZE - 1));
+			// Race conditions are possible here, but we don't care since all they can do is change the "real" value
+			// of the earliest send head to a later value, which is fine.
+			uint32_t earliest_send_head = 0;
+			uint32_t min_diff = 0xFFFFu;
+			// Either there is an N such that diff_N < min_diff, or diff_0 == min_diff thus earliest_send_head stays at 0 which is correct
+			for (uint64_t n = 0; n < pipe->send_queues_count; n++) {
+				uint32_t head = pipe->send_heads[n];
+				uint32_t diff = head - pipe->processed_delimiter;
+				if (diff < min_diff) {
+					earliest_send_head = head;
+					min_diff = diff;
+				}
+
+				ixgbe_reg_write_raw(pipe->send_tail_addrs[n], pipe->processed_delimiter);
+			}
+
+			ixgbe_reg_write_raw(pipe->receive_tail_addr, (earliest_send_head - 1) & (IXGBE_RING_SIZE - 1));
 		}
 
 		// Since descriptors are 16 bytes, the index must be doubled
-		volatile uint64_t* metadata_addr = pipe->ring + 2u*pipe->processed_delimiter + 1;
-		uint64_t receive_metadata = *metadata_addr;
+		volatile uint64_t* receive_metadata_addr = pipe->receive_ring + 2u*pipe->processed_delimiter + 1;
+		uint64_t receive_metadata = *receive_metadata_addr;
 		// Section 7.1.5 Legacy Receive Descriptor Format:
 		// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
 		if ((receive_metadata & BITL(32)) == 0) {
 			continue;
 		}
+		// Clear the receive descriptor metadata, so hardware can reuse it
+		*receive_metadata_addr = 0;
 
 		// This cannot overflow because the packet is by definition in an allocated block of memory
 		uint8_t* packet = pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
 		// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
 		uint64_t receive_packet_length = receive_metadata & 0xFFu;
-		uint64_t send_packet_length = handler(packet, receive_packet_length);
+		bool send_list[IXGBE_PIPE_MAX_SENDS] = {0};
+		uint64_t send_packet_length = handler(packet, receive_packet_length, send_list);
 
-		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
-		// "Buffer Address (64)", 1st line
-		// Already written, does not get clobbered by write-back
-		// 2nd line:
-		*metadata_addr =
-		// "Length", bits 0-15: "Length (TDESC.LENGTH) specifies the length in bytes to be fetched from the buffer address provided"
-			send_packet_length |
-		// "CSO", bits 16-23: "A Checksum Offset (TDESC.CSO) field indicates where, relative to the start of the packet, to insert a TCP checksum if this mode is enabled"
-			// All zero
-		// "CMD", bits 24-31:
-			// "RSV (bit 7) - Reserved
-			//  VLE (bit 6) - VLAN Packet Enable [...]
-			//  DEXT (bit 5) - Descriptor extension (zero for legacy mode)
-			//  RSV (bit 4) - Reserved
-			//  RS (bit 3) - Report Status: "signals hardware to report the DMA completion status indication"
-			//  IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set.
-			//  IFCS (bit 1) — Insert FCS:
-			//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
-			//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
-			//  EOP (bit 0) - End of Packet"
-			// Thus, set bits 3, 1 and 0
-			BITL(24+3) | BITL(24+1) | BITL(24);
-		// STA, bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
-			// All zero
-		// Rsvd, bits 36-39: "Reserved."
-			// All zero
-		// CSS, bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
-			// All zero
-		// VLAN, bits 48-63:
-			// All zero
+		for (uint64_t n = 0; n < pipe->send_queues_count; n++) {
+			// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
+			// "Buffer Address (64)", 1st line
+			// Already written, does not get clobbered by write-back
+			// 2nd line:
+			*(pipe->send_rings[n] + 2u*pipe->processed_delimiter + 1) =
+			// "Length", bits 0-15: "Length (TDESC.LENGTH) specifies the length in bytes to be fetched from the buffer address provided"
+			// "Note: Descriptors with zero length (null descriptors) transfer no data."
+				(send_list[n] * send_packet_length) |
+			// "CSO", bits 16-23: "A Checksum Offset (TDESC.CSO) field indicates where, relative to the start of the packet, to insert a TCP checksum if this mode is enabled"
+				// All zero
+			// "CMD", bits 24-31:
+				// "RSV (bit 7) - Reserved
+				//  VLE (bit 6) - VLAN Packet Enable [...]
+				//  DEXT (bit 5) - Descriptor extension (zero for legacy mode)
+				//  RSV (bit 4) - Reserved
+				//  RS (bit 3) - Report Status: "signals hardware to report the DMA completion status indication"
+				//  IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set.
+				//  IFCS (bit 1) — Insert FCS:
+				//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
+				//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
+				//  EOP (bit 0) - End of Packet"
+				// Thus, set bits 3, 1 and 0
+				BITL(24+3) | BITL(24+1) | BITL(24);
+			// STA, bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
+				// All zero
+			// Rsvd, bits 36-39: "Reserved."
+				// All zero
+			// CSS, bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
+				// All zero
+			// VLAN, bits 48-63:
+				// All zero
+		}
 
 		// Increment the processed delimiter, modulo the ring size
 		pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);

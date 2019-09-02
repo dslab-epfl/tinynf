@@ -14,6 +14,7 @@ struct tn_memory_block {
 bool tn_mem_allocate(uint64_t size, struct tn_memory_block* out_block);
 
 // Frees the given memory block.
+// TODO this is unused
 void tn_mem_free(struct tn_memory_block block);
 
 // Maps the region of physical address memory defined by (address, size) into memory usable by the program, or returns false.
