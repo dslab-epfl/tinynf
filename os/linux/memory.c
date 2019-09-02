@@ -83,11 +83,10 @@ static bool get_phys_addr(const uintptr_t addr, uintptr_t* out_phys_addr)
 	return true;
 }
 
-// NOTE: This implementation assumes that the Linux kernel will not move hugepages,
-//       i.e. that their physical address remains constant.
-//       If this assumption were to be broken, this code would need to change.
-//       Locking a page is not sufficient - it guarantees the page won't be swapped out,
-//       not that it won't be moved.
+// ASSUMPTION: The Linux kernel will not move hugepages, i.e. that their physical address remains constant.
+//             If this assumption were to be broken, this code would need to change.
+//             Locking a page is not sufficient - it guarantees the page won't be swapped out,
+//             not that it won't be moved.
 bool tn_mem_allocate(const uint64_t size, struct tn_memory_block* out_block)
 {
 	// OK if size is smaller, we'll just return too much memory

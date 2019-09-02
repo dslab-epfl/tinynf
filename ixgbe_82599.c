@@ -1275,7 +1275,7 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 			ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
 		}
 
-		// NOTE: Since descriptors are 16 bytes, we need to double the index
+		// Since descriptors are 16 bytes, we need to double the index
 		volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->processed_delimiter;
 		uint64_t packet_metadata = *(descriptor_addr + 1);
 		// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
