@@ -360,8 +360,6 @@ uint64_t ixgbe_get_packet_size_max(void)
 // Device
 // ======
 
-// TODO: Look at the ixgbe kernel driver, which is what this code depends on, and move as much as possible into this
-
 struct ixgbe_device
 {
 	uintptr_t addr;
@@ -812,8 +810,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//				 Legacy DCA capable platforms — the device driver, upon discovery of the physical CPU ID and CPU bus ID, programs the CPUID field with the physical CPU and bus ID associated with this Tx queue.
 	//				 DCA 1.0 capable platforms — the device driver programs a value, based on the relevant APIC ID, associated with this Tx queue."
 	// TODO: Actually implement it by assumption DCA
-	// TODO: DCA for RX as well.
-	// TODO: Benchmark with DCA enabled and disabled.
+	// TODO: Benchmark with DCA enabled and disabled for RX/TX/both.
 	//				There are fields dealing with relaxed ordering; Section 3.1.4.5.3 Relaxed Ordering states that it "enables the system to optimize performance", with no apparent correctness impact.
 	// INTERPRETATION: Relaxed ordering has no correctness issues, and thus should be enabled.
 	//		"- Set RTTDCS.ARBDIS to 1b."
