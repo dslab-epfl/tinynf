@@ -4,6 +4,8 @@
 #include "os/time.h"
 #include "util/log.h"
 
+#include <assert.h>
+
 
 // ASSUMPTIONS
 // ===========
@@ -61,7 +63,7 @@
 // "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
 // We need this to be a power of 2 so that we can do fast modulo
 #define IXGBE_RING_SIZE 1024u
-_Static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2");
+static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2");
 // 	"Number of Tx Queues (per port): 128"
 #define IXGBE_SEND_QUEUES_COUNT 128u
 // Section 7.1.2 Rx Queues Assignment:
@@ -486,7 +488,7 @@ static void ixgbe_device_disable_interrupts(const struct ixgbe_device* const dev
 bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_device** out_device)
 {
 	// We need to write 64-bit memory values, so pointers better be 64 bits!
-	_Static_assert(UINTPTR_MAX == UINT64_MAX, "uintptr_t must have the same size as uint64_t");
+	static_assert(UINTPTR_MAX == UINT64_MAX, "uintptr_t must have the same size as uint64_t");
 
 	// First make sure the PCI device is really what we expect: 82599ES 10-Gigabit SFI/SFP+ Network Connection
 	// According to https://cateee.net/lkddb/web-lkddb/IXGBE.html, this means vendor ID (bottom 16 bits) 8086, device ID (top 16 bits) 10FB
@@ -1085,7 +1087,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 		TN_DEBUG("Receive queue does not exist");
 		return false;
 	}
-	_Static_assert((uint8_t) -1 >= IXGBE_RECEIVE_QUEUES_COUNT, "This code assumes receive queues fit in an uint8_t");
+	static_assert((uint8_t) -1 >= IXGBE_RECEIVE_QUEUES_COUNT, "This code assumes receive queues fit in an uint8_t");
 	uint8_t queue_index = (uint8_t) long_queue_index;
 
 	// See later for details of RXDCTL.ENABLE
@@ -1189,7 +1191,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 		TN_DEBUG("Send queue does not exist");
 		return false;
 	}
-	_Static_assert((uint8_t) -1 >= IXGBE_SEND_QUEUES_COUNT, "This code assumes send queues fit in an uint8_t");
+	static_assert((uint8_t) -1 >= IXGBE_SEND_QUEUES_COUNT, "This code assumes send queues fit in an uint8_t");
 	uint8_t queue_index = (uint8_t) long_queue_index;
 
 	// See later for details of TXDCTL.ENABLE
