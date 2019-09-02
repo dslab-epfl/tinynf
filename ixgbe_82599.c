@@ -51,7 +51,6 @@
 #define IXGBE_MULTICAST_TABLE_ARRAY_SIZE (4 * 1024)
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
 // Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...]
-// Thus we set 8 KB as a power of 2 that can be sent and received.
 #define IXGBE_PACKET_SIZE_MAX (2u * 1024u)
 // Section 7.1.1.1.1 Unicast Filter:
 // 	"The Ethernet MAC address is checked against the 128 host unicast addresses"
@@ -61,7 +60,7 @@
 #define IXGBE_RECEIVE_QUEUES_COUNT 128u
 // Section 7.2.3.3 Transmit Descriptor Ring:
 // "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
-// We need this to be a power of 2 so that we can do fast modulo
+// This must be a power of 2 to enable fast modulo
 #define IXGBE_RING_SIZE 1024u
 static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2");
 // 	"Number of Tx Queues (per port): 128"
@@ -84,7 +83,7 @@ static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be
 // Overload macros for up to 5 args, see https://stackoverflow.com/a/11763277/3311770
 #define GET_MACRO(_1, _2, _3, _4, _5, NAME, ...) NAME
 
-// Bit tricks; note that we count bits starting from 0!
+// Bit tricks; note that bit indices start at 0!
 #define BIT(n) (1u << (n))
 #define BITL(n) (1ull << (n))
 #define BITS(start, end) (((end) == 31 ? 0u : (0xFFFFFFFFu << ((end) + 1))) ^ (0xFFFFFFFFu << (start)))
@@ -154,14 +153,14 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_PCIREG_BAR0_HIGH 0x14u
 
 // Section 9.3.3.3 Command Register (16 bit)
-// Section 9.3.3.4 Status Register (16 bit, which we do not use)
+// Section 9.3.3.4 Status Register (16 bit, unused)
 #define IXGBE_PCIREG_COMMAND 0x04u
 #define IXGBE_PCIREG_COMMAND_MEMORY_ACCESS_ENABLE BIT(1)
 #define IXGBE_PCIREG_COMMAND_BUS_MASTER_ENABLE BIT(2)
 #define IXGBE_PCIREG_COMMAND_INTERRUPT_DISABLE BIT(10)
 
 // Section 9.3.10.6 Device Status Register (16 bit)
-// Section 9.3.10.7 Link Capabilities Register (16 bit, which we do not use)
+// Section 9.3.10.7 Link Capabilities Register (16 bit, unused)
 #define IXGBE_PCIREG_DEVICESTATUS 0xAAu
 #define IXGBE_PCIREG_DEVICESTATUS_TRANSACTIONPENDING BIT(5)
 
@@ -171,7 +170,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 
 // Section 9.3.7.1.4 Power Management Control / Status Register (16 bit)
 // Section 9.3.7.1.5 PMCSR_BSE Bridge Support Extensions Register (8 bit, hardwired to 0)
-// Section 9.3.7.1.6 Data Register (8 bit, which we do not use)
+// Section 9.3.7.1.6 Data Register (8 bit, unused)
 #define IXGBE_PCIREG_PMCSR 0x44u
 #define IXGBE_PCIREG_PMCSR_POWER_STATE BITS(0,1)
 
@@ -415,7 +414,6 @@ static bool ixgbe_device_master_disable(const struct ixgbe_device* const device)
 		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
 		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
 		if (!IXGBE_PCIREG_CLEARED(device->pci, DEVICESTATUS, TRANSACTIONPENDING)) {
-			// Because this is recoverable, we log it as DEBUG rather than INFO
 			TN_DEBUG("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable");
 			return false;
 		}
@@ -446,7 +444,7 @@ static bool ixgbe_device_master_disable(const struct ixgbe_device* const device)
 // --------------------------
 
 // INTERPRETATION: The spec has a circular dependency here - resets need master disable, but master disable asks for two resets if it fails!
-//                 We assume that if the master disable fails, the resets do not need to go through the master disable step.
+//                 Assume that if the master disable fails, the resets do not need to go through the master disable step.
 
 static void ixgbe_device_reset(const struct ixgbe_device* const device)
 {
@@ -485,10 +483,10 @@ static void ixgbe_device_disable_interrupts(const struct ixgbe_device* const dev
 
 bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_device** out_device)
 {
-	// We need to write 64-bit memory values, so pointers better be 64 bits!
-	static_assert(UINTPTR_MAX == UINT64_MAX, "uintptr_t must have the same size as uint64_t");
+	// The NIC supports 64-bit addresses, so pointers can't be larger
+	static_assert(UINTPTR_MAX <= UINT64_MAX, "uintptr_t must fit in an uint64_t");
 
-	// First make sure the PCI device is really what we expect: 82599ES 10-Gigabit SFI/SFP+ Network Connection
+	// First make sure the PCI device is really an 82599ES 10-Gigabit SFI/SFP+ Network Connection
 	// According to https://cateee.net/lkddb/web-lkddb/IXGBE.html, this means vendor ID (bottom 16 bits) 8086, device ID (top 16 bits) 10FB
 	uint32_t pci_id = IXGBE_PCIREG_READ(pci_device, ID);
 	if (pci_id != ((0x10FBu << 16) | 0x8086u)) {
@@ -500,27 +498,27 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// By assumption PCIBARS, the PCI BARs have been configured already
 	// Section 9.3.7.1.4 Power Management Control / Status Register (PMCSR):
 	// "No_Soft_Reset. This bit is always set to 0b to indicate that the 82599 performs an internal reset upon transitioning from D3hot to D0 via software control of the PowerState bits."
-	// Thus, we cannot ask the device to go from D3 to D0 without resetting it, which would mean losing the BARs.
+	// Thus, the device cannot go from D3 to D0 without resetting, which would mean losing the BARs.
 	if (!IXGBE_PCIREG_CLEARED(pci_device, PMCSR, POWER_STATE)) {
 		TN_DEBUG("PCI device not in D0.");
 		return false;
 	}
-	// We assume nothing about bus master being enabled, so we must set it just in case.
+	// The bus master may not be ebabled; enable it just in case.
 	IXGBE_PCIREG_SET(pci_device, COMMAND, BUS_MASTER_ENABLE);
 	// Same for memory reads, i.e. actually using the BARs.
 	IXGBE_PCIREG_SET(pci_device, COMMAND, MEMORY_ACCESS_ENABLE);
-	// Finally, since we don't want interrupts and certainly not legacy ones, we must make sure they're disabled
+	// Finally, since we don't want interrupts and certainly not legacy ones, make sure they're disabled
 	IXGBE_PCIREG_SET(pci_device, COMMAND, INTERRUPT_DISABLE);
 
 	// Section 8.2.2 Registers Summary PF — BAR 0: As the section title indicate, registers are at the address pointed to by BAR 0, which is the only one we care about
 	uint32_t pci_bar0low = IXGBE_PCIREG_READ(pci_device, BAR0_LOW);
-	// Sanity check: we expect a 64-bit BAR, which means bit 2 of low is 1 and bit 1 of low is 0 as per Table 9-4 Base Address Registers' Fields
+	// Sanity check: a 64-bit BAR must have bit 2 of low as 1 and bit 1 of low as 0 as per Table 9-4 Base Address Registers' Fields
 	if ((pci_bar0low & BIT(2)) == 0 || (pci_bar0low & BIT(1)) != 0) {
 		TN_DEBUG("BAR0 is not a 64-bit BAR");
 		return false;
 	}
 	uint32_t pci_bar0high = IXGBE_PCIREG_READ(pci_device, BAR0_HIGH);
-	// We do not need to detect the size, since we know exactly which device we're dealing with. (This also means we don't write to BARs, one less chance to mess everything up)
+	// No need to detect the size, since we know exactly which device we're dealing with. (This also means no writes to BARs, one less chance to mess everything up)
 
 	struct ixgbe_device device;
 	device.pci = pci_device;
@@ -896,12 +894,11 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // =================================================================================================================
 // PIPES
 // =====
-// Pipes transfer packets from a receive queue to a send queue, optionally modifying the packet.
+// Pipes transfer packets from a receive queue to one or more send queues, optionally modifying the packet.
 // The queues need not be on the same device.
 // To keep the packet modification customizable, pipe operation is split in three parts:
 // receiving a packet, modifying it, and sending it.
-// There can only ever be one packet in a pipe at a time.
-//
+// The rest of this description assumes a single send queue; see remarks at the end for supporting more than one.
 //
 // Hardware background
 // -------------------
@@ -988,9 +985,9 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // -----------
 // The following constraints to the pipe simplify both programming and formal reasoning:
 // - The pipe processing actor must operate on a single packet at a time
-// - Both pipe actors must be executed by the same implementation thread
+// - All pipe actors are executed sequentially, i.e. without parallelism
 //
-// The API allows the developer to specify a receive queue and a send queue, and to run the pipe given a function
+// The API allows the developer to specify where to receive and send, and to run the pipe given a function
 // that is called for every packet and may modify the packet.
 //
 //
@@ -1011,6 +1008,19 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // This means that reading the send head to mirror it to the receive tail is expensive; thankfully, the NIC
 // has a feature called "TX head pointer write back": we tell it where to DMA the send head, and it automatically
 // does it, which means we read the send head from main memory instead of PCIe.
+//
+// Multiple send queues
+// --------------------
+// Supporting a single send queue is fine for some network functions that are inherently "pass-through", such as a VPN,
+// but many functions need more than this, such as a MAC bridge.
+// Extending the pipe model to work with multiple receive queues is not possible for the following reasons:
+// - Multiple queues cannot use the same destination packets, since they could overwrite each other;
+// - Since pipes process packets in order, assigning specific packets for reception by specific queues could cause
+//   the pipe to halt waiting for a packet to be received even as other queues have received packets further in the pipe.
+// Thus, we are left with the option of supporting multiple send queues.
+// This is doable because transmit descriptors can be set to drop a packet by "sending" it with length zero;
+// thus, the packet can be sent to whichever queues by setting its real length in these queues' descriptors,
+// and not send to the other queues by setting a zero length on those queues' descriptors.
 // =================================================================================================================
 
 // TODO try using legacy descriptors, simpler, don't need to overwrite the buffer address every time;
@@ -1121,13 +1131,13 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	// "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
 	//	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
 	//		"BSIZEPACKET, Receive Buffer Size for Packet Buffer. The value is in 1 KB resolution. Value can be from 1 KB to 16 KB."
-	// We set it to the ceiling of PACKET_SIZE_MAX in KB.
+	// Set it to the ceiling of PACKET_SIZE_MAX in KB.
 	// TODO: Play with this, see if it changes perf in any way.
 	IXGBE_REG_WRITE(device->addr, SRRCTL, queue_index, BSIZEPACKET, IXGBE_PACKET_SIZE_MAX / 1024u + (IXGBE_PACKET_SIZE_MAX % 1024u != 0));
 	//		"DESCTYPE, Define the descriptor type in Rx: [...] 001b = Advanced descriptor one buffer."
 	IXGBE_REG_WRITE(device->addr, SRRCTL, queue_index, DESCTYPE, 1);
 	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
-	// We enable this because of assumption DROP
+	// Enable this because of assumption DROP
 	IXGBE_REG_SET(device->addr, SRRCTL, queue_index, DROP_EN);
 	// "- If header split is required for this queue, program the appropriate PSRTYPE for the appropriate headers."
 	// Section 7.1.10 Header Splitting: "Header Splitting mode might cause unpredictable behavior and should not be used with the 82599."
@@ -1229,7 +1239,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	// 	 * The Head_WB_EN bit enables activation of tail write back. In this case, no descriptor write back is executed.
 	// 	 * The 30 upper bits of this register hold the lowest 32 bits of the head write-back address, assuming that the two last bits are zero."
 	if (headptr.phys_addr % 4 != 0) {
-		TN_DEBUG("Headptr address' last two bits are not zero"); // this really should never happen given that we're allocating 8 bytes...
+		TN_DEBUG("Headptr address' last two bits are not zero"); // this really should never happen given that it's an 8 bytes alloc...
 		return false;
 	}
 	//	Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low (TDWBAL[n]):
@@ -1242,7 +1252,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	IXGBE_REG_CLEAR(device->addr, DCATXCTRL, queue_index, TX_DESC_WB_RO_EN);
 	// "- Enable transmit path by setting DMATXCTL.TE.
 	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
-	// We do it every time, it makes the code simpler.
+	// Do it every time, it makes the code simpler.
 	IXGBE_REG_SET(device->addr, DMATXCTL, _, TE);
 	// "- Enable the queue using TXDCTL.ENABLE.
 	//    Poll the TXDCTL register until the Enable bit is set."
@@ -1253,7 +1263,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 		return false;
 	}
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
-	// We have nothing to transmit, so we leave TDT alone.
+	// Nothing to transmit yet, so leave TDT alone.
 
 	pipe->send_head_ptr = (volatile uint32_t*) headptr.virt_addr;
 	pipe->send_tail_addr = device->addr + IXGBE_REG_TDT(queue_index);
@@ -1272,7 +1282,7 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 			ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
 		}
 
-		// Since descriptors are 16 bytes, we need to double the index
+		// Since descriptors are 16 bytes, the index must be doubled
 		volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->processed_delimiter;
 		uint64_t packet_metadata = *(descriptor_addr + 1);
 		// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
@@ -1290,12 +1300,14 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 		// "PKT_LEN (16-bit offset 32, 2nd line): PKT_LEN holds the number of bytes posted to the packet buffer."
 		uint64_t receive_packet_length = packet_metadata >> 32;
 		uintptr_t packet_virt_addr = pipe->buffer_virt_addr + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
-		// TODO YESSS we can drop packets by making a zero-length descriptor! but DD isn't set; will this be better with TWDBAL/H?
+		// "Note: Descriptors with zero length, transfer no data."
+		// Thus it's fine if the handler returns 0
+		// The cast is fine because packet_virt_addr is by definition in an allocated block of memory
 		uint64_t send_packet_length = handler((uint8_t*) packet_virt_addr, receive_packet_length);
 
 		// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
 		// "Address (64)", 1st line
-		// We've already written it earlier
+		// Already written earlier
 		// 2nd line:
 		*(descriptor_addr + 1) =
 		// "DTALEN", bits 0-15: "This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor."
@@ -1317,7 +1329,7 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 			//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
 			//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
 			//  EOP (bit 0) — End of Packet"
-			// Thus, we must set bits 5, 3, 1 and 0
+			// Thus, set bits 5, 3, 1 and 0
 			BITL(24+5) | BITL(24+3) | BITL(24+1) | BITL(24) |
 		// STA, bits 32-35: "Rsv (bit 3:1) — Reserved. DD (bit 0) — Descriptor Done"
 			// All zero

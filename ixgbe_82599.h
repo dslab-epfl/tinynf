@@ -11,7 +11,7 @@
 struct ixgbe_device;
 struct ixgbe_pipe;
 
-// Returns the new length of the packet
+// Returns the new length of the packet, or 0 to drop the packet
 typedef uint64_t ixgbe_packet_handler(uint8_t* packet, uint64_t packet_length);
 
 uint64_t ixgbe_get_ring_size(void);
