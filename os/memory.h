@@ -10,7 +10,7 @@ struct tn_memory_block {
 };
 
 
-// Allocates a pinned memory block of the given size, aligned to the size, or returns false.
+// Allocates a pinned, zero-initialized memory block of the given size, aligned to the size, or returns false.
 bool tn_mem_allocate(uint64_t size, struct tn_memory_block* out_block);
 
 // Frees the given memory block.

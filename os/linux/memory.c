@@ -102,7 +102,7 @@ bool tn_mem_allocate(const uint64_t size, struct tn_memory_block* out_block)
 		HUGEPAGE_SIZE,
 		// R/W page
 		PROT_READ | PROT_WRITE,
-		// Hugepage, not backed by a file; note that without MAP_SHARED the call fails
+		// Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
 		// MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
 		// which is required if the calling code tries to get the physical address of the page without accessing it first.
 		MAP_HUGETLB | (HUGEPAGE_SIZE_POWER << MAP_HUGE_SHIFT) | MAP_ANONYMOUS | MAP_SHARED | MAP_POPULATE,

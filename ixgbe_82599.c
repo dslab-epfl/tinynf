@@ -50,7 +50,7 @@
 //	"Multicast Table Array (MTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address."
 #define IXGBE_MULTICAST_TABLE_ARRAY_SIZE (4 * 1024)
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
-// Section 7.2.3.2.4 Advanced Transmit Data Descriptor: "DTALEN (16): This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor [...]
+// Section 7.2.3.2.2 Legacy Transmit Descriptor Format: "The maximum length associated with a single descriptor is 15.5 KB"
 #define IXGBE_PACKET_SIZE_MAX (2u * 1024u)
 // Section 7.1.1.1.1 Unicast Filter:
 // 	"The Ethernet MAC address is checked against the 128 host unicast addresses"
@@ -301,7 +301,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Section 8.2.3.8.7 Split Receive Control Registers
 #define IXGBE_REG_SRRCTL(n) ((n) <= 63u ? (0x01014u + 0x40u*(n)) : (0x0D014u + 0x40u*((n)-64u)))
 #define IXGBE_REG_SRRCTL_BSIZEPACKET BITS(0,4)
-#define IXGBE_REG_SRRCTL_DESCTYPE BITS(25,27)
 #define IXGBE_REG_SRRCTL_DROP_EN BIT(28)
 
 // Section 8.2.3.1.2 Device Status Register
@@ -1023,19 +1022,18 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // and not send to the other queues by setting a zero length on those queues' descriptors.
 // =================================================================================================================
 
-// TODO try using legacy descriptors, simpler, don't need to overwrite the buffer address every time;
-//      also, if fragment checksum is left unchanged, maybe we don't even need to change the second line if length doesn't change?
 struct ixgbe_pipe
 {
 	uintptr_t buffer_virt_addr;
-	uintptr_t buffer_phys_addr;
-	uintptr_t ring_addr;
-	uintptr_t ring_phys_addr;
+	uintptr_t ring_virt_addr;
 	uintptr_t receive_tail_addr;
 	volatile uint32_t* send_head_ptr;
 	uintptr_t send_tail_addr;
 	uint32_t counter;
 	uint32_t processed_delimiter;
+	// Setup only
+	uintptr_t ring_phys_addr;
+	uintptr_t buffer_phys_addr;
 };
 
 // ===================
@@ -1067,12 +1065,8 @@ bool ixgbe_pipe_init(const struct tn_memory_block buffer, struct ixgbe_pipe** ou
 	struct ixgbe_pipe* pipe = (struct ixgbe_pipe*) pipe_block.virt_addr;
 	pipe->buffer_virt_addr = buffer.virt_addr;
 	pipe->buffer_phys_addr = buffer.phys_addr;
-	pipe->ring_addr = ring.virt_addr;
+	pipe->ring_virt_addr = ring.virt_addr;
 	pipe->ring_phys_addr = ring.phys_addr;
-	pipe->receive_tail_addr = 0;
-	pipe->send_tail_addr = 0;
-	pipe->processed_delimiter = 0;
-	pipe->counter = 0;
 
 	*out_pipe = pipe;
 	return true;
@@ -1105,15 +1099,16 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 
 	// "The following should be done per each receive queue:"
 	// "- Allocate a region of memory for the receive descriptor list."
-	// Already done, in 'pipe->ring_addr/ring_phys_addr'
+	// Already done, in 'pipe->ring_{virt,phys}_addr'
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
 	// The buffers' start physical address are given to us as 'pipe->buffer_phys_addr'
-	uint64_t* ring_ptr = (uint64_t*) pipe->ring_addr;
-	for (uint16_t n = 0; n < IXGBE_RING_SIZE; n++) {
-		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
-		// Line 0 - Packet Buffer Address
-		ring_ptr[n * 2u] = pipe->buffer_phys_addr + (uintptr_t) (n * IXGBE_PACKET_SIZE_MAX);
-		// Line 1 - Header Buffer Address (63:1), Descriptor Done (0)
+	uint64_t* ring_ptr = (uint64_t*) pipe->ring_virt_addr;
+	for (uintptr_t n = 0; n < IXGBE_RING_SIZE; n++) {
+		// Section 7.1.5 Legacy Receive Descriptor Format:
+		// "Buffer Address (64-bit offset 0, 1st line)"
+		ring_ptr[n * 2u] = pipe->buffer_phys_addr + n * IXGBE_PACKET_SIZE_MAX;
+		// All other fields are only for write-back except End Of Packet (bit 33), Descriptor Done (bit 32),
+		// which must be 0 as per table in "EOP (End of Packet) and DD (Descriptor Done)"
 		ring_ptr[n * 2u + 1u] = 0u;
 	}
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
@@ -1134,8 +1129,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	// Set it to the ceiling of PACKET_SIZE_MAX in KB.
 	// TODO: Play with this, see if it changes perf in any way.
 	IXGBE_REG_WRITE(device->addr, SRRCTL, queue_index, BSIZEPACKET, IXGBE_PACKET_SIZE_MAX / 1024u + (IXGBE_PACKET_SIZE_MAX % 1024u != 0));
-	//		"DESCTYPE, Define the descriptor type in Rx: [...] 001b = Advanced descriptor one buffer."
-	IXGBE_REG_WRITE(device->addr, SRRCTL, queue_index, DESCTYPE, 1);
+	//		"DESCTYPE, Define the descriptor type in Rx: Init Val 000b [...] 000b = Legacy."
 	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
 	// Enable this because of assumption DROP
 	IXGBE_REG_SET(device->addr, SRRCTL, queue_index, DROP_EN);
@@ -1209,7 +1203,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 
 	// "The following steps should be done once per transmit queue:"
 	// "- Allocate a region of memory for the transmit descriptor list."
-	// Already done, in 'pipe->ring_addr/ring_phys_addr'
+	// Already done, in 'pipe->ring_{virt,phys}_addr'
 	// "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
 	// 	Section 8.2.3.9.5 Transmit Descriptor Base Address Low (TDBAL[n]):
 	// 	"The Transmit Descriptor Base Address must point to a 128 byte-aligned block of data."
@@ -1283,68 +1277,50 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 		}
 
 		// Since descriptors are 16 bytes, the index must be doubled
-		volatile uint64_t* descriptor_addr = (volatile uint64_t*) pipe->ring_addr + 2u*pipe->processed_delimiter;
-		uint64_t packet_metadata = *(descriptor_addr + 1);
-		// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
-		// "Extended Status (20-bit offset 0, 2nd line): Bit 0 = DD, Descriptor Done."
-		if ((packet_metadata & BITL(0)) == 0) {
+		volatile uint64_t* metadata_addr = (volatile uint64_t*) pipe->ring_virt_addr + 2u*pipe->processed_delimiter + 1;
+		uint64_t metadata = *metadata_addr;
+		// Section 7.1.5 Legacy Receive Descriptor Format:
+		// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
+		if ((metadata & BITL(32)) == 0) {
 			continue;
 		}
 
-		// Section 7.1.6.1 Advanced Receive Descriptors - Read Format:
-		// Write the packet address again, since it got clobbered by write-back
-		// "Packet Buffer Address (64): This is the physical address of the packet buffer.", 1st line
-		uintptr_t packet_phys_addr = pipe->buffer_phys_addr + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
-		*descriptor_addr = packet_phys_addr;
-
-		// "PKT_LEN (16-bit offset 32, 2nd line): PKT_LEN holds the number of bytes posted to the packet buffer."
-		uint64_t receive_packet_length = packet_metadata >> 32;
 		uintptr_t packet_virt_addr = pipe->buffer_virt_addr + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
-		// "Note: Descriptors with zero length, transfer no data."
-		// Thus it's fine if the handler returns 0
+		// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
+		uint64_t receive_packet_length = metadata & 0xFFu;
 		// The cast is fine because packet_virt_addr is by definition in an allocated block of memory
 		uint64_t send_packet_length = handler((uint8_t*) packet_virt_addr, receive_packet_length);
 
-		// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
-		// "Address (64)", 1st line
-		// Already written earlier
+		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
+		// "Buffer Address (64)", 1st line
+		// Already written, does not get clobbered by write-back
 		// 2nd line:
-		*(descriptor_addr + 1) =
-		// "DTALEN", bits 0-15: "This field holds the length in bytes of data buffer at the address pointed to by this specific descriptor."
+		*metadata_addr =
+		// "Length", bits 0-15: "Length (TDESC.LENGTH) specifies the length in bytes to be fetched from the buffer address provided"
 			send_packet_length |
-		// "RSV", bits 16-17: "Reserved"
+		// "CSO", bits 16-23: "A Checksum Offset (TDESC.CSO) field indicates where, relative to the start of the packet, to insert a TCP checksum if this mode is enabled"
 			// All zero
-		// "MAC", bits 18-19: "ILSec (bit 0) — Apply LinkSec on packet. [...] 1588 (bit 1) — IEEE1588 time stamp packet."
-			// All zero
-		// "DTYP", bits 20-23: "0011b for advanced data descriptor."
-			BITL(20) | BITL(20+1) |
-		// "DCMD", bits 24-31:
-			// "TSE (bit 7) — Transmit Segmentation Enable [...]
-			//  VLE (bit 6) — VLAN Packet Enable [...]
-			//  DEXT (bit 5) — Descriptor Extension: This bit must be one to indicate advanced descriptor format
-			//  Rsv (bit 4) — Reserved [...]
-			//  RS (bit 3) — Report Status: signals hardware to report the DMA completion status indication
-			//  Rsv (bit 2) — Reserved
+		// "CMD", bits 24-31:
+			// "RSV (bit 7) - Reserved
+			//  VLE (bit 6) - VLAN Packet Enable [...]
+			//  DEXT (bit 5) - Descriptor extension (zero for legacy mode)
+			//  RSV (bit 4) - Reserved
+			//  RS (bit 3) - Report Status: "signals hardware to report the DMA completion status indication"
+			//  IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set.
 			//  IFCS (bit 1) — Insert FCS:
 			//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
 			//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
-			//  EOP (bit 0) — End of Packet"
-			// Thus, set bits 5, 3, 1 and 0
-			BITL(24+5) | BITL(24+3) | BITL(24+1) | BITL(24) |
-		// STA, bits 32-35: "Rsv (bit 3:1) — Reserved. DD (bit 0) — Descriptor Done"
+			//  EOP (bit 0) - End of Packet"
+			// Thus, set bits 3, 1 and 0
+			BITL(24+3) | BITL(24+1) | BITL(24);
+		// STA, bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
 			// All zero
-		// IDX, bits 36-38: "If no offload is required and the CC bit is cleared, this field is not relevant"
+		// Rsvd, bits 36-39: "Reserved."
 			// All zero
-		// CC, bit 39: "Check Context bit — When set, a Tx context descriptor indicated by IDX index should be used for this packet(s)"
-			// Zero
-		// POPTS, bits 40-45:
-			// "Rsv (bits 5:3) — Reserved
-			//  IPSEC (bit 2) — Ipsec offload request
-			//  TXSM (bit 1) — Insert TCP/UDP Checksum
-			//  IXSM (bit 0) — Insert IP Checksum:"
+		// CSS, bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
 			// All zero
-		// PAYLEN, bits 46-63: "PAYLEN indicates the size (in byte units) of the data buffer(s) in host memory for transmission. In a single-send packet, PAYLEN defines the entire packet size fetched from host memory."
-			(send_packet_length << 46);
+		// VLAN, bits 48-63:
+			// All zero
 
 		// Increment the processed delimiter, modulo the ring size
 		pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
