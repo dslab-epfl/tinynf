@@ -1310,8 +1310,8 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 		pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
 		if((pipe->scheduling_counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
-			ixgbe_reg_write_raw(pipe->receive_tail_addr, (pipe->send_head - 1) & (IXGBE_RING_SIZE - 1));
 			ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
+			ixgbe_reg_write_raw(pipe->receive_tail_addr, (pipe->send_head - 1) & (IXGBE_RING_SIZE - 1));
 		}
 
 		// Since descriptors are 16 bytes, the index must be doubled
