@@ -1,5 +1,6 @@
 #include "ixgbe_82599.h"
 
+#include "arch/dca.h"
 #include "arch/endian.h"
 #include "os/time.h"
 #include "util/log.h"
@@ -130,7 +131,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
 #define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_WRITE4(addr, reg, idx, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), value)
-#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | (((value) << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
+#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | ((((uint32_t) value) << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
 #define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_CLEARED(addr, reg, idx, field) (IXGBE_REG_READ(addr, reg, idx, field) == 0u)
 #define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0U)
@@ -187,14 +188,23 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_CTRLEXT(_) 0x00018u
 #define IXGBE_REG_CTRLEXT_NSDIS BIT(16)
 
+// Section 8.2.3.11.3 DCA Control Register
+#define IXGBE_REG_DCACTRL(_) 0x11074u
+#define IXGBE_REG_DCACTRL_DCA_DIS BIT(0)
+#define IXGBE_REG_DCACTRL_DCA_MODE BITS(1,4)
+
 // Section 8.2.3.11.1 Rx DCA Control Register
 #define IXGBE_REG_DCARXCTRL(n) ((n) <= 63u ? (0x0100Cu + 0x40u*(n)) : (0x0D00Cu + 0x40u*((n)-64u)))
-// This bit is reserved has no name, but must be cleared by software anyway.
+#define IXGBE_REG_DCARXCTRL_RX_DESCRIPTOR_DCA_EN BIT(5)
+// This bit is reserved, has no name, but must be used anyway
 #define IXGBE_REG_DCARXCTRL_UNKNOWN BIT(12)
+#define IXGBE_REG_DCARXCTRL_CPUID BITS(24,31)
 
 // Section 8.2.3.11.2 Tx DCA Control Registers
 #define IXGBE_REG_DCATXCTRL(n) (0x0600Cu + 0x40u*(n))
+#define IXGBE_REG_DCATXCTRL_TX_DESCRIPTOR_DCA_EN BIT(5)
 #define IXGBE_REG_DCATXCTRL_TX_DESC_WB_RO_EN BIT(11)
+#define IXGBE_REG_DCATXCTRL_CPUID BITS(24,31)
 
 // Section 8.2.3.9.2 DMA Tx Control
 #define IXGBE_REG_DMATXCTL(_) 0x04A80u
@@ -526,7 +536,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	uintptr_t dev_phys_addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
 	// Section 8.1 Address Regions: "Region Size" of "Internal registers memories and Flash (memory BAR)" is "128 KB + Flash_Size"
 	// Thus we can ask for 128KB, since we don't know the flash size (and don't need it thus no need to actually check it)
-	if (!tn_mem_map(dev_phys_addr, 128 * 1024, &device.addr)) {
+	if (!tn_mem_phys_to_virt(dev_phys_addr, 128 * 1024, &device.addr)) {
 		return false;
 	}
 	TN_INFO("Device %02"PRIx8":%02"PRIx8".%"PRIx8" mapped to 0x%016"PRIxPTR, device.pci.bus, device.pci.device, device.pci.function, device.addr);
@@ -800,14 +810,36 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//			Section 8.2.3.9.4 DMA Tx TCP Flags Control High (DTXTCPFLGH):
 	//				"This register holds the mask bits for the TCP flags in Tx segmentation."
 	// We do not need to modify DTXTCPFLGL/H by assumption TRUST.
-	//			Section 8.2.3.11.2 Tc DCA Control Registers (DCA_TXCTRL[n]):
-	//				"Tx Descriptor DCA EN, Init val 0b; Descriptor DCA Enable. When set, hardware enables DCA for all Tx descriptors written back into memory.
-	//				 When cleared, hardware does not enable DCA for descriptor write-backs. This bit is cleared as a default and also applies to head write back when enabled."
-	//				"CPUID, Init val 0x0, Physical ID (see complete description in Section 3.1.3.1.2)
-	//				 Legacy DCA capable platforms — the device driver, upon discovery of the physical CPU ID and CPU bus ID, programs the CPUID field with the physical CPU and bus ID associated with this Tx queue.
-	//				 DCA 1.0 capable platforms — the device driver programs a value, based on the relevant APIC ID, associated with this Tx queue."
-	// TODO: Actually implement it by assumption DCA
-	// TODO: Benchmark with DCA enabled and disabled for RX/TX/both.
+	// Now for DCA_TXCTRL...
+	// First, let's make sure we actually can use DCA
+	// TODO bench with/without DCA/DCA_with_payload
+	if (!tn_dca_is_enabled()) {
+		TN_DEBUG("DCA is disabled");
+		return false;
+	}
+	// INTERPRETATION: Since register DCA_CTRL exists and disables DCA by default, we need to change it as well.
+	// "DCA Disable. Init val 1b. [...] 0b = DCA tagging is enabled for this device."
+	IXGBE_REG_CLEAR(device.addr, DCACTRL, _, DCA_DIS);
+	// "DCA Mode. Init val 0x0. [...] 0001b = DCA 1.0 is supported"
+	IXGBE_REG_WRITE(device.addr, DCACTRL, _, DCA_MODE, 1);
+	uint8_t dca_id = tn_dca_get_id();
+	for (uint32_t n = 0; n < IXGBE_SEND_QUEUES_COUNT; n++) {
+		//		Section 8.2.3.11.2 Tx DCA Control Registers (DCA_TXCTRL[n]):
+		//			"Tx Descriptor DCA EN, Init val 0b; Descriptor DCA Enable. When set, hardware enables DCA for all Tx descriptors written back into memory.
+		//			 When cleared, hardware does not enable DCA for descriptor write-backs. This bit is cleared as a default and also applies to head write back when enabled."
+		IXGBE_REG_SET(device.addr, DCATXCTRL, n, TX_DESCRIPTOR_DCA_EN);
+		//			"CPUID [...] DCA 1.0 capable platforms — the device driver programs a value, based on the relevant APIC ID, associated with this Tx queue."
+		IXGBE_REG_WRITE(device.addr, DCATXCTRL, n, CPUID, dca_id);
+	}
+	// INTEPRETATION: We should set DCA_RXCTRL as well (it's not mentioned anywhere to be part of the setup, but since we just did DCA_TXCTRL...)
+	for (uint32_t n = 0; n < IXGBE_RECEIVE_QUEUES_COUNT; n++) {
+		//		Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]):
+		//			"Descriptor DCA EN. When set, hardware enables DCA for all Rx descriptors written back into memory. [...]"
+		IXGBE_REG_SET(device.addr, DCARXCTRL, n, RX_DESCRIPTOR_DCA_EN);
+		// TODO try with RX_PAYLOAD_DCA_EN as well?
+		//			"CPUID [...] DCA 1.0 capable platforms — The device driver programs a value, based on the relevant APIC ID, associated with this Rx queue."
+		IXGBE_REG_WRITE(device.addr, DCARXCTRL, n, CPUID, dca_id);
+	}
 	//				There are fields dealing with relaxed ordering; Section 3.1.4.5.3 Relaxed Ordering states that it "enables the system to optimize performance", with no apparent correctness impact.
 	// INTERPRETATION: Relaxed ordering has no correctness issues, and thus should be enabled.
 	//		"- Set RTTDCS.ARBDIS to 1b."
@@ -1027,13 +1059,17 @@ struct ixgbe_pipe
 	uintptr_t buffer_virt_addr;
 	uintptr_t ring_virt_addr;
 	uintptr_t receive_tail_addr;
-	volatile uint32_t* send_head_ptr;
 	uintptr_t send_tail_addr;
 	uint32_t counter;
 	uint32_t processed_delimiter;
-	// Setup only
+	// Physical addresses are only used during setup, not during the loop
 	uintptr_t ring_phys_addr;
 	uintptr_t buffer_phys_addr;
+	// send_head must be 16-byte aligned, regardless of the uintptr_t size; see alignment remarks in send queue setup
+	// (there is also a runtime check so in case uintptr_t is not 64 bits this code will not silently fail)
+	uint8_t _padding0[8];
+	volatile uint32_t send_head;
+	uint8_t _padding1[4];
 };
 
 // ===================
@@ -1223,24 +1259,27 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 60);
 	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
-	struct tn_memory_block headptr;
-	if (!tn_mem_allocate(sizeof(uint32_t), &headptr)) {
-		TN_DEBUG("Could not allocate a headptr");
+	uintptr_t head_phys_addr;
+	if (!tn_mem_virt_to_phys((uintptr_t) &(pipe->send_head), &head_phys_addr)) {
+		TN_DEBUG("Could not get phys addr of send head");
 		return false;
 	}
 	//	Section 7.2.3.5.2 Tx Head Pointer Write Back:
 	//	"The low register's LSB hold the control bits.
 	// 	 * The Head_WB_EN bit enables activation of tail write back. In this case, no descriptor write back is executed.
 	// 	 * The 30 upper bits of this register hold the lowest 32 bits of the head write-back address, assuming that the two last bits are zero."
-	if (headptr.phys_addr % 4 != 0) {
-		TN_DEBUG("Headptr address' last two bits are not zero"); // this really should never happen given that it's an 8 bytes alloc...
+	//	"software should [...] make sure the TDBAL value is Dword-aligned."
+	//	Section 8.2.3.9.11 Tx Descriptor completion Write Back Address Low (TDWBAL[n]): "the actual address is Qword aligned"
+	// INTERPRETATION: Obvious contradiction here, Dword or Qword? Empirically, the answer is... 16 bytes. Write-back has no effect otherwise.
+	if (head_phys_addr % 16u != 0) {
+		TN_DEBUG("Head phys addr's last two bits are not zero"); // this really should never happen given that it's an 8 bytes alloc...
 		return false;
 	}
 	//	Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low (TDWBAL[n]):
 	//	"Head_WB_En, bit 0 [...] 1b = Head write-back is enabled."
 	//	"Reserved, bit 1"
-	IXGBE_REG_WRITE(device->addr, TDWBAH, queue_index, (uint32_t) (headptr.phys_addr >> 32));
-	IXGBE_REG_WRITE(device->addr, TDWBAL, queue_index, (uint32_t) ((headptr.phys_addr & 0xFFFFFFFFu) | 1));
+	IXGBE_REG_WRITE(device->addr, TDWBAH, queue_index, (uint32_t) (head_phys_addr >> 32));
+	IXGBE_REG_WRITE(device->addr, TDWBAL, queue_index, (uint32_t) ((head_phys_addr & 0xFFFFFFFFu) | 1));
 	// Disable relaxed ordering of head pointer write-back, since it could cause the head pointer to be updated backwards
 	// TODO: Can we not disable this?
 	IXGBE_REG_CLEAR(device->addr, DCATXCTRL, queue_index, TX_DESC_WB_RO_EN);
@@ -1259,7 +1298,6 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
 	// Nothing to transmit yet, so leave TDT alone.
 
-	pipe->send_head_ptr = (volatile uint32_t*) headptr.virt_addr;
 	pipe->send_tail_addr = device->addr + IXGBE_REG_TDT(queue_index);
 	return true;
 }
@@ -1272,7 +1310,7 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 		pipe->counter = (uint32_t) (pipe->counter + 1u);
 
 		if((pipe->counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
-			ixgbe_reg_write_raw(pipe->receive_tail_addr, (*(pipe->send_head_ptr) - 1) & (IXGBE_RING_SIZE - 1));
+			ixgbe_reg_write_raw(pipe->receive_tail_addr, (pipe->send_head - 1) & (IXGBE_RING_SIZE - 1));
 			ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
 		}
 

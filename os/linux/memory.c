@@ -30,8 +30,106 @@ static uintptr_t get_page_size(void)
 	return cached_page_size;
 }
 
+// ASSUMPTION: The Linux kernel will not move hugepages, i.e. that their physical address remains constant.
+//             If this assumption were to be broken, this code would need to change.
+//             Locking a page is not sufficient - it guarantees the page won't be swapped out,
+//             not that it won't be moved.
+bool tn_mem_allocate(const uint64_t size, struct tn_memory_block* out_block)
+{
+	// OK if size is smaller, we'll just return too much memory
+	if (size > HUGEPAGE_SIZE) {
+		return false;
+	}
+
+	// http://man7.org/linux/man-pages//man2/munmap.2.html
+	void* page = mmap(
+		// No specific address
+		NULL,
+		// Size of the mapping
+		HUGEPAGE_SIZE,
+		// R/W page
+		PROT_READ | PROT_WRITE,
+		// Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
+		// MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
+		// which is required if the calling code tries to get the physical address of the page without accessing it first.
+		MAP_HUGETLB | (HUGEPAGE_SIZE_POWER << MAP_HUGE_SHIFT) | MAP_ANONYMOUS | MAP_SHARED | MAP_POPULATE,
+		// Required on MAP_ANONYMOUS
+		-1,
+		// Required on MAP_ANONYMOUS
+		0
+	);
+	if (page == MAP_FAILED) {
+		return false;
+	}
+
+	uintptr_t virt_addr = (uintptr_t) page;
+
+	// HACK: We're hoping that the Linux kernel will allocate memory on our node - in practice this seems to work
+	uint64_t node;
+	if (!tn_numa_get_addr_node(virt_addr, &node)) {
+		goto error;
+	}
+	if (!tn_numa_is_current_node(node)) {
+		goto error;
+	}
+
+	uintptr_t phys_addr;
+	if (!tn_mem_virt_to_phys(virt_addr, &phys_addr)) {
+		goto error;
+	}
+
+	out_block->virt_addr = virt_addr;
+	out_block->phys_addr = phys_addr;
+	return true;
+
+error:
+	munmap(page, HUGEPAGE_SIZE);
+	return false;
+}
+
+void tn_mem_free(struct tn_memory_block block)
+{
+	munmap((void*) block.virt_addr, HUGEPAGE_SIZE);
+}
+
+bool tn_mem_phys_to_virt(const uintptr_t addr, const uint64_t size, uintptr_t* out_virt_addr)
+{
+	if (size > SIZE_MAX) {
+		return false;
+	}
+	if (addr != (uintptr_t) (off_t) addr) {
+		return false;
+	}
+
+	int mem_fd = open("/dev/mem", O_SYNC | O_RDWR);
+	if (mem_fd == -1) {
+		return false;
+	}
+
+	void* mapped = mmap(
+		// No specific address
+		NULL,
+		// Size of the mapping (cast OK because we checked above)
+		(size_t) size,
+		// R/W page
+		PROT_READ | PROT_WRITE,
+		// Send updates to the underlying "file"
+		MAP_SHARED,
+		// /dev/mem
+		mem_fd,
+		// Offset is the address (cast OK because we checked above)
+		(off_t) addr
+	);
+	if (mapped == MAP_FAILED) {
+		return false;
+	}
+
+	*out_virt_addr = (uintptr_t) mapped;
+	return true;
+}
+
 // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
-static bool get_phys_addr(const uintptr_t addr, uintptr_t* out_phys_addr)
+bool tn_mem_virt_to_phys(const uintptr_t addr, uintptr_t* out_phys_addr)
 {
 	const uintptr_t page_size = get_page_size();
 	if (page_size == 0) {
@@ -80,103 +178,5 @@ static bool get_phys_addr(const uintptr_t addr, uintptr_t* out_phys_addr)
 
 	const uintptr_t addr_offset = addr % page_size;
 	*out_phys_addr = pfn * page_size + addr_offset;
-	return true;
-}
-
-// ASSUMPTION: The Linux kernel will not move hugepages, i.e. that their physical address remains constant.
-//             If this assumption were to be broken, this code would need to change.
-//             Locking a page is not sufficient - it guarantees the page won't be swapped out,
-//             not that it won't be moved.
-bool tn_mem_allocate(const uint64_t size, struct tn_memory_block* out_block)
-{
-	// OK if size is smaller, we'll just return too much memory
-	if (size > HUGEPAGE_SIZE) {
-		return false;
-	}
-
-	// http://man7.org/linux/man-pages//man2/munmap.2.html
-	void* page = mmap(
-		// No specific address
-		NULL,
-		// Size of the mapping
-		HUGEPAGE_SIZE,
-		// R/W page
-		PROT_READ | PROT_WRITE,
-		// Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
-		// MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
-		// which is required if the calling code tries to get the physical address of the page without accessing it first.
-		MAP_HUGETLB | (HUGEPAGE_SIZE_POWER << MAP_HUGE_SHIFT) | MAP_ANONYMOUS | MAP_SHARED | MAP_POPULATE,
-		// Required on MAP_ANONYMOUS
-		-1,
-		// Required on MAP_ANONYMOUS
-		0
-	);
-	if (page == MAP_FAILED) {
-		return false;
-	}
-
-	uintptr_t virt_addr = (uintptr_t) page;
-
-	// HACK: We're hoping that the Linux kernel will allocate memory on our node - in practice this seems to work
-	uint64_t node;
-	if (!tn_numa_get_addr_node(virt_addr, &node)) {
-		goto error;
-	}
-	if (!tn_numa_is_current_node(node)) {
-		goto error;
-	}
-
-	uintptr_t phys_addr;
-	if (!get_phys_addr(virt_addr, &phys_addr)) {
-		goto error;
-	}
-
-	out_block->virt_addr = virt_addr;
-	out_block->phys_addr = phys_addr;
-	return true;
-
-error:
-	munmap(page, HUGEPAGE_SIZE);
-	return false;
-}
-
-void tn_mem_free(struct tn_memory_block block)
-{
-	munmap((void*) block.virt_addr, HUGEPAGE_SIZE);
-}
-
-bool tn_mem_map(uintptr_t address, uint64_t size, uintptr_t* mapped_address)
-{
-	if (size > SIZE_MAX) {
-		return false;
-	}
-	if (address != (uintptr_t) (off_t) address) {
-		return false;
-	}
-
-	int mem_fd = open("/dev/mem", O_SYNC | O_RDWR);
-	if (mem_fd == -1) {
-		return false;
-	}
-
-	void* mapped = mmap(
-		// No specific address
-		NULL,
-		// Size of the mapping (cast OK because we checked above)
-		(size_t) size,
-		// R/W page
-		PROT_READ | PROT_WRITE,
-		// Send updates to the underlying "file"
-		MAP_SHARED,
-		// /dev/mem
-		mem_fd,
-		// Offset is the address (cast OK because we checked above)
-		(off_t) address
-	);
-	if (mapped == MAP_FAILED) {
-		return false;
-	}
-
-	*mapped_address = (uintptr_t) mapped;
 	return true;
 }

@@ -17,4 +17,7 @@ bool tn_mem_allocate(uint64_t size, struct tn_memory_block* out_block);
 void tn_mem_free(struct tn_memory_block block);
 
 // Maps the region of physical address memory defined by (address, size) into memory usable by the program, or returns false.
-bool tn_mem_map(uintptr_t address, uint64_t size, uintptr_t* mapped_address);
+bool tn_mem_phys_to_virt(uintptr_t addr, uint64_t size, uintptr_t* virt_addr);
+
+// Gets the physical address corresponding to the given virtual address, or returns false.
+bool tn_mem_virt_to_phys(uintptr_t addr, uintptr_t* phys_addr);
