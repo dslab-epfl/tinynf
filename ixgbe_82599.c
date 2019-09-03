@@ -1056,18 +1056,20 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 
 struct ixgbe_pipe
 {
-	uintptr_t buffer_virt_addr;
-	uintptr_t ring_virt_addr;
+	// Technically it's volatile since the hardware does DMA, but we don't access the buffer contents in the driver,
+	// and when the packet is accessed by a handler the hardware cannot touch it due to how pipes work
+	uint8_t* buffer;
+	volatile uint64_t* ring;
 	uintptr_t receive_tail_addr;
 	uintptr_t send_tail_addr;
-	uint32_t counter;
+	uint64_t scheduling_counter;
 	uint32_t processed_delimiter;
+	uint8_t _padding0[4];
 	// Physical addresses are only used during setup, not during the loop
 	uintptr_t ring_phys_addr;
 	uintptr_t buffer_phys_addr;
 	// send_head must be 16-byte aligned, regardless of the uintptr_t size; see alignment remarks in send queue setup
 	// (there is also a runtime check so in case uintptr_t is not 64 bits this code will not silently fail)
-	uint8_t _padding0[8];
 	volatile uint32_t send_head;
 	uint8_t _padding1[4];
 };
@@ -1099,9 +1101,9 @@ bool ixgbe_pipe_init(const struct tn_memory_block buffer, struct ixgbe_pipe** ou
 	}
 
 	struct ixgbe_pipe* pipe = (struct ixgbe_pipe*) pipe_block.virt_addr;
-	pipe->buffer_virt_addr = buffer.virt_addr;
+	pipe->buffer = (uint8_t*) buffer.virt_addr;
 	pipe->buffer_phys_addr = buffer.phys_addr;
-	pipe->ring_virt_addr = ring.virt_addr;
+	pipe->ring = (uint64_t*) ring.virt_addr;
 	pipe->ring_phys_addr = ring.phys_addr;
 
 	*out_pipe = pipe;
@@ -1138,14 +1140,13 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	// Already done, in 'pipe->ring_{virt,phys}_addr'
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
 	// The buffers' start physical address are given to us as 'pipe->buffer_phys_addr'
-	uint64_t* ring_ptr = (uint64_t*) pipe->ring_virt_addr;
 	for (uintptr_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.1.5 Legacy Receive Descriptor Format:
 		// "Buffer Address (64-bit offset 0, 1st line)"
-		ring_ptr[n * 2u] = pipe->buffer_phys_addr + n * IXGBE_PACKET_SIZE_MAX;
+		pipe->ring[n * 2u] = pipe->buffer_phys_addr + n * IXGBE_PACKET_SIZE_MAX;
 		// All other fields are only for write-back except End Of Packet (bit 33), Descriptor Done (bit 32),
 		// which must be 0 as per table in "EOP (End of Packet) and DD (Descriptor Done)"
-		ring_ptr[n * 2u + 1u] = 0u;
+		pipe->ring[n * 2u + 1u] = 0u;
 	}
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
 	// INTERPRETATION: This is a typo, the second "RDBAL" should read "RDBAH".
@@ -1307,15 +1308,15 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 {
 	while (true)
 	{
-		pipe->counter = (uint32_t) (pipe->counter + 1u);
+		pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
-		if((pipe->counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
+		if((pipe->scheduling_counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
 			ixgbe_reg_write_raw(pipe->receive_tail_addr, (pipe->send_head - 1) & (IXGBE_RING_SIZE - 1));
 			ixgbe_reg_write_raw(pipe->send_tail_addr, pipe->processed_delimiter);
 		}
 
 		// Since descriptors are 16 bytes, the index must be doubled
-		volatile uint64_t* metadata_addr = (volatile uint64_t*) pipe->ring_virt_addr + 2u*pipe->processed_delimiter + 1;
+		volatile uint64_t* metadata_addr = pipe->ring + 2u*pipe->processed_delimiter + 1;
 		uint64_t metadata = *metadata_addr;
 		// Section 7.1.5 Legacy Receive Descriptor Format:
 		// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
@@ -1323,11 +1324,11 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 			continue;
 		}
 
-		uintptr_t packet_virt_addr = pipe->buffer_virt_addr + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
+		// This cannot overflow because the packet is by definition in an allocated block of memory
+		uint8_t* packet = pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
 		// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
 		uint64_t receive_packet_length = metadata & 0xFFu;
-		// The cast is fine because packet_virt_addr is by definition in an allocated block of memory
-		uint64_t send_packet_length = handler((uint8_t*) packet_virt_addr, receive_packet_length);
+		uint64_t send_packet_length = handler(packet, receive_packet_length);
 
 		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 		// "Buffer Address (64)", 1st line
