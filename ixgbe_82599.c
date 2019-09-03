@@ -1063,7 +1063,7 @@ struct ixgbe_pipe
 	uintptr_t receive_tail_addr;
 	uintptr_t send_tail_addr;
 	uint64_t scheduling_counter;
-	uint32_t processed_delimiter;
+	uint32_t processed_delimiter; // Must be 32-bit since it gets written to the send tails
 	uint8_t _padding0[4];
 	// Physical addresses are only used during setup, not during the loop
 	uintptr_t ring_phys_addr;
