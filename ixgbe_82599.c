@@ -1306,8 +1306,7 @@ bool ixgbe_pipe_set_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 
 void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 {
-	while (true)
-	{
+	while (true) {
 		pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
 		if((pipe->scheduling_counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
@@ -1317,17 +1316,17 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 
 		// Since descriptors are 16 bytes, the index must be doubled
 		volatile uint64_t* metadata_addr = pipe->ring + 2u*pipe->processed_delimiter + 1;
-		uint64_t metadata = *metadata_addr;
+		uint64_t receive_metadata = *metadata_addr;
 		// Section 7.1.5 Legacy Receive Descriptor Format:
 		// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
-		if ((metadata & BITL(32)) == 0) {
+		if ((receive_metadata & BITL(32)) == 0) {
 			continue;
 		}
 
 		// This cannot overflow because the packet is by definition in an allocated block of memory
 		uint8_t* packet = pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
 		// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
-		uint64_t receive_packet_length = metadata & 0xFFu;
+		uint64_t receive_packet_length = receive_metadata & 0xFFu;
 		uint64_t send_packet_length = handler(packet, receive_packet_length);
 
 		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
