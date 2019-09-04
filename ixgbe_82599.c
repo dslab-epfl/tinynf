@@ -11,6 +11,7 @@
 // ASSUMPTIONS
 // ===========
 // We make the following assumptions, which we later refer to by name:
+// CACHE: The cache line size is 64 bytes
 // CRC: We want CRC stripped when receiving and generated on the entire packet when sending
 // DCA: We want Direct Cache Access (DCA), for performance
 // DROP: We want to drop packets if we can't process them fast enough, for predictable behavior
@@ -42,7 +43,6 @@
 
 // This is the only constant not based on any spec, and that can be redefined at will
 #define IXGBE_PIPE_MAX_SENDS 4u
-static_assert(IXGBE_PIPE_MAX_SENDS % 4 == 0, "Pipes' max send must be a multiple of 4 so that send heads are in their own cache line");
 
 // Section 7.1.2.5 L3/L4 5-tuple Filters:
 // 	"There are 128 different 5-tuple filter configuration registers sets"
@@ -1092,9 +1092,11 @@ struct ixgbe_pipe
 	uint32_t processed_delimiter; // 32-bit since it's replicated to a NIC register
 	uint8_t _padding[4];
 	// send heads must be 16-byte aligned; see alignment remarks in send queue setup
-	// thus we do *4 for both definition and accesses...
 	// (there is also a runtime check to make sure the array itself is aligned properly)
-	volatile uint32_t send_heads[IXGBE_PIPE_MAX_SENDS * 4];
+	// plus, we want each head on its own cache line to avoid conflicts
+	// thus, using assumption CACHE, we multiply indices by 16
+	#define SEND_HEAD_MULTIPLIER 16
+	volatile uint32_t send_heads[IXGBE_PIPE_MAX_SENDS * SEND_HEAD_MULTIPLIER];
 	volatile uint64_t* send_rings[IXGBE_PIPE_MAX_SENDS]; // TODO if we use 1gb hugepages we can alloc many rings, make this "base", and use base+n instead of storing separately
 	uintptr_t send_tail_addrs[IXGBE_PIPE_MAX_SENDS];
 };
@@ -1299,12 +1301,13 @@ bool ixgbe_pipe_add_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	//	Section 8.2.3.9.10 Transmit Descriptor Control (TXDCTL[n]):
 	//	"HTHRESH should be given a non-zero value each time PTHRESH is used."
 	//	"For PTHRESH and HTHRESH recommended setting please refer to Section 7.2.3.4."
-	// INTERPRETATION: The "recommended values" are in 7.2.3.4.1 very vague; those numbers seem to work well
+	// INTERPRETATION: The "recommended values" are in 7.2.3.4.1 very vague; we use (cache line size)/(descriptor size) for HTHRESH (i.e. 64/16 by assumption CACHE),
+	//                 and a completely arbitrary value for PTHRESH (TODO bench with many, many, many different values)
 	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 60);
 	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	uintptr_t head_phys_addr;
-	if (!tn_mem_virt_to_phys((uintptr_t) &(pipe->send_heads[pipe->send_queues_count * 4]), &head_phys_addr)) {
+	if (!tn_mem_virt_to_phys((uintptr_t) &(pipe->send_heads[pipe->send_queues_count * SEND_HEAD_MULTIPLIER]), &head_phys_addr)) {
 		TN_DEBUG("Could not get the physical address of the send head");
 		return false;
 	}
@@ -1355,14 +1358,13 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 		pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
 		if((pipe->scheduling_counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
-
 			// Race conditions are possible here, but we don't care since all they can do is change the "real" value
 			// of the earliest send head to a later value, which is fine.
 			uint32_t earliest_send_head = 0;
 			uint64_t min_diff = (uint64_t) -1;
 			for (uint64_t n = 0; n < pipe->send_queues_count; n++) {
-				uint32_t head = pipe->send_heads[n * 4];
-				uint64_t diff = head - pipe->processed_delimiter;
+				uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
+				uint64_t diff = head - pipe->processed_delimiter; // TODO it'd be nice if we didn't need it here so we could modulo it only when writing, not at every iter
 				if (diff <= min_diff) {
 					earliest_send_head = head;
 					min_diff = diff;

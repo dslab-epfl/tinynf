@@ -50,29 +50,32 @@ int main(int argc, char** argv)
 		TN_INFO("Couldn't init pipe");
 		return 2;
 	}
-	for (uint8_t n = 0; n < 2; n++) {
+
+	struct ixgbe_device* devices[2];
+	for (uint8_t n = 0; n < sizeof(devices)/sizeof(devices[0]); n++) {
 		struct tn_pci_device pci_device = {.bus=0x83, .device=0x00, .function=n};
-		struct ixgbe_device* device;
-		if (!ixgbe_device_init(pci_device, &device)) {
+		if (!ixgbe_device_init(pci_device, &(devices[n]))) {
 			TN_INFO("Couldn't init device");
 			return 3 + 100*n;
 		}
-		if (!ixgbe_device_set_promiscuous(device)) {
+		if (!ixgbe_device_set_promiscuous(devices[n])) {
 			TN_INFO("Couldn't make device promiscuous");
 			return 4 + 100*n;
 		}
+	}
 
-		if (n == 0) {
-			if (!ixgbe_pipe_set_receive(pipe, device, 0)) {
-				TN_INFO("Couldn't set pipe RX");
-				return 5;
-			}
-		}
+	if (!ixgbe_pipe_set_receive(pipe, devices[0], 0)) {
+		TN_INFO("Couldn't set pipe RX");
+		return 5;
+	}
 
-		if (!ixgbe_pipe_add_send(pipe, device, 0)) {
-			TN_INFO("Couldn't set pipe TX");
-			return 6 + 100*n;
-		}
+	if (!ixgbe_pipe_add_send(pipe, devices[0], 0)) {
+		TN_INFO("Couldn't set pipe TX");
+		return 6;
+	}
+	if (!ixgbe_pipe_add_send(pipe, devices[1], 0)) {
+		TN_INFO("Couldn't set pipe TX");
+		return 7;
 	}
 
 	TN_INFO("Initialized successfully!");
