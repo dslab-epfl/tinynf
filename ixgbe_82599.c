@@ -361,7 +361,7 @@ uint64_t ixgbe_get_ring_size(void)
 	return IXGBE_RING_SIZE;
 }
 
-uint64_t ixgbe_get_packet_size_max(void)
+uint16_t ixgbe_get_packet_size_max(void)
 {
 	return IXGBE_PACKET_SIZE_MAX;
 }
@@ -1374,9 +1374,9 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 		// This cannot overflow because the packet is by definition in an allocated block of memory
 		uint8_t* packet = pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
 		// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
-		uint64_t receive_packet_length = receive_metadata & 0xFFu;
+		uint16_t receive_packet_length = receive_metadata & 0xFFu;
 		bool send_list[IXGBE_PIPE_MAX_SENDS] = {0};
-		uint64_t send_packet_length = handler(packet, receive_packet_length, send_list);
+		uint16_t send_packet_length = handler(packet, receive_packet_length, send_list);
 
 		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 		// "Buffer Address (64)", 1st line
@@ -1408,10 +1408,10 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 		// This means all we have to do is set the length in the first 16 bits, then bits 0,1,3 of CMD
 		// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first send ring, it will clear the Descriptor Done flag of the receive descriptor
 
-		*main_metadata_addr = (send_list[0] * send_packet_length) | BITL(24+3) | BITL(24+1) | BITL(24);
+		*main_metadata_addr = (send_list[0] * (uint64_t) send_packet_length) | BITL(24+3) | BITL(24+1) | BITL(24);
 
 		for (uint64_t n = 1; n < pipe->send_queues_count; n++) {
-			*(pipe->send_rings[n] + 2u*pipe->processed_delimiter + 1) = (send_list[n] * send_packet_length) | BITL(24+3) | BITL(24+1) | BITL(24);
+			*(pipe->send_rings[n] + 2u*pipe->processed_delimiter + 1) = (send_list[n] * (uint64_t) send_packet_length) | BITL(24+3) | BITL(24+1) | BITL(24);
 		}
 
 		// Increment the processed delimiter, modulo the ring size

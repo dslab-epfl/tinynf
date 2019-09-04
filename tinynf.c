@@ -4,7 +4,7 @@
 #include "util/log.h"
 #include <stdint.h>
 
-static uint64_t tinynf_packet_handler(uint8_t* packet, uint64_t packet_length, bool* send_list)
+static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, bool* send_list)
 {
 //	for (uint64_t n = 0; n < packet_length; n++) {
 //		printf("0x%02"PRIx8" ", packet[n]);
