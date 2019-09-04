@@ -1058,11 +1058,11 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // and not send to the other queues by setting a zero length on those queues' descriptors.
 // In practice, this means we cannot use the same descriptor ring for all queues, though the contents only differ
 // in the packet length of the send descriptors.
-// The overall transmit head is the earliest of the transmit queues' heads, and all transmit tails have the same value.
-// Computing the former is non-trivial, because transmit heads are modulo the ring size;
-// thus, the minimum of two transmit heads can only be computed with knowledge of another ring item;
-// since we know the processed delimiter comes after the transmit heads,
-// transmit_head_1 <% transmit_head_2 <=> (transmit_head_1 - processed_delimiter) < (transmit_head_2 - processed_delimiter)
+// The overall send head is the earliest of the send queues' heads, and all send tails have the same value.
+// Computing the former is non-trivial, because send heads are modulo the ring size;
+// thus, the minimum of two send heads can only be computed with knowledge of another ring item;
+// since we know the processed delimiter comes after the send heads,
+// send_head_1 <% send_head_2 <=> (send_head_1 - processed_delimiter) < (send_head_2 - processed_delimiter)
 // where <% represents "comes before in the modulo ring".
 // =================================================================================================================
 
@@ -1332,11 +1332,11 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 			// Race conditions are possible here, but we don't care since all they can do is change the "real" value
 			// of the earliest send head to a later value, which is fine.
 			uint32_t earliest_send_head = 0;
-			uint32_t min_diff = 0xFFFFu;
+			uint64_t min_diff = 0xFFFFFFFFu;
 			// Either there is an N such that diff_N < min_diff, or diff_0 == min_diff thus earliest_send_head stays at 0 which is correct
 			for (uint64_t n = 0; n < pipe->send_queues_count; n++) {
 				uint32_t head = pipe->send_heads[n];
-				uint32_t diff = head - pipe->processed_delimiter;
+				uint64_t diff = head - pipe->processed_delimiter;
 				if (diff < min_diff) {
 					earliest_send_head = head;
 					min_diff = diff;
