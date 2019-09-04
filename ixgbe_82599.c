@@ -41,25 +41,25 @@
 // TXPAD: We want all sent frames to be at least 64 bytes
 
 // This is the only constant not based on any spec, and that can be redefined at will
-#define IXGBE_PIPE_MAX_SENDS 16
+#define IXGBE_PIPE_MAX_SENDS 16u
 static_assert(IXGBE_PIPE_MAX_SENDS % 16 == 0, "Pipes' max send must be a multiple of 16 so that send heads are in their own cache line");
 
 // Section 7.1.2.5 L3/L4 5-tuple Filters:
 // 	"There are 128 different 5-tuple filter configuration registers sets"
-#define IXGBE_5TUPLE_FILTERS_COUNT 128
+#define IXGBE_5TUPLE_FILTERS_COUNT 128u
 // Section 7.3.1 Interrupts Registers:
 //	"These registers are extended to 64 bits by an additional set of two registers.
 //	 EICR has an additional two registers EICR(1)... EICR(2) and so on for the EICS, EIMS, EIMC, EIAM and EITR registers."
 #define IXGBE_INTERRUPT_REGISTERS_COUNT 2u
 // Section 7.10.3.10 Switch Control:
 //	"Multicast Table Array (MTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address."
-#define IXGBE_MULTICAST_TABLE_ARRAY_SIZE (4 * 1024)
+#define IXGBE_MULTICAST_TABLE_ARRAY_SIZE (4u * 1024u)
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
 // Section 7.2.3.2.2 Legacy Transmit Descriptor Format: "The maximum length associated with a single descriptor is 15.5 KB"
 #define IXGBE_PACKET_SIZE_MAX (2u * 1024u)
 // Section 7.1.1.1.1 Unicast Filter:
 // 	"The Ethernet MAC address is checked against the 128 host unicast addresses"
-#define IXGBE_RECEIVE_ADDRS_COUNT 128
+#define IXGBE_RECEIVE_ADDRS_COUNT 128u
 // Section 1.3 Features Summary:
 // 	"Number of Rx Queues (per port): 128"
 #define IXGBE_RECEIVE_QUEUES_COUNT 128u
@@ -72,13 +72,13 @@ static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be
 #define IXGBE_SEND_QUEUES_COUNT 128u
 // Section 7.1.2 Rx Queues Assignment:
 // 	"Packets are classified into one of several (up to eight) Traffic Classes (TCs)."
-#define IXGBE_TRAFFIC_CLASSES_COUNT 8
+#define IXGBE_TRAFFIC_CLASSES_COUNT 8u
 // Section 7.10.3.10 Switch Control:
 // 	"Unicast Table Array (PFUTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address"
-#define IXGBE_UNICAST_TABLE_ARRAY_SIZE (4 * 1024)
+#define IXGBE_UNICAST_TABLE_ARRAY_SIZE (4u * 1024u)
 // Section 7.10.3.2 Pool Selection:
 // 	"64 shared VLAN filters"
-#define IXGBE_VLAN_FILTER_COUNT 64
+#define IXGBE_VLAN_FILTER_COUNT 64u
 
 
 // ---------
@@ -135,7 +135,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
 #define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_WRITE4(addr, reg, idx, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), value)
-#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | ((((uint32_t) value) << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
+#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | (((value) << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
 #define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_CLEARED(addr, reg, idx, field) (IXGBE_REG_READ(addr, reg, idx, field) == 0u)
 #define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0U)
@@ -143,7 +143,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR4, IXGBE_REG_CLEAR3, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) | IXGBE_REG_##reg##_##field))
 
-// PCI primitives
 #define IXGBE_PCIREG_READ(pci_dev, reg) tn_pci_read(pci_dev, IXGBE_PCIREG_##reg)
 #define IXGBE_PCIREG_CLEARED(pci_dev, reg, field) ((IXGBE_PCIREG_READ(pci_dev, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
 #define IXGBE_PCIREG_SET(pci_dev, reg, field) tn_pci_write(pci_dev, IXGBE_PCIREG_##reg, (IXGBE_PCIREG_READ(pci_dev, reg) | IXGBE_PCIREG_##reg##_##field))
@@ -487,7 +486,7 @@ static void ixgbe_device_reset(const struct ixgbe_device* const device)
 
 static void ixgbe_device_disable_interrupts(const struct ixgbe_device* const device)
 {
-	for (uint32_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
+	for (uint8_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
 		// Section 8.2.3.5.4 Extended Interrupt Mask Clear Register (EIMC):
 		// "Writing a 1b to any bit clears its corresponding bit in the EIMS register disabling the corresponding interrupt in the EICR register. Writing 0b has no impact"
 		IXGBE_REG_SET(device->addr, EIMC, n, MASK);
@@ -636,7 +635,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//	Section 8.2.3.27.12 PF Unicast Table Array (PFUTA[n]):
 	//		"There is one register per 32 bits of the unicast address table"
 	//		"This table should be zeroed by software before start of operation."
-	for (uint32_t n = 0; n < IXGBE_UNICAST_TABLE_ARRAY_SIZE / 32; n++) {
+	for (uint8_t n = 0; n < IXGBE_UNICAST_TABLE_ARRAY_SIZE / 32; n++) {
 		IXGBE_REG_CLEAR(device.addr, PFUTA, n);
 	}
 	//	"- VLAN Filter Table Array (VFTA[n])."
@@ -649,7 +648,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// INTERPRETATION: While the spec appears to mention PFVLVF only in conjunction with VLNCTRL.VFE being enabled, let's be conservative and initialize them anyway.
 	// 	Section 8.2.3.27.15 PF VM VLAN Pool Filter (PFVLVF[n]):
 	//		"Software should initialize these registers before transmit and receive are enabled."
-	for (uint32_t n = 0; n < IXGBE_VLAN_FILTER_COUNT; n++) {
+	for (uint8_t n = 0; n < IXGBE_VLAN_FILTER_COUNT; n++) {
 		IXGBE_REG_CLEAR(device.addr, PFVLVF, n);
 	}
 	//	"- MAC Pool Select Array (MPSAR[n])."
@@ -662,20 +661,20 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// INTERPRETATION: We should enable all pools with address 0, just in case, and disable everything else since we only have 1 MAC address.
 	IXGBE_REG_WRITE(device.addr, MPSAR, 0, 0xFFFFFFFF);
 	IXGBE_REG_WRITE(device.addr, MPSAR, 1, 0xFFFFFFFF);
-	for (uint32_t n = 2; n < IXGBE_RECEIVE_ADDRS_COUNT * 2; n++) {
+	for (uint16_t n = 2; n < IXGBE_RECEIVE_ADDRS_COUNT * 2; n++) {
 		IXGBE_REG_CLEAR(device.addr, MPSAR, n);
 	}
 	//	"- VLAN Pool Filter Bitmap (PFVLVFB[n])."
 	// INTERPRETATION: See above remark on PFVLVF
 	//	Section 8.2.3.27.16: PF VM VLAN Pool Filter Bitmap
-	for (uint32_t n = 0; n < IXGBE_VLAN_FILTER_COUNT * 2; n++) {
+	for (uint8_t n = 0; n < IXGBE_VLAN_FILTER_COUNT * 2; n++) {
 		IXGBE_REG_CLEAR(device.addr, PFVLVFB, n);
 	}
 	//	"Set up the Multicast Table Array (MTA) registers.
 	//	 This entire table should be zeroed and only the desired multicast addresses should be permitted (by writing 0x1 to the corresponding bit location).
 	//	 Set the MCSTCTRL.MFE bit if multicast filtering is required."
 	// Section 8.2.3.7.7 Multicast Table Array (MTA[n]): "Word wide bit vector specifying 32 bits in the multicast address filter table."
-	for (uint32_t n = 0; n < IXGBE_MULTICAST_TABLE_ARRAY_SIZE / 32; n++) {
+	for (uint8_t n = 0; n < IXGBE_MULTICAST_TABLE_ARRAY_SIZE / 32; n++) {
 		IXGBE_REG_CLEAR(device.addr, MTA, n);
 	}
 	//	"Initialize the flexible filters 0...5 — Flexible Host Filter Table registers (FHFT)."
@@ -727,7 +726,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//		"Mask, bits 29:25: Mask bits for the 5-tuple fields (1b = don’t compare)."
 	//		"Queue Enable, bit 31; When set, enables filtering of Rx packets by the 5-tuple defined in this filter to the queue indicated in register L34TIMIR."
 	// We clear Queue Enable. We then do not need to deal with SAQF, DAQF, SDPQF, SYNQF, by assumption NOWANT
-	for (uint32_t n = 0; n < IXGBE_5TUPLE_FILTERS_COUNT; n++) {
+	for (uint8_t n = 0; n < IXGBE_5TUPLE_FILTERS_COUNT; n++) {
 		IXGBE_REG_CLEAR(device.addr, FTQF, n, QUEUE_ENABLE);
 	}
 	//	Section 7.1.2.3 L2 Ethertype Filters:
@@ -752,7 +751,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//			"SIZE, Init val 0x200"
 	//			"The default size of PB[1-7] is also 512 KB but it is meaningless in non-DCB mode."
 	// INTERPRETATION: We do not need to change PB[0] but must clear PB[1-7]
-	for (uint32_t n = 1; n < IXGBE_TRAFFIC_CLASSES_COUNT; n++) {
+	for (uint8_t n = 1; n < IXGBE_TRAFFIC_CLASSES_COUNT; n++) {
 		IXGBE_REG_CLEAR(device.addr, RXPBSIZE, n);
 	}
 	//		"- MRQC"
@@ -827,22 +826,22 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// "DCA Mode. Init val 0x0. [...] 0001b = DCA 1.0 is supported"
 	IXGBE_REG_WRITE(device.addr, DCACTRL, _, DCA_MODE, 1);
 	uint8_t dca_id = tn_dca_get_id();
-	for (uint32_t n = 0; n < IXGBE_SEND_QUEUES_COUNT; n++) {
+	for (uint8_t n = 0; n < IXGBE_SEND_QUEUES_COUNT; n++) {
 		//		Section 8.2.3.11.2 Tx DCA Control Registers (DCA_TXCTRL[n]):
 		//			"Tx Descriptor DCA EN, Init val 0b; Descriptor DCA Enable. When set, hardware enables DCA for all Tx descriptors written back into memory.
 		//			 When cleared, hardware does not enable DCA for descriptor write-backs. This bit is cleared as a default and also applies to head write back when enabled."
 		IXGBE_REG_SET(device.addr, DCATXCTRL, n, TX_DESCRIPTOR_DCA_EN);
 		//			"CPUID [...] DCA 1.0 capable platforms — the device driver programs a value, based on the relevant APIC ID, associated with this Tx queue."
-		IXGBE_REG_WRITE(device.addr, DCATXCTRL, n, CPUID, dca_id);
+		IXGBE_REG_WRITE(device.addr, DCATXCTRL, n, CPUID, (uint32_t) dca_id);
 	}
 	// INTEPRETATION: We should set DCA_RXCTRL as well (it's not mentioned anywhere to be part of the setup, but since we just did DCA_TXCTRL...)
-	for (uint32_t n = 0; n < IXGBE_RECEIVE_QUEUES_COUNT; n++) {
+	for (uint8_t n = 0; n < IXGBE_RECEIVE_QUEUES_COUNT; n++) {
 		//		Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]):
 		//			"Descriptor DCA EN. When set, hardware enables DCA for all Rx descriptors written back into memory. [...]"
 		IXGBE_REG_SET(device.addr, DCARXCTRL, n, RX_DESCRIPTOR_DCA_EN);
 		// TODO try with RX_PAYLOAD_DCA_EN as well?
 		//			"CPUID [...] DCA 1.0 capable platforms — The device driver programs a value, based on the relevant APIC ID, associated with this Rx queue."
-		IXGBE_REG_WRITE(device.addr, DCARXCTRL, n, CPUID, dca_id);
+		IXGBE_REG_WRITE(device.addr, DCARXCTRL, n, CPUID, (uint32_t) dca_id);
 	}
 	//				There are fields dealing with relaxed ordering; Section 3.1.4.5.3 Relaxed Ordering states that it "enables the system to optimize performance", with no apparent correctness impact.
 	// INTERPRETATION: Relaxed ordering has no correctness issues, and thus should be enabled.
@@ -856,7 +855,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//				"SIZE, Init val 0xA0"
 	//				"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
 	// INTERPRETATION: We do not need to change TXPBSIZE[0]. Let's stay on the safe side and clear TXPBSIZE[1-7] anyway.
-	for (uint32_t n = 1; n < IXGBE_TRAFFIC_CLASSES_COUNT; n++) {
+	for (uint8_t n = 1; n < IXGBE_TRAFFIC_CLASSES_COUNT; n++) {
 		IXGBE_REG_CLEAR(device.addr, TXPBSIZE, n);
 	}
 	//			"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
@@ -1074,16 +1073,16 @@ struct ixgbe_pipe
 	volatile uint64_t* receive_ring;
 	uintptr_t receive_tail_addr;
 	uint64_t scheduling_counter;
-	uint32_t processed_delimiter; // Must be 32-bit since it gets written to the send tails
-	uint8_t _padding0[4];
+	uint32_t processed_delimiter; // 32-bit since it's replicated to a NIC register
+	uint8_t _padding[4];
 	uint64_t send_queues_count;
 	// Physical addresses are only used during setup, not during the loop
 	uintptr_t buffer_phys_addr;
 	uintptr_t* send_head_phys_addrs;
-	// The definition of IXGBE_PIPE_MAX_SENDS ensures those are all aligned properly
-	// send heads must be 16-byte aligned, regardless of the uintptr_t size; see alignment remarks in send queue setup
-	// (there is also a runtime check so in case uintptr_t is not 64 bits this code will not silently fail)
-	volatile uint32_t send_heads[IXGBE_PIPE_MAX_SENDS];
+	// send heads must be 16-byte aligned; see alignment remarks in send queue setup
+	// thus we do *4 for both definition and accesses...
+	// (there is also a runtime check to make sure the array itself is aligned properly)
+	volatile uint32_t send_heads[IXGBE_PIPE_MAX_SENDS * 4];
 	volatile uint64_t* send_rings[IXGBE_PIPE_MAX_SENDS]; // TODO if we use 1gb hugepages we can alloc many rings, make this "base", and use base+n instead of storing separately
 	uintptr_t send_tail_addrs[IXGBE_PIPE_MAX_SENDS];
 };
@@ -1278,7 +1277,7 @@ bool ixgbe_pipe_add_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	uintptr_t head_phys_addr;
-	if (!tn_mem_virt_to_phys((uintptr_t) &(pipe->send_heads[pipe->send_queues_count]), &head_phys_addr)) {
+	if (!tn_mem_virt_to_phys((uintptr_t) &(pipe->send_heads[pipe->send_queues_count * 4]), &head_phys_addr)) {
 		TN_DEBUG("Could not get the physical address of the send head");
 		return false;
 	}
@@ -1335,7 +1334,7 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 			uint64_t min_diff = 0xFFFFFFFFu;
 			// Either there is an N such that diff_N < min_diff, or diff_0 == min_diff thus earliest_send_head stays at 0 which is correct
 			for (uint64_t n = 0; n < pipe->send_queues_count; n++) {
-				uint32_t head = pipe->send_heads[n];
+				uint32_t head = pipe->send_heads[n * 4];
 				uint64_t diff = head - pipe->processed_delimiter;
 				if (diff < min_diff) {
 					earliest_send_head = head;
@@ -1357,6 +1356,7 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 			continue;
 		}
 		// Clear the receive descriptor metadata, so hardware can reuse it
+		// TODO could we share the 1st send ring and the receive ring, so that we don't need this write?
 		*receive_metadata_addr = 0;
 
 		// This cannot overflow because the packet is by definition in an allocated block of memory
