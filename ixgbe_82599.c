@@ -1225,8 +1225,13 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 
 bool ixgbe_pipe_add_send(struct ixgbe_pipe* const pipe, const struct ixgbe_device* const device, const uint64_t long_queue_index)
 {
+	if (pipe->receive_tail_addr == 0) {
+		TN_DEBUG("Pipe receive must be configured first");
+		return false;
+	}
+
 	if (pipe->send_queues_count == IXGBE_PIPE_MAX_SENDS) {
-		TN_DEBUG("The pipe is already using ");
+		TN_DEBUG("The pipe is already using the maximum amount of send queues");
 		return false;
 	}
 
