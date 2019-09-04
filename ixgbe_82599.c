@@ -1076,9 +1076,9 @@ struct ixgbe_pipe
 	uint64_t scheduling_counter;
 	uint64_t send_queues_count;
 	uintptr_t buffer_phys_addr; // only used during setup
+	uintptr_t main_ring_phys_addr; // only used during setup
 	uint32_t processed_delimiter; // 32-bit since it's replicated to a NIC register
-	uint8_t receive_queue_index; // only used during setup
-	uint8_t _padding[11];
+	uint8_t _padding[4];
 	// send heads must be 16-byte aligned; see alignment remarks in send queue setup
 	// thus we do *4 for both definition and accesses...
 	// (there is also a runtime check to make sure the array itself is aligned properly)
@@ -1213,8 +1213,8 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 	IXGBE_REG_SET(device->addr, DCARXCTRL, queue_index, UNKNOWN);
 
 	pipe->main_ring = ring;
+	pipe->main_ring_phys_addr = ring_block.phys_addr;
 	pipe->receive_tail_addr = device->addr + IXGBE_REG_RDT(queue_index);
-	pipe->receive_queue_index = queue_index;
 	return true;
 }
 
@@ -1255,8 +1255,8 @@ bool ixgbe_pipe_add_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	if (pipe->send_queues_count == 0) {
 		ring = pipe->main_ring;
 		// "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
-		IXGBE_REG_WRITE(device->addr, TDBAH, queue_index, IXGBE_REG_READ(device->addr, RDBAH, pipe->receive_queue_index));
-		IXGBE_REG_WRITE(device->addr, TDBAL, queue_index, IXGBE_REG_READ(device->addr, RDBAL, pipe->receive_queue_index));
+		IXGBE_REG_WRITE(device->addr, TDBAH, queue_index, (uint32_t) (pipe->main_ring_phys_addr >> 32));
+		IXGBE_REG_WRITE(device->addr, TDBAL, queue_index, (uint32_t) (pipe->main_ring_phys_addr & 0xFFFFFFFFu));
 	} else {
 		struct tn_memory_block ring_block; // TODO memory leak if alloc succeeds but we return false later
 		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring_block)) { // 16 bytes per descriptor, i.e. 2x64bits
