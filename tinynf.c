@@ -24,9 +24,8 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, b
 	packet[10]= 0xFF;
 	packet[11]= 0xFF;
 
-//	send_list[0] = false;
-//	send_list[1] = true;
-	send_list[0] = true;
+	send_list[0] = false;
+	send_list[1] = true;
 
 	return packet_length;
 }
@@ -70,11 +69,9 @@ int main(int argc, char** argv)
 			}
 		}
 
-		if (n == 1) {
-			if (!ixgbe_pipe_add_send(pipe, device, 0)) {
-				TN_INFO("Couldn't set pipe TX");
-				return 6 + 100*n;
-			}
+		if (!ixgbe_pipe_add_send(pipe, device, 0)) {
+			TN_INFO("Couldn't set pipe TX");
+			return 6 + 100*n;
 		}
 	}
 
