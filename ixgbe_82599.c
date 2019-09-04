@@ -1355,15 +1355,15 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 		pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
 		if((pipe->scheduling_counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
+
 			// Race conditions are possible here, but we don't care since all they can do is change the "real" value
 			// of the earliest send head to a later value, which is fine.
 			uint32_t earliest_send_head = 0;
-			uint64_t min_diff = 0xFFFFFFFFu;
-			// Either there is an N such that diff_N < min_diff, or diff_0 == min_diff thus earliest_send_head stays at 0 which is correct
+			uint64_t min_diff = (uint64_t) -1;
 			for (uint64_t n = 0; n < pipe->send_queues_count; n++) {
 				uint32_t head = pipe->send_heads[n * 4];
 				uint64_t diff = head - pipe->processed_delimiter;
-				if (diff < min_diff) {
+				if (diff <= min_diff) {
 					earliest_send_head = head;
 					min_diff = diff;
 				}
