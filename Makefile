@@ -30,11 +30,13 @@ endif
 # OS handling
 ifeq ($(OS),linux)
 CFLAGS += -D_GNU_SOURCE
-CFLAGS += -lnuma
+LDFLAGS += -lnuma
 CFLAGS += -Wno-format-nonliteral # We have format strings parameters; this warning is for potential security issues, we trust all code
 endif
 
-# Generate the dependencies in Makefile format using cc -M, then keep only the dependencies (not the targets:, not the backslashes for newlines); ignore unused args for this
-tinynf: Makefile $(shell ${CC} ${FILES} $(CFLAGS) -Wno-unused-command-line-argument -M | sed 's/.*://g' | sed 's/\\//g')
-	@$(CC) $(FILES) $(CFLAGS) -o $@
+# Generate the dependencies in Makefile format using cc -M, then keep only the dependencies (not the targets:, not the backslashes for newlines)
+tinynf: Makefile $(shell ${CC} ${FILES} $(CFLAGS) -M | sed 's/.*://g' | sed 's/\\//g')
+	@$(CC) $(CFLAGS) $(FILES) -c
+	@$(CC) $(LDFLAGS) $(subst .c,.o,$(notdir $(FILES))) -o $@
 	@$(STRIP) $(STRIPFLAGS) $@
+	@rm -f $(subst .c,.o,$(notdir $(FILES)))
