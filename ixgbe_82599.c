@@ -199,6 +199,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Section 8.2.3.11.1 Rx DCA Control Register
 #define IXGBE_REG_DCARXCTRL(n) ((n) <= 63u ? (0x0100Cu + 0x40u*(n)) : (0x0D00Cu + 0x40u*((n)-64u)))
 #define IXGBE_REG_DCARXCTRL_RX_DESCRIPTOR_DCA_EN BIT(5)
+#define IXGBE_REG_DCARXCTRL_RX_PAYLOAD_DCA_EN BIT(7)
 // This bit is reserved, has no name, but must be used anyway
 #define IXGBE_REG_DCARXCTRL_UNKNOWN BIT(12)
 #define IXGBE_REG_DCARXCTRL_CPUID BITS(24,31)
@@ -284,6 +285,9 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_RDRXCTL(_) 0x02F00u
 #define IXGBE_REG_RDRXCTL_CRC_STRIP BIT(1)
 #define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
+#define IXGBE_REG_RDRXCTL_RSCFRSTSIZE BITS(17,24)
+#define IXGBE_REG_RDRXCTL_RSCACKC BIT(25)
+#define IXGBE_REG_RDRXCTL_FCOE_WRFIX BIT(26)
 
 // Section 8.2.3.8.5 Receive Descriptor Tail
 #define IXGBE_REG_RDT(n) ((n) <= 63u ? (0x01018u + 0x40u*(n)) : (0x0D018u + 0x40u*((n)-64u)))
@@ -694,7 +698,6 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//		 At 0b, the ECC logic can still function overcoming only single errors while dual or multiple errors can be ignored silently."
 	// INTERPRETATION: Since we do not want flexible filters, this step is not necessary.
 	//	"Program the different Rx filters and Rx offloads via registers FCTRL, VLNCTRL, MCSTCTRL, RXCSUM, RQTC, RFCTL, MPSAR, RSSRK, RETA, SAQF, DAQF, SDPQF, FTQF, SYNQF, ETQF, ETQS, RDRXCTL, RSCDBU."
-	//	"Note that RDRXCTL.CRCStrip and HLREG0.RXCRCSTRP must be set to the same value. At the same time the RDRXCTL.RSCFRSTSIZE should be set to 0x0 as opposed to its hardware default."
 	// We do not touch FCTRL here, if the user wants promiscuous mode they will call the appropriate function.
 	//	Section 8.2.3.7.2 VLAN Control Register (VLNCTRL):
 	//		"Bit 30, VLAN Filter Enable, Init val 0b; 0b = Disabled."
@@ -739,6 +742,15 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//		The only non-reserved, non-RO bit is "CRCStrip, bit 1, Init val 0; 0b = No CRC Strip by HW."
 	// By assumption CRC, we enable CRCStrip
 	IXGBE_REG_SET(device.addr, RDRXCTL, _, CRC_STRIP);
+	//	"Note that RDRXCTL.CRCStrip and HLREG0.RXCRCSTRP must be set to the same value. At the same time the RDRXCTL.RSCFRSTSIZE should be set to 0x0 as opposed to its hardware default."
+	// As explained earlier, HLREG0.RXCRCSTRP is already set to 1, so that's fine
+	IXGBE_REG_CLEAR(device.addr, RDRXCTL, _, RSCFRSTSIZE);
+	//	Section 8.2.3.8.8 Receive DMA Control Register (RDRXCTL):
+	//		"RSCACKC [...] Software should set this bit to 1b."
+	IXGBE_REG_SET(device.addr, RDRXCTL, _, RSCACKC);
+	//		"FCOE_WRFIX [...] Software should set this bit to 1b."
+	IXGBE_REG_SET(device.addr, RDRXCTL, _, FCOE_WRFIX);
+	// INTERPRETATION: The setup forgets to mention RSCACKC and FCOE_WRFIX, but we should set those properly anyway.
 	//	Section 8.2.3.8.12 RSC Data Buffer Control Register (RSCDBU):
 	//		The only non-reserved bit is "RSCACKDIS, bit 7, init val 0b; Disable RSC for ACK Packets."
 	// We do not need to change RSCDBU by assumption NOCARE
@@ -839,7 +851,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 		//		Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]):
 		//			"Descriptor DCA EN. When set, hardware enables DCA for all Rx descriptors written back into memory. [...]"
 		IXGBE_REG_SET(device.addr, DCARXCTRL, n, RX_DESCRIPTOR_DCA_EN);
-		// TODO try with RX_PAYLOAD_DCA_EN as well?
+		IXGBE_REG_SET(device.addr, DCARXCTRL, n, RX_PAYLOAD_DCA_EN);
 		//			"CPUID [...] DCA 1.0 capable platforms — The device driver programs a value, based on the relevant APIC ID, associated with this Rx queue."
 		IXGBE_REG_WRITE(device.addr, DCARXCTRL, n, CPUID, (uint32_t) dca_id);
 	}
