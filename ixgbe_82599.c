@@ -1341,7 +1341,6 @@ bool ixgbe_pipe_add_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
 	// Nothing to transmit yet, so leave TDT alone.
 
-	pipe->send_heads[send_queues_count * SEND_HEAD_MULTIPLIER + 1] = 1; // mark head as used TODO gross hack, remove?
 	pipe->send_tail_addrs[send_queues_count] = device->addr + IXGBE_REG_TDT(queue_index);
 	return true;
 }
@@ -1358,7 +1357,7 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 			uint32_t earliest_send_head = 0;
 			uint64_t min_diff = (uint64_t) -1;
 			for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-				bool head_is_used = pipe->send_heads[n * SEND_HEAD_MULTIPLIER + 1] != 0;
+				bool head_is_used = pipe->send_tail_addrs[n] != 0;
 				if (head_is_used) {
 					uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
 					uint64_t diff = head - pipe->processed_delimiter; // TODO it'd be nice if we didn't need it here so we could modulo it only when writing, not at every iter
