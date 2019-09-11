@@ -71,7 +71,9 @@ int main(int argc, char** argv)
 
 	TN_INFO("Initialized successfully!");
 
-	ixgbe_pipe_run(pipe, tinynf_packet_handler);
+	while(true) {
+		ixgbe_pipe_run_step(pipe, tinynf_packet_handler);
+	}
 
 //	TN_INFO("Done!");
 //	return 0;

@@ -1342,84 +1342,82 @@ bool ixgbe_pipe_add_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 }
 
 
-void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
+void ixgbe_pipe_run_step(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 {
-	while (true) {
-		pipe->scheduling_counter = pipe->scheduling_counter + 1u;
+	pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
-		if((pipe->scheduling_counter & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) {
-			// Race conditions are possible here, but we don't care since all they can do is change the "real" value
-			// of the earliest send head to a later value, which is fine.
-			uint32_t earliest_send_head = 0;
-			uint64_t min_diff = (uint64_t) -1;
-			for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-				bool head_is_used = pipe->send_tail_addrs[n] != 0;
-				if (head_is_used) {
-					uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
-					uint64_t diff = head - pipe->processed_delimiter; // TODO it'd be nice if we didn't need it here so we could modulo it only when writing, not at every iter
-					if (diff < min_diff) {
-						earliest_send_head = head;
-						min_diff = diff;
-					}
-
-					ixgbe_reg_write_raw(pipe->send_tail_addrs[n], pipe->processed_delimiter);
-				}
-			}
-
-			ixgbe_reg_write_raw(pipe->receive_tail_addr, (earliest_send_head - 1) & (IXGBE_RING_SIZE - 1));
-		}
-
-		// Since descriptors are 16 bytes, the index must be doubled
-		volatile uint64_t* main_metadata_addr = pipe->rings[0] + 2u*pipe->processed_delimiter + 1;
-		uint64_t receive_metadata = *main_metadata_addr;
-		// Section 7.1.5 Legacy Receive Descriptor Format:
-		// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
-		if ((receive_metadata & BITL(32)) == 0) {
-			continue;
-		}
-
-		// This cannot overflow because the packet is by definition in an allocated block of memory
-		uint8_t* packet = pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
-		// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
-		uint16_t receive_packet_length = receive_metadata & 0xFFu;
-		bool send_list[IXGBE_PIPE_MAX_SENDS] = {0};
-		uint16_t send_packet_length = handler(packet, receive_packet_length, send_list);
-
-		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
-		// "Buffer Address (64)", 1st line
-		// 2nd line:
-			// "Length", bits 0-15: "Length (TDESC.LENGTH) specifies the length in bytes to be fetched from the buffer address provided"
-				// "Note: Descriptors with zero length (null descriptors) transfer no data."
-			// "CSO", bits 16-23: "A Checksum Offset (TDESC.CSO) field indicates where, relative to the start of the packet, to insert a TCP checksum if this mode is enabled"
-				// All zero
-			// "CMD", bits 24-31:
-				// "RSV (bit 7) - Reserved
-				//  VLE (bit 6) - VLAN Packet Enable [...]
-				//  DEXT (bit 5) - Descriptor extension (zero for legacy mode)
-				//  RSV (bit 4) - Reserved
-				//  RS (bit 3) - Report Status: "signals hardware to report the DMA completion status indication"
-				//  IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set.
-				//  IFCS (bit 1) — Insert FCS:
-				//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
-				//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
-				//  EOP (bit 0) - End of Packet"
-			// STA, bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
-				// All zero
-			// Rsvd, bits 36-39: "Reserved."
-				// All zero
-			// CSS, bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
-				// All zero
-			// VLAN, bits 48-63:
-				// All zero
-		// The buffer address does not get clobbered by write-back, so no need to set it again
-		// This means all we have to do is set the length in the first 16 bits, then bits 0,1,3 of CMD
-		// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first send ring, it will clear the Descriptor Done flag of the receive descriptor
-		// If not all send rings are used, we will write into an unused (but allocated!) ring, that's fine
+	if((pipe->scheduling_counter & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) {
+		// Race conditions are possible here, but we don't care since all they can do is change the "real" value
+		// of the earliest send head to a later value, which is fine.
+		uint32_t earliest_send_head = 0;
+		uint64_t min_diff = (uint64_t) -1;
 		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-			*(pipe->rings[n] + 2u*pipe->processed_delimiter + 1) = (send_list[n] * (uint64_t) send_packet_length) | BITL(24+3) | BITL(24+1) | BITL(24);
+			bool head_is_used = pipe->send_tail_addrs[n] != 0;
+			if (head_is_used) {
+				uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
+				uint64_t diff = head - pipe->processed_delimiter; // TODO it'd be nice if we didn't need it here so we could modulo it only when writing, not at every iter
+				if (diff < min_diff) {
+					earliest_send_head = head;
+					min_diff = diff;
+				}
+
+				ixgbe_reg_write_raw(pipe->send_tail_addrs[n], pipe->processed_delimiter);
+			}
 		}
 
-		// Increment the processed delimiter, modulo the ring size
-		pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
+		ixgbe_reg_write_raw(pipe->receive_tail_addr, (earliest_send_head - 1) & (IXGBE_RING_SIZE - 1));
 	}
+
+	// Since descriptors are 16 bytes, the index must be doubled
+	volatile uint64_t* main_metadata_addr = pipe->rings[0] + 2u*pipe->processed_delimiter + 1;
+	uint64_t receive_metadata = *main_metadata_addr;
+	// Section 7.1.5 Legacy Receive Descriptor Format:
+	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
+	if ((receive_metadata & BITL(32)) == 0) {
+		return;
+	}
+
+	// This cannot overflow because the packet is by definition in an allocated block of memory
+	uint8_t* packet = pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
+	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
+	uint16_t receive_packet_length = receive_metadata & 0xFFu;
+	bool send_list[IXGBE_PIPE_MAX_SENDS] = {0};
+	uint16_t send_packet_length = handler(packet, receive_packet_length, send_list);
+
+	// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
+	// "Buffer Address (64)", 1st line
+	// 2nd line:
+		// "Length", bits 0-15: "Length (TDESC.LENGTH) specifies the length in bytes to be fetched from the buffer address provided"
+			// "Note: Descriptors with zero length (null descriptors) transfer no data."
+		// "CSO", bits 16-23: "A Checksum Offset (TDESC.CSO) field indicates where, relative to the start of the packet, to insert a TCP checksum if this mode is enabled"
+			// All zero
+		// "CMD", bits 24-31:
+			// "RSV (bit 7) - Reserved
+			//  VLE (bit 6) - VLAN Packet Enable [...]
+			//  DEXT (bit 5) - Descriptor extension (zero for legacy mode)
+			//  RSV (bit 4) - Reserved
+			//  RS (bit 3) - Report Status: "signals hardware to report the DMA completion status indication"
+			//  IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set.
+			//  IFCS (bit 1) — Insert FCS:
+			//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
+			//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
+			//  EOP (bit 0) - End of Packet"
+		// STA, bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
+			// All zero
+		// Rsvd, bits 36-39: "Reserved."
+			// All zero
+		// CSS, bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
+			// All zero
+		// VLAN, bits 48-63:
+			// All zero
+	// The buffer address does not get clobbered by write-back, so no need to set it again
+	// This means all we have to do is set the length in the first 16 bits, then bits 0,1,3 of CMD
+	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first send ring, it will clear the Descriptor Done flag of the receive descriptor
+	// If not all send rings are used, we will write into an unused (but allocated!) ring, that's fine
+	for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
+		*(pipe->rings[n] + 2u*pipe->processed_delimiter + 1) = (send_list[n] * (uint64_t) send_packet_length) | BITL(24+3) | BITL(24+1) | BITL(24);
+	}
+
+	// Increment the processed delimiter, modulo the ring size
+	pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
 }
