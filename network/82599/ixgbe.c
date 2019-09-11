@@ -6,7 +6,8 @@
 #include "os/time.h"
 #include "util/log.h"
 
-#include <assert.h>
+// Don't include assert.h since that's not allowed in freestanding implementations
+#define static_assert _Static_assert
 
 
 // ASSUMPTIONS
