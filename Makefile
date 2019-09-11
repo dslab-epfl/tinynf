@@ -9,7 +9,17 @@ CC := clang-8 # clang has -Weverything, no need to manually list warnings we wan
 STRIP := strip
 
 # Files
-FILES := $(shell echo *.c os/$(OS)/*.c arch/$(ARCH)/*.c net/$(NET)/*.c util/*.c)
+FILES := $(shell echo os/$(OS)/*.c arch/$(ARCH)/*.c net/$(NET)/*.c util/*.c)
+
+# Main file
+ifeq (,$(TN_VIGOR_NF))
+FILES += tinynf.c
+else
+_IGNORED := $(shell cd deps/vigor/$(TN_VIGOR_NF) ; make autogen)
+FILES += compat-vigor/main.c
+FILES += $(shell echo deps/vigor/$(TN_VIGOR_NF)/*.c)
+CFLAGS += -Ideps/vigor
+endif
 
 # Required arguments
 CFLAGS += -std=c17
