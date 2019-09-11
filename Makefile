@@ -11,7 +11,7 @@ STRIP := strip
 FILES := $(shell echo *.c os/$(OS)/*.c arch/$(ARCH)/*.c)
 
 # Required arguments
-CFLAGS += -std=c11
+CFLAGS += -std=c17
 CFLAGS += -Weverything
 CFLAGS += -I. # Allow repo root relative paths
 STRIPFLAGS := -R .comment
