@@ -39,21 +39,21 @@ int main(int argc, char** argv)
 	uint64_t ring_size = ixgbe_get_ring_size();
 	uint64_t packet_size_max = ixgbe_get_packet_size_max();
 
-	struct tn_memory_block packets_buffer;
-	if (!tn_mem_allocate(packet_size_max * ring_size, &packets_buffer)) {
+	uintptr_t packets_buffer_addr;
+	if (!tn_mem_allocate(packet_size_max * ring_size, &packets_buffer_addr)) {
 		TN_INFO("Couldn't alloc packet buffers");
 		return 1;
 	}
 
 	struct ixgbe_pipe* pipe;
-	if (!ixgbe_pipe_init(packets_buffer, &pipe)) {
+	if (!ixgbe_pipe_init(packets_buffer_addr, &pipe)) {
 		TN_INFO("Couldn't init pipe");
 		return 2;
 	}
 
 	struct ixgbe_device* devices[2];
 	for (uint8_t n = 0; n < sizeof(devices)/sizeof(devices[0]); n++) {
-		struct tn_pci_device pci_device = {.bus=0x83, .device=0x00, .function=n};
+		struct tn_pci_device pci_device = {.bus=0x06, .device=0x00, .function=n};
 		if (!ixgbe_device_init(pci_device, &(devices[n]))) {
 			TN_INFO("Couldn't init device");
 			return 3 + 100*n;

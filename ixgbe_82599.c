@@ -2,6 +2,7 @@
 
 #include "arch/dca.h"
 #include "arch/endian.h"
+#include "os/memory.h"
 #include "os/time.h"
 #include "util/log.h"
 
@@ -898,12 +899,12 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// 	Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
 	// We don't need to do anything here by assumption NOWANT
 
-	struct tn_memory_block device_block;
-	if (!tn_mem_allocate(sizeof(struct ixgbe_device), &device_block)) {
+	uintptr_t device_addr;
+	if (!tn_mem_allocate(sizeof(struct ixgbe_device), &device_addr)) {
 		TN_DEBUG("Could not allocate device struct");
 		return false;
 	}
-	struct ixgbe_device* heap_device = (struct ixgbe_device*) device_block.virt_addr;
+	struct ixgbe_device* heap_device = (struct ixgbe_device*) device_addr;
 	*heap_device = device;
 	*out_device = heap_device;
 	return true;
@@ -1105,28 +1106,28 @@ struct ixgbe_pipe
 // Pipe initialization - no HW interactions
 // ===================
 
-bool ixgbe_pipe_init(const struct tn_memory_block buffer, struct ixgbe_pipe** out_pipe)
+bool ixgbe_pipe_init(const uintptr_t buffer_addr, struct ixgbe_pipe** out_pipe)
 {
-	struct tn_memory_block pipe_block;
-	if (!tn_mem_allocate(sizeof(struct ixgbe_pipe), &pipe_block)) {
+	uintptr_t pipe_addr;
+	if (!tn_mem_allocate(sizeof(struct ixgbe_pipe), &pipe_addr)) {
 		TN_DEBUG("Could not allocate pipe");
 		return false;
 	}
 
-	struct ixgbe_pipe* pipe = (struct ixgbe_pipe*) pipe_block.virt_addr;
-	pipe->buffer = (uint8_t*) buffer.virt_addr;
+	struct ixgbe_pipe* pipe = (struct ixgbe_pipe*) pipe_addr;
+	pipe->buffer = (uint8_t*) buffer_addr;
 
 	for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
 		// Rings need to be 128-byte aligned, as seen later
 		static_assert(IXGBE_RING_SIZE * 16 >= 128, "The ring address should be 128-byte aligned");
 
-		struct tn_memory_block ring_block; // TODO memory leaks... need to free this
-		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring_block)) { // 16 bytes per descriptor, i.e. 2x64bits
+		uintptr_t ring_addr; // TODO memory leaks... need to free this if subsequent ops fail
+		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring_addr)) { // 16 bytes per descriptor, i.e. 2x64bits
 			TN_DEBUG("Could not allocate ring");
 			return false;
 		}
 
-		pipe->rings[n] = (volatile uint64_t*) ring_block.virt_addr;
+		pipe->rings[n] = (volatile uint64_t*) ring_addr;
 	}
 
 	*out_pipe = pipe;

@@ -34,7 +34,7 @@ static uintptr_t get_page_size(void)
 //             If this assumption were to be broken, this code would need to change.
 //             Locking a page is not sufficient - it guarantees the page won't be swapped out,
 //             not that it won't be moved.
-bool tn_mem_allocate(const uint64_t size, struct tn_memory_block* out_block)
+bool tn_mem_allocate(const uint64_t size, uintptr_t* out_addr)
 {
 	// OK if size is smaller, we'll just return too much memory
 	if (size > HUGEPAGE_SIZE) {
@@ -62,24 +62,18 @@ bool tn_mem_allocate(const uint64_t size, struct tn_memory_block* out_block)
 		return false;
 	}
 
-	uintptr_t virt_addr = (uintptr_t) page;
+	uintptr_t addr = (uintptr_t) page;
 
 	// HACK: We're hoping that the Linux kernel will allocate memory on our node - in practice this seems to work
 	uint64_t node;
-	if (!tn_numa_get_addr_node(virt_addr, &node)) {
+	if (!tn_numa_get_addr_node(addr, &node)) {
 		goto error;
 	}
 	if (!tn_numa_is_current_node(node)) {
 		goto error;
 	}
 
-	uintptr_t phys_addr;
-	if (!tn_mem_virt_to_phys(virt_addr, &phys_addr)) {
-		goto error;
-	}
-
-	out_block->virt_addr = virt_addr;
-	out_block->phys_addr = phys_addr;
+	*out_addr = addr;
 	return true;
 
 error:
@@ -87,9 +81,9 @@ error:
 	return false;
 }
 
-void tn_mem_free(struct tn_memory_block block)
+void tn_mem_free(const uintptr_t addr)
 {
-	munmap((void*) block.virt_addr, HUGEPAGE_SIZE);
+	munmap((void*) addr, HUGEPAGE_SIZE);
 }
 
 bool tn_mem_phys_to_virt(const uintptr_t addr, const uint64_t size, uintptr_t* out_virt_addr)
