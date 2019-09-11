@@ -2,19 +2,30 @@
 
 #include "os/stub/symbol.h"
 
-#include <assert.h>
 #include <stdlib.h>
 
 
-bool tn_mem_allocate(const size_t size, struct tn_memory_block* out_block)
+bool tn_mem_allocate(uint64_t size, uintptr_t* out_addr)
 {
-	if (symbol_bool("mem_allocate")) {
-		void* result = calloc(size, sizeof(uint8_t));
-		assert(result != NULL);
-		out_block->virt_addr = (uintptr_t) result;
-		out_block->phys_addr = out_block->virt_addr; // We assume no memory virtualization
+	if (symbol_bool("tn_mem_allocate_result")) {
+		*out_addr = (uintptr_t) calloc(size, 1); // ASSUMPTION: calloc never fails
 		return true;
 	}
 
 	return false;
+}
+
+void tn_mem_free(uintptr_t addr)
+{
+	free((void*) addr);
+}
+
+bool tn_mem_phys_to_virt(uintptr_t addr, uint64_t size, uintptr_t* virt_addr)
+{
+	???
+}
+
+bool tn_mem_virt_to_phys(uintptr_t addr, uintptr_t* phys_addr)
+{
+	???
 }
