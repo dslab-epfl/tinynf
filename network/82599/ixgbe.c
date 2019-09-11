@@ -1,4 +1,4 @@
-#include "ixgbe_82599.h"
+#include "network/network.h"
 
 #include "arch/dca.h"
 #include "arch/endian.h"
@@ -364,7 +364,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Device
 // ======
 
-struct ixgbe_device
+struct tn_net_device
 {
 	uintptr_t addr;
 	struct tn_pci_device pci;
@@ -374,7 +374,7 @@ struct ixgbe_device
 // Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
 // ---------------------------------------------------------
 
-static bool ixgbe_recv_disable(const struct ixgbe_device* const device, const uint8_t queue)
+static bool ixgbe_recv_disable(const struct tn_net_device* const device, const uint8_t queue)
 {
 	// "Disable the queue by clearing the RXDCTL.ENABLE bit."
 	IXGBE_REG_CLEAR(device->addr, RXDCTL, queue, ENABLE);
@@ -398,7 +398,7 @@ static bool ixgbe_recv_disable(const struct ixgbe_device* const device, const ui
 // --------------------------------
 
 // See quotes inside to understand the meaning of the return value
-static bool ixgbe_device_master_disable(const struct ixgbe_device* const device)
+static bool ixgbe_device_master_disable(const struct tn_net_device* const device)
 {
 	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
 	for (uint8_t queue = 0; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
@@ -451,7 +451,7 @@ static bool ixgbe_device_master_disable(const struct ixgbe_device* const device)
 // INTERPRETATION: The spec has a circular dependency here - resets need master disable, but master disable asks for two resets if it fails!
 //                 Assume that if the master disable fails, the resets do not need to go through the master disable step.
 
-static void ixgbe_device_reset(const struct ixgbe_device* const device)
+static void ixgbe_device_reset(const struct tn_net_device* const device)
 {
 	// "Prior to issuing link reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
 	bool master_disabled = ixgbe_device_master_disable(device);
@@ -477,7 +477,7 @@ static void ixgbe_device_reset(const struct ixgbe_device* const device)
 // Section 4.6.3 Initialization Sequence
 // -------------------------------------
 
-static void ixgbe_device_disable_interrupts(const struct ixgbe_device* const device)
+static void ixgbe_device_disable_interrupts(const struct tn_net_device* const device)
 {
 	for (uint8_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
 		// Section 8.2.3.5.4 Extended Interrupt Mask Clear Register (EIMC):
@@ -486,7 +486,7 @@ static void ixgbe_device_disable_interrupts(const struct ixgbe_device* const dev
 	}
 }
 
-bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_device** out_device)
+bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_device** out_device)
 {
 	// The NIC supports 64-bit addresses, so pointers can't be larger
 	static_assert(UINTPTR_MAX <= UINT64_MAX, "uintptr_t must fit in an uint64_t");
@@ -525,7 +525,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	uint32_t pci_bar0high = IXGBE_PCIREG_READ(pci_device, BAR0_HIGH);
 	// No need to detect the size, since we know exactly which device we're dealing with. (This also means no writes to BARs, one less chance to mess everything up)
 
-	struct ixgbe_device device;
+	struct tn_net_device device;
 	device.pci = pci_device;
 	// Section 9.3.6.1 Memory and IO Base Address Registers:
 	// As indicated in Table 9-4, the low 4 bits are read-only and not part of the address
@@ -885,11 +885,11 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	// We don't need to do anything here by assumption NOWANT
 
 	uintptr_t device_addr;
-	if (!tn_mem_allocate(sizeof(struct ixgbe_device), &device_addr)) {
+	if (!tn_mem_allocate(sizeof(struct tn_net_device), &device_addr)) {
 		TN_DEBUG("Could not allocate device struct");
 		return false;
 	}
-	struct ixgbe_device* heap_device = (struct ixgbe_device*) device_addr;
+	struct tn_net_device* heap_device = (struct tn_net_device*) device_addr;
 	*heap_device = device;
 	*out_device = heap_device;
 	return true;
@@ -900,7 +900,7 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 // Section 7.1.1.1 L2 Filtering
 // ============================
 
-bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
+bool tn_net_device_set_promiscuous(const struct tn_net_device* const device)
 {
 	// "A packet passes successfully through L2 Ethernet MAC address filtering if any of the following conditions are met:"
 	// 	Section 8.2.3.7.1 Filter Control Register:
@@ -1068,7 +1068,7 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // where <% represents "comes before in the modulo ring".
 // =================================================================================================================
 
-struct ixgbe_pipe
+struct tn_net_pipe
 {
 	// Technically it's volatile since the hardware does DMA, but we don't access the buffer contents in the driver,
 	// and when the packet is accessed by a handler the hardware cannot touch it due to how pipes work
@@ -1091,7 +1091,7 @@ struct ixgbe_pipe
 // Pipe initialization - no HW interactions
 // ===================
 
-bool ixgbe_pipe_init(struct ixgbe_pipe** out_pipe)
+bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
 {
 	uintptr_t buffer_addr;
 	if (!tn_mem_allocate(IXGBE_RING_SIZE * IXGBE_PACKET_SIZE_MAX, &buffer_addr)) {
@@ -1100,12 +1100,12 @@ bool ixgbe_pipe_init(struct ixgbe_pipe** out_pipe)
 	}
 
 	uintptr_t pipe_addr;
-	if (!tn_mem_allocate(sizeof(struct ixgbe_pipe), &pipe_addr)) {
+	if (!tn_mem_allocate(sizeof(struct tn_net_pipe), &pipe_addr)) {
 		TN_DEBUG("Could not allocate pipe");
 		return false;
 	}
 
-	struct ixgbe_pipe* pipe = (struct ixgbe_pipe*) pipe_addr;
+	struct tn_net_pipe* pipe = (struct tn_net_pipe*) pipe_addr;
 	pipe->buffer = (uint8_t*) buffer_addr;
 
 	for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
@@ -1130,7 +1130,7 @@ bool ixgbe_pipe_init(struct ixgbe_pipe** out_pipe)
 // Section 4.6.7 Receive Initialization
 // ====================================
 
-bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_device* const device, const uint64_t long_queue_index)
+bool tn_net_pipe_set_receive(struct tn_net_pipe* const pipe, const struct tn_net_device* const device, const uint64_t long_queue_index)
 {
 	if (pipe->receive_tail_addr != 0) {
 		TN_DEBUG("Pipe receive was already set");
@@ -1232,7 +1232,7 @@ bool ixgbe_pipe_set_receive(struct ixgbe_pipe* const pipe, const struct ixgbe_de
 // Section 4.6.8 Transmit Initialization
 // =====================================
 
-bool ixgbe_pipe_add_send(struct ixgbe_pipe* const pipe, const struct ixgbe_device* const device, const uint64_t long_queue_index)
+bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_device* const device, const uint64_t long_queue_index)
 {
 	uint64_t send_queues_count = 0;
 	for (; send_queues_count < IXGBE_PIPE_MAX_SENDS; send_queues_count++) {
@@ -1342,7 +1342,7 @@ bool ixgbe_pipe_add_send(struct ixgbe_pipe* const pipe, const struct ixgbe_devic
 }
 
 
-void ixgbe_pipe_run_step(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
+void tn_net_pipe_run_step(struct tn_net_pipe* pipe, tn_net_packet_handler* handler)
 {
 	pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 

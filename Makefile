@@ -1,14 +1,15 @@
 # Configuration
 DEBUG := false
-ARCH := x86
 OS := linux
+ARCH := x86
+NET := 82599
 
 # Toolchain
 CC := clang-8 # clang has -Weverything, no need to manually list warnings we want; hardcode version for reproducibility
 STRIP := strip
 
 # Files
-FILES := $(shell echo *.c os/$(OS)/*.c arch/$(ARCH)/*.c)
+FILES := $(shell echo *.c os/$(OS)/*.c arch/$(ARCH)/*.c network/$(NET)/*.c)
 
 # Required arguments
 CFLAGS += -std=c17
