@@ -36,17 +36,8 @@ int main(int argc, char** argv)
 	(void) argc;
 	(void) argv;
 
-	uint64_t ring_size = ixgbe_get_ring_size();
-	uint64_t packet_size_max = ixgbe_get_packet_size_max();
-
-	uintptr_t packets_buffer_addr;
-	if (!tn_mem_allocate(packet_size_max * ring_size, &packets_buffer_addr)) {
-		TN_INFO("Couldn't alloc packet buffers");
-		return 1;
-	}
-
 	struct ixgbe_pipe* pipe;
-	if (!ixgbe_pipe_init(packets_buffer_addr, &pipe)) {
+	if (!ixgbe_pipe_init(&pipe)) {
 		TN_INFO("Couldn't init pipe");
 		return 2;
 	}

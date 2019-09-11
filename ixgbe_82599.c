@@ -360,21 +360,6 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_TXPBTHRESH_THRESH BITS(0,9)
 
 
-// ===================
-// Constants accessors
-// ===================
-
-uint64_t ixgbe_get_ring_size(void)
-{
-	return IXGBE_RING_SIZE;
-}
-
-uint16_t ixgbe_get_packet_size_max(void)
-{
-	return IXGBE_PACKET_SIZE_MAX;
-}
-
-
 // ======
 // Device
 // ======
@@ -1106,8 +1091,14 @@ struct ixgbe_pipe
 // Pipe initialization - no HW interactions
 // ===================
 
-bool ixgbe_pipe_init(const uintptr_t buffer_addr, struct ixgbe_pipe** out_pipe)
+bool ixgbe_pipe_init(struct ixgbe_pipe** out_pipe)
 {
+	uintptr_t buffer_addr;
+	if (!tn_mem_allocate(IXGBE_RING_SIZE * IXGBE_PACKET_SIZE_MAX, &buffer_addr)) {
+		TN_DEBUG("Could not allocate buffer for pipe");
+		return false;
+	}
+
 	uintptr_t pipe_addr;
 	if (!tn_mem_allocate(sizeof(struct ixgbe_pipe), &pipe_addr)) {
 		TN_DEBUG("Could not allocate pipe");
