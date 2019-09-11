@@ -38,11 +38,14 @@
 // PCIBARS: The PCI BARs have been pre-configured to valid values, and will not collide with any other memory we may handle
 // PCIBRIDGES: All PCI bridges can be ignored, i.e. they do not enforce power savings modes or any other limitations
 // REPORT: We prefer more error reporting when faced with an explicit choice, but do not attempt to do extra configuration for this
-// TRUST: We trust the defaults for low-level hardware details (e.g., the MDC speed)
+// TRUST: We trust the defaults for low-level hardware details
 // TXPAD: We want all sent frames to be at least 64 bytes
 
-// This is the only constant not based on any spec, and that can be redefined at will
+// Maximum number of send queues assigned to a pipe. Not based on any spec, can be redefined at will
 #define IXGBE_PIPE_MAX_SENDS 4u
+// Scheduling period for bookkeeping and sending. Not based on any spec, can be redefined at will as long as it's a power of 2 for fast modulo
+#define IXGBE_PIPE_SCHEDULING_PERIOD 512
+static_assert((IXGBE_PIPE_SCHEDULING_PERIOD & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == 0, "Scheduling period must be a power of 2");
 
 // Section 7.1.2.5 L3/L4 5-tuple Filters:
 // 	"There are 128 different 5-tuple filter configuration registers sets"
@@ -663,8 +666,8 @@ bool ixgbe_device_init(const struct tn_pci_device pci_device, struct ixgbe_devic
 	//		 Bit 'i' in register '2*n' is associated with POOL 'i'.
 	//		 Bit 'i' in register '2*n+1' is associated with POOL '32+i'."
 	// INTERPRETATION: We should enable all pools with address 0, just in case, and disable everything else since we only have 1 MAC address.
-	IXGBE_REG_WRITE(device.addr, MPSAR, 0, 0xFFFFFFFF);
-	IXGBE_REG_WRITE(device.addr, MPSAR, 1, 0xFFFFFFFF);
+	IXGBE_REG_WRITE(device.addr, MPSAR, 0, 0xFFFFFFFFu);
+	IXGBE_REG_WRITE(device.addr, MPSAR, 1, 0xFFFFFFFFu);
 	for (uint16_t n = 2; n < IXGBE_RECEIVE_ADDRS_COUNT * 2; n++) {
 		IXGBE_REG_CLEAR(device.addr, MPSAR, n);
 	}
@@ -1055,6 +1058,7 @@ bool ixgbe_device_set_promiscuous(const struct ixgbe_device* const device)
 // has a feature called "TX head pointer write back": we tell it where to DMA the send head, and it automatically
 // does it, which means we read the send head from main memory instead of PCIe.
 //
+//
 // Multiple send queues
 // --------------------
 // Supporting a single send queue is fine for some network functions that are inherently "pass-through", such as a VPN,
@@ -1351,7 +1355,7 @@ void ixgbe_pipe_run(struct ixgbe_pipe* pipe, ixgbe_packet_handler* handler)
 	while (true) {
 		pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
-		if((pipe->scheduling_counter & (IXGBE_RING_SIZE / 2 - 1)) == (IXGBE_RING_SIZE / 2 - 1)) {
+		if((pipe->scheduling_counter & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) {
 			// Race conditions are possible here, but we don't care since all they can do is change the "real" value
 			// of the earliest send head to a later value, which is fine.
 			uint32_t earliest_send_head = 0;
