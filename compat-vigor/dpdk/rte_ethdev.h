@@ -6,7 +6,7 @@
 // HACK: Global variable here set in main.c
 extern uint16_t devices_count;
 
-uint16_t rte_eth_dev_count(void)
+inline uint16_t rte_eth_dev_count(void)
 {
 	return devices_count;
 }
@@ -21,7 +21,7 @@ static inline uint16_t rte_eth_tx_burst(uint16_t port_id, uint16_t queue_id, str
 	// Not actually used
 }
 
-void rte_eth_macaddr_get(uint16_t port_id, struct ether_addr* mac_addr)
+static inline void rte_eth_macaddr_get(uint16_t port_id, struct ether_addr* mac_addr)
 {
 	// TODO make this actually work... for benchmarking we don't really care
 	mac_addr->addr_bytes[0] = (uint8_t) port_id;

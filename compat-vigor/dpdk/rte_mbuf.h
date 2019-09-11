@@ -1,6 +1,11 @@
 #pragma once
 
+#include <stdint.h>
+
+
 #define rte_pktmbuf_mtod(m,t) ((t) (m)->buf_addr)
+
+#define PKT_TX_TCP_SEG (1ull << 50)
 
 // No need to define all fields
 struct rte_mbuf
@@ -10,8 +15,7 @@ struct rte_mbuf
 	uint16_t port;
 };
 
-// Not actually used, just needed for linking
-static void rte_pktmbuf_free(struct rte_mbuf* m)
+static inline void rte_pktmbuf_free(struct rte_mbuf* m)
 {
-	// Nothing
+	// Not actually used
 }

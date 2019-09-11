@@ -1,5 +1,10 @@
 #pragma once
 
+#include <stdint.h>
+
+
+#define ETHER_TYPE_IPv4 0x0800
+
 struct ether_addr
 {
 	uint8_t addr_bytes[6];

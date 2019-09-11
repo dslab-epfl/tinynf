@@ -21,8 +21,12 @@ SHELL := /bin/bash -O extglob -c
 _IGNORED := $(shell cd deps/vigor/$(TN_VIGOR_NF) ; make autogen 2>/dev/null)
 # Our main stub
 FILES += compat-vigor/main.c
-# Don't include the loop file, Vigor only uses it during verification
+# Vigor NF files; don't include the loop file, Vigor only uses it during verification
 FILES += $(shell echo deps/vigor/$(TN_VIGOR_NF)/!(loop).c)
+# Vigor's libVig; boilerplate-assumptions is a stub file for builtins
+FILES += $(shell echo deps/vigor/libvig/verified/!(boilerplate-assumptions).c)
+# Vigor utility files
+FILES += deps/vigor/nf-util.c
 # Vigor expects its root dir to be an include path
 CFLAGS += -I deps/vigor
 # Our DPDK stub headers
@@ -30,7 +34,7 @@ CFLAGS += -isystem compat-vigor/dpdk
 # Vigor compiles with DPDK makefiles, which do not care about all those...
 CFLAGS += -Wno-reserved-id-macro -Wno-sign-conversion -Wno-missing-prototypes -Wno-unused-parameter -Wno-unused-value -Wno-unused-function \
           -Wno-padded -Wno-tautological-unsigned-zero-compare -Wno-missing-variable-declarations -Wno-implicit-int-conversion -Wno-shorten-64-to-32 \
-          -Wno-extra-semi-stmt -Wno-gnu-zero-variadic-macro-arguments
+          -Wno-extra-semi-stmt -Wno-gnu-zero-variadic-macro-arguments -Wno-empty-translation-unit -Wno-newline-eof -Wno-unused-variable
 # And the same trick Vigor uses to pass args to the NFOS
 DQUOTE := \"
 SPACE := $(null) #
