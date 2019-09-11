@@ -1,4 +1,4 @@
-#include "network/network.h"
+#include "net/network.h"
 
 #include "arch/dca.h"
 #include "arch/endian.h"

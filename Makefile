@@ -9,7 +9,7 @@ CC := clang-8 # clang has -Weverything, no need to manually list warnings we wan
 STRIP := strip
 
 # Files
-FILES := $(shell echo *.c os/$(OS)/*.c arch/$(ARCH)/*.c network/$(NET)/*.c)
+FILES := $(shell echo *.c os/$(OS)/*.c arch/$(ARCH)/*.c net/$(NET)/*.c util/*.c)
 
 # Required arguments
 CFLAGS += -std=c17

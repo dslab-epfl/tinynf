@@ -1,0 +1,3 @@
+[submodule "deps/vigor"]
+	path = deps/vigor
+	url = https://github.com/vigor-nf/vigor

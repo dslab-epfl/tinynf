@@ -1,7 +1,8 @@
-#include "network/network.h"
+#include "net/network.h"
 #include "os/memory.h"
 #include "os/pci.h"
 #include "util/log.h"
+#include "util/parse.h"
 
 
 static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, bool* send_list)
@@ -30,11 +31,17 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, b
 	return packet_length;
 }
 
+#define DEVICES_MAX_COUNT 128u
+
 // Packet processing
 int main(int argc, char** argv)
 {
-	(void) argc;
-	(void) argv;
+	uint64_t devices_count = (uint64_t) argc - 1;
+	struct tn_pci_device pci_devices[DEVICES_MAX_COUNT];
+	if (devices_count == 0 || devices_count > DEVICES_MAX_COUNT || !tn_util_parse_pci(devices_count, argv+1, pci_devices)) {
+		TN_INFO("Couldn't parse PCI devices from argv");
+		return 1;
+	}
 
 	struct tn_net_pipe* pipe;
 	if (!tn_net_pipe_init(&pipe)) {
@@ -42,10 +49,9 @@ int main(int argc, char** argv)
 		return 2;
 	}
 
-	struct tn_net_device* devices[2];
-	for (uint8_t n = 0; n < sizeof(devices)/sizeof(devices[0]); n++) {
-		struct tn_pci_device pci_device = {.bus=0x06, .device=0x00, .function=n};
-		if (!tn_net_device_init(pci_device, &(devices[n]))) {
+	struct tn_net_device* devices[DEVICES_MAX_COUNT];
+	for (uint8_t n = 0; n < devices_count; n++) {
+		if (!tn_net_device_init(pci_devices[n], &(devices[n]))) {
 			TN_INFO("Couldn't init device");
 			return 3 + 100*n;
 		}
