@@ -10,6 +10,7 @@
 uint16_t devices_count;
 
 #include <stdbool.h>
+#include <stddef.h>
 
 
 #define DEVICES_MAX_COUNT 128u
@@ -64,7 +65,12 @@ int main(int argc, char** argv)
 	}
 
 	// Vigor init
-	nf_config_init();
+	char* vigor_argv[] = {
+		VIGOR_ARGS, // must be passed during compilation
+		NULL
+	};
+	int vigor_argc = (sizeof(vigor_argv) / sizeof(vigor_argv[0])) - 1;
+	nf_config_init(vigor_argc, vigor_argv);
 	if (!nf_init()) {
 		return 3;
 	}
