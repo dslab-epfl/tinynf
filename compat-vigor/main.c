@@ -5,12 +5,14 @@
 // Vigor
 #include "nf.h"
 
+// DPDK global devices count hack
+#include <rte_ethdev.h>
+uint16_t devices_count;
+
 #include <stdbool.h>
 
 
 #define DEVICES_MAX_COUNT 128u
-
-static uint16_t devices_count;
 
 static uint16_t current_device;
 static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, bool* send_list)
@@ -36,17 +38,17 @@ int main(int argc, char** argv)
 	}
 
 	// TinyNF init
-	struct tn_pci_device* pci_devices[DEVICES_MAX_COUNT];
+	struct tn_pci_device pci_devices[DEVICES_MAX_COUNT];
 	if (!tn_util_parse_pci(devices_count, argv + 1, pci_devices)) {
 		return 2;
 	}
 	struct tn_net_device* devices[DEVICES_MAX_COUNT];
 	struct tn_net_pipe* pipes[DEVICES_MAX_COUNT];
 	for (uint16_t n = 0; n < devices_count; n++) {
-		if (!tn_net_device_init(pci_devices[n], &(devices[n])) {
+		if (!tn_net_device_init(pci_devices[n], &(devices[n]))) {
 			return 1000 + n;
 		}
-		if (!tn_net_pipe_init(&(pipes[n])) {
+		if (!tn_net_pipe_init(&(pipes[n]))) {
 			return 2000 + n;
 		}
 		if (!tn_net_pipe_set_receive(pipes[n], devices[n], 0)) {
@@ -63,7 +65,9 @@ int main(int argc, char** argv)
 
 	// Vigor init
 	nf_config_init();
-	nf_init();
+	if (!nf_init()) {
+		return 3;
+	}
 
 	// Compat layer
 	while(true) {

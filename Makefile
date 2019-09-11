@@ -15,16 +15,22 @@ FILES := $(shell echo os/$(OS)/*.c arch/$(ARCH)/*.c net/$(NET)/*.c util/*.c)
 ifeq (,$(TN_VIGOR_NF))
 FILES += tinynf.c
 else
-_IGNORED := $(shell cd deps/vigor/$(TN_VIGOR_NF) ; make autogen)
+SHELL := /bin/bash -O extglob -O globstar -c
+_IGNORED := $(shell cd deps/vigor/$(TN_VIGOR_NF) ; make autogen 2>/dev/null)
 FILES += compat-vigor/main.c
-FILES += $(shell echo deps/vigor/$(TN_VIGOR_NF)/*.c)
-CFLAGS += -Ideps/vigor
+FILES += $(shell echo deps/vigor/$(TN_VIGOR_NF)/!(loop).c)
+CFLAGS += -I deps/vigor
+CFLAGS += -isystem compat-vigor/dpdk
+CFLAGS += -Wno-reserved-id-macro -Wno-sign-conversion -Wno-missing-prototypes -Wno-unused-parameter -Wno-unused-value -Wno-unused-function \
+          -Wno-padded -Wno-tautological-unsigned-zero-compare -Wno-missing-variable-declarations -Wno-implicit-int-conversion -Wno-shorten-64-to-32 \
+          -Wno-extra-semi-stmt -Wno-gnu-zero-variadic-macro-arguments
 endif
 
 # Required arguments
 CFLAGS += -std=c17
 CFLAGS += -Weverything
-CFLAGS += -I. # Allow repo root relative paths
+CFLAGS += -march=native
+CFLAGS += -I . # Allow repo root relative paths
 STRIPFLAGS := -R .comment
 
 # Debug / release mode
