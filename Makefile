@@ -13,7 +13,6 @@ FILES := $(shell echo *.c os/$(OS)/*.c arch/$(ARCH)/*.c)
 # Required arguments
 CFLAGS += -std=c11
 CFLAGS += -Weverything
-CFLAGS += -Wno-extra-semi-stmt # Allow macros to be used as if they were statements
 CFLAGS += -I. # Allow repo root relative paths
 STRIPFLAGS := -R .comment
 
@@ -31,7 +30,6 @@ endif
 ifeq ($(OS),linux)
 CFLAGS += -D_GNU_SOURCE
 LDFLAGS += -lnuma
-CFLAGS += -Wno-format-nonliteral # We have format strings parameters; this warning is for potential security issues, we trust all code
 endif
 
 # Generate the dependencies in Makefile format using cc -M, then keep only the dependencies (not the targets:, not the backslashes for newlines)
