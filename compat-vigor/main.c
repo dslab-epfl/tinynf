@@ -1,5 +1,6 @@
 // TinyNF
 #include "net/network.h"
+#include "util/log.h"
 #include "util/parse.h"
 
 // Vigor
@@ -29,6 +30,9 @@ static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, b
 	} else {
 		send_list[vigor_output] = true;
 	}
+
+	// Vigor cannot change the packet length
+	return packet_length;
 }
 
 int main(int argc, char** argv)
@@ -76,6 +80,7 @@ int main(int argc, char** argv)
 	}
 
 	// Compat layer
+	TN_INFO("Running Vigor NF on top of TinyNF...");
 	while(true) {
 		for (current_device = 0; current_device < devices_count; current_device++) {
 			tn_net_pipe_run_step(pipes[current_device], compat_packet_handler);

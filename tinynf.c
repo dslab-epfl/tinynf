@@ -5,18 +5,17 @@
 #include "util/parse.h"
 
 
+#define DEVICES_MAX_COUNT 128u
+
 static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, bool* send_list)
 {
-//	for (uint64_t n = 0; n < packet_length; n++) {
-//		printf("0x%02"PRIx8" ", packet[n]);
-//	}
-	// SRC MAC (90:e2:ba:55:14:11)
-	packet[0] = 0x90;
-	packet[1] = 0xE2;
-	packet[2] = 0xBA;
-	packet[3] = 0x55;
-	packet[4] = 0x14;
-	packet[5] = 0x11;
+	// SRC MAC
+	packet[0] = 0x00;
+	packet[1] = 0x01;
+	packet[2] = 0x02;
+	packet[3] = 0x03;
+	packet[4] = 0x04;
+	packet[5] = 0x05;
 	// DST MAC
 	packet[6] = 0xFF;
 	packet[7] = 0xFF;
@@ -31,9 +30,6 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, b
 	return packet_length;
 }
 
-#define DEVICES_MAX_COUNT 128u
-
-// Packet processing
 int main(int argc, char** argv)
 {
 	uint64_t devices_count = (uint64_t) argc - 1;
@@ -75,12 +71,9 @@ int main(int argc, char** argv)
 		return 7;
 	}
 
-	TN_INFO("Initialized successfully!");
+	TN_INFO("TinyNF initialized successfully!");
 
 	while(true) {
 		tn_net_pipe_run_step(pipe, tinynf_packet_handler);
 	}
-
-//	TN_INFO("Done!");
-//	return 0;
 }

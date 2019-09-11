@@ -6,7 +6,7 @@
 // HACK: Global variable here set in main.c
 extern uint16_t devices_count;
 
-inline uint16_t rte_eth_dev_count(void)
+static inline uint16_t rte_eth_dev_count(void)
 {
 	return devices_count;
 }

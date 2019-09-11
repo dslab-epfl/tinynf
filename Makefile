@@ -3,6 +3,7 @@ DEBUG := false
 OS := linux
 ARCH := x86
 NET := 82599
+APP := tinynf
 
 # Toolchain
 CC := clang-8 # clang has -Weverything, no need to manually list warnings we want; hardcode version for reproducibility
@@ -19,6 +20,10 @@ else
 SHELL := /bin/bash -O extglob -c
 # Force the auto-generation of Vigor files
 _IGNORED := $(shell cd deps/vigor/$(TN_VIGOR_NF) ; make autogen 2>/dev/null)
+# Include the Vigor NF's makefile, minus the other makefiles
+VIGOR_MAKEFILE := $(shell mktemp)
+_IGNORED := $(shell cat deps/vigor/$(TN_VIGOR_NF)/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
+include $(VIGOR_MAKEFILE)
 # Our main stub
 FILES += compat-vigor/main.c
 # Vigor NF files; don't include the loop file, Vigor only uses it during verification
@@ -35,11 +40,13 @@ CFLAGS += -isystem compat-vigor/dpdk
 CFLAGS += -Wno-reserved-id-macro -Wno-sign-conversion -Wno-missing-prototypes -Wno-unused-parameter -Wno-unused-value -Wno-unused-function \
           -Wno-padded -Wno-tautological-unsigned-zero-compare -Wno-missing-variable-declarations -Wno-implicit-int-conversion -Wno-shorten-64-to-32 \
           -Wno-extra-semi-stmt -Wno-gnu-zero-variadic-macro-arguments -Wno-empty-translation-unit -Wno-newline-eof -Wno-unused-variable
-# And the same trick Vigor uses to pass args to the NFOS
+# Use Vigor's fast power-of-2-capacity map
+CFLAGS += -DCAPACITY_POW2
+# And the same trick Vigor uses to pass args to the NFOS (NF_ARGS comes from the Vigor Makefile)
 DQUOTE := \"
 SPACE := $(null) #
 COMMA := ,
-CFLAGS += -DVIGOR_ARGS=\"$(subst $(SPACE),$(DQUOTE)$(COMMA)$(DQUOTE),$(TN_VIGOR_NF) $(TN_VIGOR_ARGS))\"
+CFLAGS += -DVIGOR_ARGS=\"$(subst $(SPACE),$(DQUOTE)$(COMMA)$(DQUOTE),$(TN_VIGOR_NF) $(NF_ARGS))\"
 endif
 
 # Required arguments
@@ -65,9 +72,10 @@ CFLAGS += -D_GNU_SOURCE
 LDFLAGS += -lnuma
 endif
 
-# Generate the dependencies in Makefile format using cc -M, then keep only the dependencies (not the targets:, not the backslashes for newlines)
-tinynf: Makefile $(shell ${CC} ${FILES} $(CFLAGS) -M | sed 's/.*://g' | sed 's/\\//g')
+CFLAGS += -DENABLE_LOG
+.PHONY: build
+build:
 	@$(CC) $(CFLAGS) $(FILES) -c
-	@$(CC) $(LDFLAGS) $(subst .c,.o,$(notdir $(FILES))) -o $@
-	@$(STRIP) $(STRIPFLAGS) $@
+	@$(CC) $(LDFLAGS) $(subst .c,.o,$(notdir $(FILES))) -o $(APP)
+	@$(STRIP) $(STRIPFLAGS) $(APP)
 	@rm -f $(subst .c,.o,$(notdir $(FILES)))
