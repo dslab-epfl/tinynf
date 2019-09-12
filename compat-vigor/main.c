@@ -5,6 +5,7 @@
 
 // Vigor
 #include "nf.h"
+#include "nf-util.h"
 
 // DPDK global devices count hack
 #include <rte_ethdev.h>
@@ -21,6 +22,9 @@ static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, b
 {
 	vigor_time_t vigor_now = current_time();
 	int vigor_output = nf_process(current_device, packet, packet_length, vigor_now);
+	// Vigor needs this to be called after nf_process
+	nf_return_all_chunks(packet);
+
 	if (vigor_output == FLOOD_FRAME) {
 		for (uint16_t n = 0; n < devices_count; n++) {
 			send_list[n] = true;
@@ -53,17 +57,21 @@ int main(int argc, char** argv)
 		if (!tn_net_device_init(pci_devices[n], &(devices[n]))) {
 			return 1000 + n;
 		}
-		if (!tn_net_pipe_init(&(pipes[n]))) {
-			return 2000 + n;
+		if (!tn_net_device_set_promiscuous(devices[n])) {
+			return 2000 * n;
 		}
-		if (!tn_net_pipe_set_receive(pipes[n], devices[n], 0)) {
+		if (!tn_net_pipe_init(&(pipes[n]))) {
 			return 3000 + n;
 		}
+		if (!tn_net_pipe_set_receive(pipes[n], devices[n], 0)) {
+			return 4000 + n;
+		}
 	}
+
 	for (uint16_t p = 0; p < devices_count; p++) {
 		for (uint16_t q = 0; q < devices_count; q++) {
 			if (!tn_net_pipe_add_send(pipes[p], devices[q], p)) {
-				return 4000 + p * q;
+				return 10000 + p * q;
 			}
 		}
 	}
@@ -75,6 +83,8 @@ int main(int argc, char** argv)
 	};
 	int vigor_argc = (sizeof(vigor_argv) / sizeof(vigor_argv[0])) - 1;
 	nf_config_init(vigor_argc, vigor_argv);
+	nf_config_print();
+
 	if (!nf_init()) {
 		return 3;
 	}

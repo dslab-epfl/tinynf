@@ -6,7 +6,7 @@
 #include <stdio.h>
 
 
-int cmdline_parse_etheraddr(cmdline_parse_token_hdr_t* tk, const char* srcbuf, void* res, unsigned ressize)
+static inline int cmdline_parse_etheraddr(cmdline_parse_token_hdr_t* tk, const char* srcbuf, void* res, unsigned ressize)
 {
 	// No error handling, we assume all is fine
 	uint8_t* out = (uint8_t*) res;
