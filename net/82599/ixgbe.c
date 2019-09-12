@@ -565,13 +565,10 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//	 FCEN should be set to 0b if flow control is not enabled as all the other registers previously indicated."
 	// INTERPRETATION: Sections 3.7.7.3.{2-5} are irrelevant here since we do not want flow control.
 	// Section 8.2.3.3.2 Flow Control Transmit Timer Value n (FCTTVn): all init vals are 0
-	// INTERPRETATION: We do not need to set FCTTV
 	// Section 8.2.3.3.3 Flow Control Receive Threshold Low (FCRTL[n]): all init vals are 0
-	// INTERPRETATION: We do not need to set FCRTL
 	// Section 8.2.3.3.5 Flow Control Refresh Threshold Value (FCRTV): all init vals are 0
-	// INTERPRETATION: We do not need to set FCRTV
 	// Section 8.2.3.3.7 Flow Control Configuration (FCCFG): all init vals are 0
-	// INTERPRETATION: We do not need to set FCCFG
+	// INTERPRETATION: Since all those registers default to zero, there is no need to overwrite them with 0x0.
 	// Section 8.2.3.8.9 Receive Packet Buffer Size (RXPBSIZE[n])
 	//	"The size is defined in KB units and the default size of PB[0] is 512 KB."
 	// Section 8.2.3.3.4 Flow Control Receive Threshold High (FCRTH[n])
@@ -582,7 +579,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//	"This register contains the receive threshold used to determine when to send an XOFF packet and counts in units of bytes.
 	//	 This value must be at least eight bytes less than the maximum number of bytes allocated to the receive packet buffer and the lower four bits must be programmed to 0x0 (16-byte granularity).
 	//	 Each time the receive FIFO reaches the fullness indicated by RTH, hardware transmits a pause frame if the transmission of flow control frames is enabled."
-	// INTERPRETATION: There is an obvious contradiction in the stated granularities (16 vs 32 bytes). We assume 32 is correct, since the DPDK ixgbe driver treats it that way..
+	// INTERPRETATION: There is an obvious contradiction in the stated granularities (16 vs 32 bytes). We assume 32 is correct, since this also covers the 16 byte case.
 	// INTERPRETATION: We assume that the "RXPBSIZE[n]-0x6000" calculation above refers to the RXPBSIZE in bytes (otherwise the size of FCRTH[n].RTH would be negative by default...)
 	//                 Thus we set FCRTH[0].RTH = 512 * 1024 - 0x6000, which importantly has the 5 lowest bits unset.
 	IXGBE_REG_WRITE(device.addr, FCRTH, 0, RTH, 512 * 1024 - 0x6000);
@@ -1310,7 +1307,8 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	// 	 * The 30 upper bits of this register hold the lowest 32 bits of the head write-back address, assuming that the two last bits are zero."
 	//	"software should [...] make sure the TDBAL value is Dword-aligned."
 	//	Section 8.2.3.9.11 Tx Descriptor completion Write Back Address Low (TDWBAL[n]): "the actual address is Qword aligned"
-	// INTERPRETATION: Obvious contradiction here, Dword or Qword? Empirically, the answer is... 16 bytes. Write-back has no effect otherwise.
+	// INTERPRETATION: There is an obvious contradiction here; qword-aligned seems like a safe option since it will also be dword-aligned.
+	// INTERPRETATION: Empirically, the answer is... 16 bytes. Write-back has no effect otherwise. So both versions are wrong.
 	if (head_phys_addr % 16u != 0) {
 		TN_DEBUG("Send head's physical address is not aligned properly");
 		return false;
