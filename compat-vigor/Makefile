@@ -53,5 +53,9 @@ $(info Using one way trick)
 CFLAGS += -DASSUME_ONE_WAY
 endif
 
+# LTO makes a huge difference in Vigor perf (e.g. VigNAT goes from 4G to 8G)
+CFLAGS += -flto
+LDFLAGS += -flto
+
 # Finally, include the TinyNF makefile
 include ../Makefile
