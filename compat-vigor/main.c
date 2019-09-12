@@ -25,6 +25,9 @@ static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, b
 	// Vigor needs this to be called after nf_process
 	nf_return_all_chunks(packet);
 
+#ifdef ASSUME_ONE_WAY
+	send_list[0] = vigor_output != current_device;
+#else
 	if (vigor_output == FLOOD_FRAME) {
 		for (uint16_t n = 0; n < devices_count; n++) {
 			send_list[n] = true;
@@ -34,6 +37,7 @@ static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, b
 	} else {
 		send_list[vigor_output] = true;
 	}
+#endif
 
 	// Vigor cannot change the packet length
 	return packet_length;
@@ -45,6 +49,11 @@ int main(int argc, char** argv)
 	if (devices_count == 0 || devices_count > DEVICES_MAX_COUNT) {
 		return 1;
 	}
+#ifdef ASSUME_ONE_WAY
+	if (devices_count != 2) {
+		return 1;
+	}
+#endif
 
 	// TinyNF init
 	struct tn_pci_device pci_devices[DEVICES_MAX_COUNT];
@@ -69,11 +78,17 @@ int main(int argc, char** argv)
 	}
 
 	for (uint16_t p = 0; p < devices_count; p++) {
+#ifdef ASSUME_ONE_WAY
+		if (!tn_net_pipe_add_send(pipes[p], devices[1-p], 0)) {
+			return 10000 + p;
+		}
+#else
 		for (uint16_t q = 0; q < devices_count; q++) {
 			if (!tn_net_pipe_add_send(pipes[p], devices[q], p)) {
 				return 10000 + p * q;
 			}
 		}
+#endif
 	}
 
 	// Vigor init
