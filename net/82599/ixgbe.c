@@ -1073,8 +1073,8 @@ struct tn_net_pipe
 	uint8_t* buffer;
 	uintptr_t receive_tail_addr;
 	uint64_t scheduling_counter;
-	uint32_t processed_delimiter; // 32-bit since it's replicated to a NIC register
-	uint8_t _padding[4 + 4*8];
+	uint64_t processed_delimiter;
+	uint8_t _padding[4*8];
 	// send heads must be 16-byte aligned; see alignment remarks in send queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
 	// plus, we want each head on its own cache line to avoid conflicts
@@ -1359,7 +1359,7 @@ void tn_net_pipe_run_step(struct tn_net_pipe* pipe, tn_net_packet_handler* handl
 					min_diff = diff;
 				}
 
-				ixgbe_reg_write_raw(pipe->send_tail_addrs[n], pipe->processed_delimiter);
+				ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
 			}
 		}
 
