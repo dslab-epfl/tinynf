@@ -1318,8 +1318,7 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	//	"Reserved, bit 1"
 	IXGBE_REG_WRITE(device->addr, TDWBAH, queue_index, (uint32_t) (head_phys_addr >> 32));
 	IXGBE_REG_WRITE(device->addr, TDWBAL, queue_index, (uint32_t) ((head_phys_addr & 0xFFFFFFFFu) | 1));
-	// Disable relaxed ordering of head pointer write-back, since it could cause the head pointer to be updated backwards
-	// TODO: Can we not disable this? Or find a good reason in the data sheet why we should do this?
+	// INTERPRETATION: We must disable relaxed ordering of head pointer write-back, since it could cause the head pointer to be updated backwards
 	IXGBE_REG_CLEAR(device->addr, DCATXCTRL, queue_index, TX_DESC_WB_RO_EN);
 	// "- Enable transmit path by setting DMATXCTL.TE.
 	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
