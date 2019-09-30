@@ -1054,7 +1054,7 @@ bool tn_net_device_set_promiscuous(const struct tn_net_device* const device)
 // Thus, we are left with the option of supporting multiple send queues.
 // This is doable because transmit descriptors can be set to drop a packet by "sending" it with length zero;
 // thus, the packet can be sent to whichever queues by setting its real length in these queues' descriptors,
-// and not send to the other queues by setting a zero length on those queues' descriptors.
+// and not sent to the other queues by setting a zero length on those queues' descriptors.
 // In practice, this means we cannot use the same descriptor ring for all queues, though the contents only differ
 // in the packet length of the send descriptors.
 // But we can still share the ring between the receive queue and the first send queue.
