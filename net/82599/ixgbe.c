@@ -105,7 +105,7 @@ static bool timed_out;
 		timed_out = true; \
 		tn_sleep_us((timeout_in_us) % 10); \
 		for (uint8_t i = 0; i < 10; i++) { \
-			if (!condition) { \
+			if (!(condition)) { \
 				timed_out = false; \
 				break; \
 			} \
@@ -626,7 +626,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//	Section 8.2.3.27.12 PF Unicast Table Array (PFUTA[n]):
 	//		"There is one register per 32 bits of the unicast address table"
 	//		"This table should be zeroed by software before start of operation."
-	for (uint8_t n = 0; n < IXGBE_UNICAST_TABLE_ARRAY_SIZE / 32; n++) {
+	for (uint32_t n = 0; n < IXGBE_UNICAST_TABLE_ARRAY_SIZE / 32; n++) {
 		IXGBE_REG_CLEAR(device.addr, PFUTA, n);
 	}
 	//	"- VLAN Filter Table Array (VFTA[n])."
@@ -665,7 +665,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//	 This entire table should be zeroed and only the desired multicast addresses should be permitted (by writing 0x1 to the corresponding bit location).
 	//	 Set the MCSTCTRL.MFE bit if multicast filtering is required."
 	// Section 8.2.3.7.7 Multicast Table Array (MTA[n]): "Word wide bit vector specifying 32 bits in the multicast address filter table."
-	for (uint8_t n = 0; n < IXGBE_MULTICAST_TABLE_ARRAY_SIZE / 32; n++) {
+	for (uint32_t n = 0; n < IXGBE_MULTICAST_TABLE_ARRAY_SIZE / 32; n++) {
 		IXGBE_REG_CLEAR(device.addr, MTA, n);
 	}
 	//	"Initialize the flexible filters 0...5 — Flexible Host Filter Table registers (FHFT)."
