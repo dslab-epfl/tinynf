@@ -1068,9 +1068,7 @@ bool tn_net_device_set_promiscuous(const struct tn_net_device* const device)
 
 struct tn_net_pipe
 {
-	// Technically it's volatile since the hardware does DMA, but we don't access the buffer contents in the driver,
-	// and when the packet is accessed by a handler the hardware cannot touch it due to how pipes work
-	uint8_t* buffer;
+	uintptr_t buffer;
 	uintptr_t receive_tail_addr;
 	uint64_t scheduling_counter;
 	uint64_t processed_delimiter;
@@ -1091,20 +1089,16 @@ struct tn_net_pipe
 
 bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
 {
-	uintptr_t buffer_addr;
-	if (!tn_mem_allocate(IXGBE_RING_SIZE * IXGBE_PACKET_SIZE_MAX, &buffer_addr)) {
-		TN_DEBUG("Could not allocate buffer for pipe");
-		return false;
-	}
-
-	uintptr_t pipe_addr;
-	if (!tn_mem_allocate(sizeof(struct tn_net_pipe), &pipe_addr)) {
+	struct tn_net_pipe* pipe;
+	if (!tn_mem_allocate(sizeof(struct tn_net_pipe), (uintptr_t*) &pipe)) {
 		TN_DEBUG("Could not allocate pipe");
 		return false;
 	}
 
-	struct tn_net_pipe* pipe = (struct tn_net_pipe*) pipe_addr;
-	pipe->buffer = (uint8_t*) buffer_addr;
+	if (!tn_mem_allocate(IXGBE_RING_SIZE * IXGBE_PACKET_SIZE_MAX, &(pipe->buffer))) {
+		TN_DEBUG("Could not allocate buffer for pipe");
+		return false;
+	}
 
 	for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
 		// Rings need to be 128-byte aligned, as seen later
@@ -1264,9 +1258,9 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	for (uintptr_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 		// "Buffer Address (64)", 1st line offset 0
-		uint8_t* packet = pipe->buffer + n * IXGBE_PACKET_SIZE_MAX;
+		uintptr_t packet = pipe->buffer + n * IXGBE_PACKET_SIZE_MAX;
 		uintptr_t packet_phys_addr;
-		if (!tn_mem_virt_to_phys((uintptr_t) packet, &packet_phys_addr)) {
+		if (!tn_mem_virt_to_phys(packet, &packet_phys_addr)) {
 			TN_DEBUG("Could not get a packet's phys addr");
 		}
 		ring[n * 2u] = packet_phys_addr;
@@ -1376,7 +1370,7 @@ void tn_net_pipe_run_step(struct tn_net_pipe* pipe, tn_net_packet_handler* handl
 	}
 
 	// This cannot overflow because the packet is by definition in an allocated block of memory
-	uint8_t* packet = pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
+	uint8_t* packet = (uint8_t*) pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
 	uint16_t receive_packet_length = receive_metadata & 0xFFu;
 	bool send_list[IXGBE_PIPE_MAX_SENDS] = {0};
