@@ -923,6 +923,7 @@ bool tn_net_device_set_promiscuous(const struct tn_net_device* const device)
 	return true;
 }
 
+// TODO rewrite this based on the paper
 
 // =================================================================================================================
 // PIPES
@@ -976,7 +977,7 @@ bool tn_net_device_set_promiscuous(const struct tn_net_device* const device)
 // are actually owned by the NIC send queue, and vice-versa.
 // Thus there is no need to dynamically allocate or free buffers from a pool as e.g. DPDK does.
 //
-// There are thus seven delimiters in the ring, one per state (including hidden ones).
+// There are thus five delimiters in the ring, one per state.
 // Thus the ring looks like this:
 //
 // ------------------- receive tail
