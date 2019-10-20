@@ -1,3 +1,9 @@
 [submodule "deps/vigor"]
 	path = deps/vigor
 	url = https://github.com/vigor-nf/vigor
+[submodule "benchmarking/moongen"]
+	path = benchmarking/moongen
+	url = https://github.com/emmericp/MoonGen
+[submodule "baselines/vigor/vigor"]
+	path = baselines/vigor/vigor
+	url = https://github.com/vigor-nf/vigor

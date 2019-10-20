@@ -1,3 +1,5 @@
+# Simplified version of the vigor setup script, with only what we need
+
 sudo apt-get install -y opam m4 python3.6
 opam init -y
 opam switch 4.06.0

@@ -6,9 +6,9 @@ endif
 SHELL := /bin/bash -O extglob -c
 
 # Get the Vigor directory
-VIGOR_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/../deps/vigor
+VIGOR_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/vigor
 
-# Force the auto-generation of Vigor files; pretend we have VeriFast
+# Force the auto-generation of Vigor files; pretend we have VeriFast so the auto-generation doesn't fail
 _IGNORED := $(shell cd $(VIGOR_DIR)/$(TN_VIGOR_NF); dir=$$(mktemp -d); ln -s /bin/true "$$dir/verifast"; PATH="$$dir:$$PATH" make autogen; rm -rf "$$dir")
 
 # Include the Vigor NF's makefile, minus the other makefiles
@@ -58,4 +58,4 @@ CFLAGS += -flto
 LDFLAGS += -flto
 
 # Finally, include the TinyNF makefile
-include ../Makefile
+include ../../code/Makefile

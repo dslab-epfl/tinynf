@@ -39,6 +39,7 @@ CFLAGS += -D_GNU_SOURCE
 LDFLAGS += -lnuma
 endif
 
+# TODO proper dependency tracking...
 .PHONY: default
 default:
 	@$(CC) $(CFLAGS) $(FILES) -c
