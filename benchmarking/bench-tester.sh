@@ -6,11 +6,11 @@ if [ -z "$1" ]; then
 fi
 BENCH_TYPE="$1"
 
-if [ ! -f config.sh ]; then
-  echo '[ERROR] There should be a config.sh file next to this script...'
+if [ ! -f config ]; then
+  echo '[ERROR] There should be a "config" file next to this script...'
   exit 1
 fi
-. config.sh
+. ./config
 
 if [ ! -f moongen/build/MoonGen ]; then
   echo '[bench-tester] Building MoonGen...'
