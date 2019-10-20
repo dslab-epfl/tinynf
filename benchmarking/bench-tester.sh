@@ -6,6 +6,12 @@ if [ -z "$1" ]; then
 fi
 BENCH_TYPE="$1"
 
+if [ -z "$2" ]; then
+  echo "[ERROR] Please provide the layer of the benchmark as the second argument to $0"
+  exit 1
+fi
+BENCH_LAYER="$2"
+
 if [ ! -f config ]; then
   echo '[ERROR] There should be a "config" file next to this script...'
   exit 1
@@ -28,10 +34,10 @@ modprobe uio
 echo '[bench-tester] Configuring interfaces...'
 DPDK_DIR='moongen/libmoon/deps/dpdk'
 for pci in "$TESTER_DEV_0" "$TESTER_DEV_1"; do
-  if ! sudo "$DPDK_DIR/usertools/dpdk-devbind.py" --status | grep -F "$pci" | grep -q 'drv=ixgbe'; then
-    sudo "$DPDK_DIR/usertools/dpdk-devbind.py" --force --bind ixgbe "$pci"
+  if ! sudo "$DPDK_DIR/usertools/dpdk-devbind.py" --status | grep -F "$pci" | grep -q 'drv=igb_uio'; then
+    sudo "$DPDK_DIR/usertools/dpdk-devbind.py" --force --bind igb_uio "$pci"
   fi
 done
 
 echo '[bench-tester] Running...'
-sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE"
+sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE" "$BENCH_LAYER"

@@ -10,6 +10,8 @@ local ts      = require "timestamping"
 
 local PACKET_SIZE = 60 -- packets
 local BATCH_SIZE = 64 -- packets
+local FLOW_COUNT = 60000 -- flows
+
 local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps
 
@@ -19,49 +21,69 @@ local HEATUP_RATE     = 20 -- Mbps
 local LATENCY_LOAD_RATE = 1000 -- Mbps
 local N_PROBE_FLOWS     = 1000
 
-local RESULTS_FILE_NAME = 'results.tsv'
+local RESULTS_FILE_NAME = 'results.csv'
 
 
 -- Arguments for the script
 function configure(parser)
-  parser:description("Generates UDP traffic and measures throughput.")
   parser:argument("type", "'latency' or 'throughput'.")
   parser:argument("layer", "Layer at which the flows are meaningful."):convert(tonumber)
-  parser:argument("txDev", "Device to transmit from."):convert(tonumber)
-  parser:argument("rxDev", "Device to receive from."):convert(tonumber)
-  parser:option("-d --duration", "Step duration."):convert(tonumber)
-  parser:option("-x --reverse", "Number of flows for reverse traffic, if required."):default(0):convert(tonumber)
+  parser:option("-d --duration", "Step duration, in seconds."):default(5):convert(tonumber)
 end
 
--- Per-layer functions to configure a packet given a counter;
+-- Per-direction per-layer functions to configure a packet given a counter;
 -- this assumes the total number of flows is <= 65536
 local packetConfigs = {
-  [2] = function(pkt, counter)
-    pkt.eth.src:set(counter)
-    pkt.eth.dst:set(0xFF0000000000 + counter)
+  [0] = {
+    [2] = function(pkt, counter)
+      pkt.eth.src:set(counter)
+      pkt.eth.dst:set(0xFF0000000000 + counter)
+    end,
+    [3] = function(pkt, counter)
+      pkt.ip4.src:set(counter)
+    end,
+    [4] = function(pkt, counter)
+      pkt.udp.src = counter
+    end
+  },
+  [1] = {
+    [2] = function(pkt, counter)
+      pkt.eth.src:set(0xFF0000000000 + counter)
+      pkt.eth.dst:set(counter)
+    end,
+    [3] = function(pkt, counter)
+      pkt.ip4.dst:set(counter)
+    end,
+    [4] = function(pkt, counter)
+      pkt.udp.dst = counter
+    end
+  }
+}
+-- Per-direction functions to initialize a packet
+local packetInits = {
+  [0] = function(buf, packetSize)
+    buf:getUdpPacket():fill{
+      ethSrc = "FF:FF:FF:FF:FF:FF",
+      ethDst = "00:00:00:00:00:00",
+      ip4Src = "255.255.255.255",
+      ip4Dst = "0.0.0.0",
+      udpSrc = 65535,
+      udpDst = 0,
+      pktLength = packetSize
+    }
   end,
-  [3] = function(pkt, counter)
-    pkt.ip4.src:set(counter)
-  end,
-  [4] = function(pkt, counter)
-    pkt.udp.src = counter
+  [1] = function(buf, packetSize)
+    buf:getUdpPacket():fill{
+      ethSrc = "00:00:00:00:00:00",
+      ethDst = "FF:FF:FF:FF:FF:FF",
+      ip4Src = "0.0.0.0",
+      ip4Dst = "255.255.255.255",
+      udpSrc = 0,
+      udpDst = 65535,
+      pktLength = packetSize
+    }
   end
 }
-
--- Fills a packet with default values
--- Set the src to the max, so that dst can easily be set to
--- the counter if needed without overlap
-function packetInit(buf, packetSize)
-  buf:getUdpPacket():fill{
-    ethSrc = "FF:FF:FF:FF:FF:FF",
-    ethDst = "00:00:00:00:00:00",
-    ip4Src = "255.255.255.255",
-    ip4Dst = "0.0.0.0",
-    udpSrc = 65535,
-    udpDst = 0,
-    pktLength = packetSize
-  }
-end
 
 -- Helper function, has to be global because it's started as a task
 function _latencyTask(txQueue, rxQueue, layer, flowCount, duration, counterStart)
@@ -98,13 +120,13 @@ function startMeasureLatency(txQueue, rxQueue, layer,
 end
 
 -- Helper function, has to be global because it's started as a task
-function _throughputTask(txQueue, rxQueue, layer, flowCount, duration)
-  local mempool = memory.createMemPool(function(buf) packetInit(buf, PACKET_SIZE) end)
+function _throughputTask(txQueue, rxQueue, layer, duration, direction, targetTx)
+  local mempool = memory.createMemPool(function(buf) packetInits[direction](buf, PACKET_SIZE) end)
   -- "nil" == no output
   local txCounter = stats:newDevTxCounter(txQueue, "nil")
   local rxCounter = stats:newDevRxCounter(rxQueue, "nil")
   local bufs = mempool:bufArray(BATCH_SIZE)
-  local packetConfig = packetConfigs[layer]
+  local packetConfig = packetConfigs[direction][layer]
   local sendTimer = timer:new(duration)
   local counter = 0
 
@@ -115,7 +137,7 @@ function _throughputTask(txQueue, rxQueue, layer, flowCount, duration)
       -- incAndWrap does this in a supposedly fast way;
       -- in practice it's actually slower!
       -- with incAndWrap this code cannot do 10G line rate
-      counter = (counter + 1) % flowCount
+      counter = (counter + 1) % FLOW_COUNT
     end
 
     bufs:offloadIPChecksums() -- UDP checksum is optional,
@@ -127,13 +149,21 @@ function _throughputTask(txQueue, rxQueue, layer, flowCount, duration)
 
   txCounter:finalize()
   rxCounter:finalize()
-  return txCounter.total, rxCounter.total
+
+  local tx = txCounter.total
+  local rx = rxCounter.total
+
+  -- Sanity check; it's very easy to change the script and make it too expensive to generate 10 Gb/s
+  if tx  < 0.99 * targetTx then
+    io.write("Sent " .. tx .. " packets but expected around " .. targetTx .. ", broken benchmark! Did you change the script and add too many per-packet operations?\n")
+    os.exit(1)
+  end
+  
+  return (tx - rx) / tx
 end
 
--- Starts a throughput-measuring task,
--- which returns (#tx, #rx) packets (where rx == tx iff no loss)
-function startMeasureThroughput(txQueue, rxQueue, rate, layer,
-                                flowCount, duration)
+-- Starts a throughput-measuring task, which returns the loss (0 if no loss)
+function startMeasureThroughput(txQueue, rxQueue, rate, layer, duration, direction)
   -- Get the rate that should be given to MoonGen
   -- using packets of the given size to achieve the given true rate
   function moongenRate(rate)
@@ -162,25 +192,28 @@ function startMeasureThroughput(txQueue, rxQueue, rate, layer,
   end
 
   txQueue:setRate(moongenRate(rate))
-  return mg.startTask("_throughputTask", txQueue, rxQueue,
-                      layer, flowCount, duration)
+  local targetTx = (rate * 1000 * 1000) / ((PACKET_SIZE + 24) * 8) * duration
+  return mg.startTask("_throughputTask", txQueue, rxQueue, layer, duration, direction, targetTx)
 end
 
 
--- Heats up with packets at the given layer, with the given size and number of flows.
--- Errors if the loss is over 1%, and ignoreNoResponse is false.
-function heatUp(txQueue, rxQueue, layer, flowCount, ignoreNoResponse)
-  io.write("Heating up for " .. HEATUP_DURATION .. " seconds at " ..
-             HEATUP_RATE .. " Mbps with " .. flowCount .. " flows... ")
-  local tx, rx = startMeasureThroughput(txQueue, rxQueue, HEATUP_RATE,
-                                        layer, PACKET_SIZE, flowCount,
-                                        HEATUP_DURATION):wait()
-  local loss = (tx - rx) / tx
-  if loss > 0.001 and not ignoreNoResponse then
-    io.write("Over 0.1% loss!\n")
+-- Heats up in both directions at the given layer
+function heatUp(dev0, dev1, layer)
+  io.write("Heatup... (" .. HEATUP_DURATION .. " seconds)\n")
+  local task0 = startMeasureThroughput(dev0:getTxQueue(0), dev1:getRxQueue(0), HEATUP_RATE, layer, HEATUP_DURATION, 0)
+  local task1 = startMeasureThroughput(dev1:getTxQueue(0), dev0:getRxQueue(0), HEATUP_RATE, layer, HEATUP_DURATION, 1)
+
+  local loss0 = task0:wait()
+  local loss1 = task1:wait()
+
+  if loss0 == 1 then
+    io.write("Heatup 0->1 did not get any packets back!\n")
     os.exit(1)
   end
-  io.write("OK\n")
+  if loss1 == 1 then
+    io.write("Heatup 1->0 did not get any packets back!\n")
+    os.exit(1)
+  end
 end
 
 -- Measure latency under 1G load
@@ -231,95 +264,66 @@ function measureLatencyUnderLoad(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ,
 end
 
 -- Measure max throughput with less than 0.1% loss
-function measureMaxThroughputWithLowLoss(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ,
-                                         layer, duration, reverseFlowCount)
-  -- Do not change the name and format of this file
-  -- unless you change the rest of the scripts that depend on it!
-  local outFile = io.open(RESULTS_FILE_NAME, "w")
-  outFile:write("#flows\tMbps\t#packets\t#pkts/s\tloss\n")
+function measureMaxThroughputWithLowLoss(dev0, dev1, layer, duration)
+  heatUp(dev0, dev1, layer)
 
-  for _, flowCount in ipairs({60000}) do
-    if reverseFlowCount > 0 then
-      heatUp(txRevQ, rxRevQ, layer, reverseFlowCount, true)
+  local outFile = io.open(RESULTS_FILE_NAME, "w")
+  outFile:write("#flows,\tMbps,\tloss\n")
+
+  local upperBound = RATE_MAX
+  local lowerBound = RATE_MIN
+  local rate = upperBound
+  local bestRate = 0
+  local bestTx = 0
+  local bestLoss = 1
+  for i = 1, 10 do
+    io.write("Step " .. i .. ": " .. rate .. " Mbps... ")
+    local task0 = startMeasureThroughput(dev0:getTxQueue(0), dev1:getRxQueue(0), rate, layer, duration, 0)
+    local task1 = startMeasureThroughput(dev1:getTxQueue(0), dev0:getRxQueue(0), rate, layer, duration, 1)
+
+    local loss0 = task0:wait()
+    local loss1 = task1:wait()
+    local loss = (loss0 + loss1) / 2
+
+    -- We may have been interrupted
+    if not mg.running() then
+      io.write("Interrupted\n")
+      os.exit(0)
     end
 
-    heatUp(txQ, rxQ, layer, flowCount, false)
+    io.write("loss = " .. loss .. "\n")
 
-    io.write("Running binary search with " .. flowCount .. " flows...\n")
-    local upperBound = RATE_MAX
-    local lowerBound = RATE_MIN
-    local rate = upperBound
-    local bestRate = 0
-    local bestTx = 0
-    local bestLoss = 1
-    -- Binary search phase
-    for i = 1, 10 do
-      io.write("Step " .. i .. ": " .. rate .. " Mbps... ")
-      local tx, rx = startMeasureThroughput(txQ, rxQ, rate, layer, flowCount, duration):wait()
+    if (loss < 0.001) then
+      bestRate = rate
+      bestTx = tx
+      bestLoss = loss
+      lowerBound = rate
+      rate = rate + (upperBound - rate)/2
+    else
+      upperBound = rate
+      rate = lowerBound + (rate - lowerBound)/2
+    end
 
-      -- We may have been interrupted
-      if not mg.running() then
-        io.write("Interrupted\n")
-        os.exit(0)
-      end
-
-      local loss = (tx - rx) / tx
-      io.write(tx .. " sent, " .. rx .. " received, loss = " .. loss .. "\n")
-
-      if (loss < 0.001) then
-        bestRate = rate
-        bestTx = tx
-        bestLoss = loss
-
-        lowerBound = rate
-        rate = rate + (upperBound - rate)/2
-      else
-        upperBound = rate
-        rate = lowerBound + (rate - lowerBound)/2
-      end
-
-      -- Stop if the first step is already successful,
-      -- let's not do pointless iterations
-      if (i == 10) or (loss < 0.001 and bestRate == upperBound) then
-        -- Note that we write 'bestRate' here,
-        -- i.e. the last rate with < 0.001 loss, not the current one
-        -- (which may cause > 0.001 loss
-        --  since our binary search is bounded in steps)
-        outFile:write(flowCount .. "\t" .. math.floor(bestRate) .. "\t" .. bestTx .. "\t" ..
-                      math.floor(bestTx/duration) .. "\t" .. bestLoss .. "\n")
-        break
-      end
+    -- Stop if the first step is already successful, let's not do pointless iterations
+    if (i == 10) or (loss < 0.001 and bestRate == upperBound) then
+      -- Note that we write 'bestRate' here, i.e. the last rate with < 0.001 loss, not the current one
+      -- (which may cause > 0.001 loss since our binary search is bounded in steps)
+      outFile:write(FLOW_COUNT .. "\t" .. math.floor(bestRate * 2) .. "\t" .. bestLoss .. "\n")
+      break
     end
   end
 end
 
 function master(args)
-  -- TX device:
-  --   2 queues for sending (so that latency can also generate background load)
-  --   1 queue for receiving (for reverse traffic)
-  -- RX device: same, but reversed
-  -- Reverse traffic not available if there's only one port
-  local txQ, txQ2, txRevQ, rxQ, rxQ2, rxRevQ
-  if args.txDev == args.rxDev then
-    local dev = device.config{port = args.txDev, rxQueues = 2, txQueues = 2}
-    device.waitForLinks()
-    txQ = dev:getTxQueue(0)
-    txQ2 = dev:getTxQueue(1)
-    txRevQ = nil
-    rxQ = dev:getRxQueue(0)
-    rxQ2 = dev:getRxQueue(1)
-    rxRevQ = nil
-  else
-    local txDev = device.config{port = args.txDev, rxQueues = 1, txQueues = 2}
-    local rxDev = device.config{port = args.rxDev, rxQueues = 2, txQueues = 1}
-    device.waitForLinks()
-    txQ = txDev:getTxQueue(0)
-    txQ2 = txDev:getTxQueue(1)
-    txRevQ = rxDev:getTxQueue(0)
-    rxQ = rxDev:getRxQueue(0)
-    rxQ2 = rxDev:getRxQueue(1)
-    rxRevQ = txDev:getRxQueue(0)
-  end
+  -- We have 2 devices, and can thus do two kinds of benchmarks:
+  --  Throughput: binary-search how much throughput the NF can handle without dropping more than 0.1% of packets,
+  --              in both directions at the same time, thus with a maximum of 20 Gb/s
+  --  Latency: Measure the one-way latency of the NF, with background traffic of 1 Gb/s in both directions
+
+  -- Thus we need 1 TX + 1 RX queue in each device for throughput, and 1 TX in device 0 / 1 RX in device 1 for latency
+  local dev0 = device.config{port = 0, rxQueues = 1, txQueues = 2}
+  local dev1 = device.config{port = 1, rxQueues = 2, txQueues = 1}
+  device.waitForLinks()
 
   measureFunc = nil
   if args.type == 'latency' then
@@ -331,5 +335,5 @@ function master(args)
     os.exit(1)
   end
 
-  measureFunc(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ, args.layer, args.duration, args.reverse)
+  measureFunc(dev0, dev1, args.layer, args.duration)
 end

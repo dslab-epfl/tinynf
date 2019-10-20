@@ -16,6 +16,12 @@ if [ -z "$2" ]; then
 fi
 BENCH_TYPE="$2"
 
+if [ -z "$3" ]; then
+  echo "[ERROR] Please provide the layer of the benchmark as the third argument to $0"
+  exit 1
+fi
+BENCH_LAYER="$3"
+
 if [ ! -z "$(pgrep "$NF_FILE")" ]; then
   echo '[ERROR] The NF is already running'
   exit 1
@@ -46,7 +52,7 @@ if [ -z "$NF_PID" ]; then
 fi
 
 echo '[bench] Running benchmark on tester...'
-ssh "$TESTER_HOST" "cd tinynf-benchmarking; ./bench-tester.sh $BENCH_TYPE"
+ssh "$TESTER_HOST" "cd tinynf-benchmarking; ./bench-tester.sh $BENCH_TYPE $BENCH_LAYER"
 
 echo '[bench] Fetching results...'
 scp "$TESTER_HOST:tinynf-benchmarking/results.csv" "$RESULTS_FILE"
