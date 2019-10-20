@@ -43,7 +43,7 @@ echo '[bench] Building NF...'
 make -C "$NF_DIR" >/dev/null
 
 echo '[bench] Running NF...'
-sudo taskset -c "$MB_CPU" "$NF_DIR"/"$NF_FILE" "$MB_DEV_0" "$MB_DEV_1" 2>&1 >"$LOG_FILE" &
+sudo taskset -c "$MB_CPU" "$NF_DIR"/"$NF_FILE" "$MB_DEV_0" "$MB_DEV_1" >"$LOG_FILE" 2>&1 &
 sleep 1 # so that the NF has time to fail if needed
 NF_PID=$(pgrep "$NF_FILE")
 if [ -z "$NF_PID" ]; then
@@ -58,6 +58,6 @@ echo '[bench] Fetching results...'
 scp "$TESTER_HOST:tinynf-benchmarking/results.csv" "$RESULTS_FILE"
 
 echo '[bench] Stopping NF...'
-sudo kill -9 "$NF_PID" 2>&1 >/dev/null
+sudo kill -9 "$NF_PID" >/dev/null 2>&1
 
 echo "[bench] Done! Results are in $RESULTS_FILE, and the log in $LOG_FILE, in the same directory as $0"
