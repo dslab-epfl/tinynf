@@ -7,7 +7,6 @@ local stats   = require "stats"
 local timer   = require "timer"
 local ts      = require "timestamping"
 
-
 local PACKET_SIZE = 60 -- packets
 local BATCH_SIZE = 64 -- packets
 local FLOW_COUNT = 32768 -- flows
@@ -158,7 +157,7 @@ function _throughputTask(txQueue, rxQueue, layer, duration, direction, targetTx)
     io.write("Sent " .. tx .. " packets but expected around " .. targetTx .. ", broken benchmark! Did you change the script and add too many per-packet operations?\n")
     os.exit(1)
   end
-  
+
   return (tx - rx) / tx
 end
 
@@ -197,22 +196,20 @@ function startMeasureThroughput(txQueue, rxQueue, rate, layer, duration, directi
 end
 
 
--- Heats up in both directions at the given layer
-function heatUp(dev0, dev1, layer)
+-- Heats up at the given layer
+function heatUp(queuePairs, layer)
   io.write("Heatup... (" .. HEATUP_DURATION .. " seconds)\n")
-  local task0 = startMeasureThroughput(dev0:getTxQueue(0), dev1:getRxQueue(0), HEATUP_RATE, layer, HEATUP_DURATION, 0)
-  local task1 = startMeasureThroughput(dev1:getTxQueue(0), dev0:getRxQueue(0), HEATUP_RATE, layer, HEATUP_DURATION, 1)
-
-  local loss0 = task0:wait()
-  local loss1 = task1:wait()
-
-  if loss0 == 1 then
-    io.write("Heatup 0->1 did not get any packets back!\n")
-    os.exit(1)
+  local tasks = {}
+  for i, pair in ipairs(queuePairs) do
+    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, HEATUP_RATE, layer, HEATUP_DURATION, pair.direction)
   end
-  if loss1 == 1 then
-    io.write("Heatup 1->0 did not get any packets back!\n")
-    os.exit(1)
+
+  for i, task in ipairs(tasks) do
+    local loss = tasks[i]:wait()
+    if loss == 1 then
+      io.write("Heatup " .. pair.description .. " did not get any packets back!\n")
+      os.exit(1)
+    end
   end
 end
 
@@ -264,8 +261,8 @@ function measureLatencyUnderLoad(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ,
 end
 
 -- Measure max throughput with less than 0.1% loss
-function measureMaxThroughputWithLowLoss(dev0, dev1, layer, duration)
-  heatUp(dev0, dev1, layer)
+function measureMaxThroughputWithLowLoss(queuePairs, layer, duration)
+  heatUp(queuePairs, layer)
 
   local outFile = io.open(RESULTS_FILE_NAME, "w")
   outFile:write("#flows,\tMbps,\tloss\n")
@@ -277,13 +274,18 @@ function measureMaxThroughputWithLowLoss(dev0, dev1, layer, duration)
   local bestTx = 0
   local bestLoss = 1
   for i = 1, 10 do
-    io.write("Step " .. i .. ": " .. (2 * rate) .. " Mbps... ")
-    local task0 = startMeasureThroughput(dev0:getTxQueue(0), dev1:getRxQueue(0), rate, layer, duration, 0)
-    local task1 = startMeasureThroughput(dev1:getTxQueue(0), dev0:getRxQueue(0), rate, layer, duration, 1)
+    io.write("Step " .. i .. ": " .. (#queuePairs * rate) .. " Mbps... ")
+    local tasks = {}
+    for i, pair in ipairs(queuePairs) do
+      tasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, duration, pair.direction)
+    end
 
-    local loss0 = task0:wait()
-    local loss1 = task1:wait()
-    local loss = (loss0 + loss1) / 2
+    local loss = 0
+    for i, task in ipairs(tasks) do
+      loss = loss + tasks[i]:wait()
+    end
+
+    loss = loss / #queuePairs
 
     -- We may have been interrupted
     if not mg.running() then
@@ -308,7 +310,7 @@ function measureMaxThroughputWithLowLoss(dev0, dev1, layer, duration)
     if (i == 10) or (loss < 0.001 and bestRate == upperBound) then
       -- Note that we write 'bestRate' here, i.e. the last rate with < 0.001 loss, not the current one
       -- (which may cause > 0.001 loss since our binary search is bounded in steps)
-      outFile:write(FLOW_COUNT .. "\t" .. math.floor(bestRate * 2) .. "\t" .. bestLoss .. "\n")
+      outFile:write(FLOW_COUNT .. "\t" .. math.floor(#queuePairs * bestRate) .. "\t" .. bestLoss .. "\n")
       break
     end
   end
@@ -325,6 +327,11 @@ function master(args)
   local dev1 = device.config{port = 1, rxQueues = 2, txQueues = 1}
   device.waitForLinks()
 
+  local queuePairs = {
+    [1] = { tx = dev0:getTxQueue(0), rx = dev1:getRxQueue(0), direction = 0, description = "0->1" },
+    [2] = { tx = dev1:getTxQueue(0), rx = dev0:getRxQueue(0), direction = 0, description = "1->0" }
+  }
+
   measureFunc = nil
   if args.type == 'latency' then
     measureFunc = measureLatencyUnderLoad
@@ -335,5 +342,5 @@ function master(args)
     os.exit(1)
   end
 
-  measureFunc(dev0, dev1, args.layer, args.duration)
+  measureFunc(queuePairs, args.layer, args.duration)
 end
