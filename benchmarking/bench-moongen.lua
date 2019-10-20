@@ -1,10 +1,3 @@
---[[                             !!! BEWARE !!!
-
-This benchmark saturates a 10G link, i.e. can send ~14.8 millions of packets per second.
-This leaves VERY little budget for anything besides sending packets.
-If you make ANY changes, try sending packets at 10G and make sure the right amount of packets is sent!
-]]--
-
 local ffi     = require "ffi"
 local device  = require "device"
 local hist    = require "histogram"
@@ -15,6 +8,7 @@ local timer   = require "timer"
 local ts      = require "timestamping"
 
 
+local PACKET_SIZE = 60 -- packets
 local BATCH_SIZE = 64 -- packets
 local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps
@@ -35,7 +29,6 @@ function configure(parser)
   parser:argument("layer", "Layer at which the flows are meaningful."):convert(tonumber)
   parser:argument("txDev", "Device to transmit from."):convert(tonumber)
   parser:argument("rxDev", "Device to receive from."):convert(tonumber)
-  parser:option("-p --packetsize", "Packet size."):convert(tonumber)
   parser:option("-d --duration", "Step duration."):convert(tonumber)
   parser:option("-x --reverse", "Number of flows for reverse traffic, if required."):default(0):convert(tonumber)
 end
@@ -105,8 +98,8 @@ function startMeasureLatency(txQueue, rxQueue, layer,
 end
 
 -- Helper function, has to be global because it's started as a task
-function _throughputTask(txQueue, rxQueue, layer, packetSize, flowCount, duration)
-  local mempool = memory.createMemPool(function(buf) packetInit(buf, packetSize) end)
+function _throughputTask(txQueue, rxQueue, layer, flowCount, duration)
+  local mempool = memory.createMemPool(function(buf) packetInit(buf, PACKET_SIZE) end)
   -- "nil" == no output
   local txCounter = stats:newDevTxCounter(txQueue, "nil")
   local rxCounter = stats:newDevRxCounter(rxQueue, "nil")
@@ -116,7 +109,7 @@ function _throughputTask(txQueue, rxQueue, layer, packetSize, flowCount, duratio
   local counter = 0
 
   while sendTimer:running() and mg.running() do
-    bufs:alloc(packetSize)
+    bufs:alloc(PACKET_SIZE)
     for _, buf in ipairs(bufs) do
       packetConfig(buf:getUdpPacket(), counter)
       -- incAndWrap does this in a supposedly fast way;
@@ -140,10 +133,10 @@ end
 -- Starts a throughput-measuring task,
 -- which returns (#tx, #rx) packets (where rx == tx iff no loss)
 function startMeasureThroughput(txQueue, rxQueue, rate, layer,
-                                packetSize, flowCount, duration)
+                                flowCount, duration)
   -- Get the rate that should be given to MoonGen
   -- using packets of the given size to achieve the given true rate
-  function moongenRate(packetSize, rate)
+  function moongenRate(rate)
     -- The rate the user wants is in total Mbits/s
     -- But MoonGen will send it as if the packet size
     -- was packetsize+4 (the 4 is for the hardware-offloaded MAC CRC)
@@ -157,8 +150,8 @@ function startMeasureThroughput(txQueue, rxQueue, rate, layer,
     -- let's avoid floats...
     -- Furthermore, it seems from tests that rates less than 10 are just ignored...
     local byteRate = rate * 1024 * 1024 / 8
-    local packetsPerSec = byteRate / (packetSize + 24)
-    local moongenByteRate = packetsPerSec * (packetSize + 4)
+    local packetsPerSec = byteRate / (PACKET_SIZE + 24)
+    local moongenByteRate = packetsPerSec * (PACKET_SIZE + 4)
     local moongenRate = moongenByteRate * 8 / (1024 * 1024)
     if moongenRate < 10 then
       printf("WARNING - Rate %f (corresponding to desired rate %d) too low," ..
@@ -168,19 +161,19 @@ function startMeasureThroughput(txQueue, rxQueue, rate, layer,
     return math.floor(moongenRate)
   end
 
-  txQueue:setRate(moongenRate(packetSize, rate))
+  txQueue:setRate(moongenRate(rate))
   return mg.startTask("_throughputTask", txQueue, rxQueue,
-                      layer, packetSize, flowCount, duration)
+                      layer, flowCount, duration)
 end
 
 
 -- Heats up with packets at the given layer, with the given size and number of flows.
 -- Errors if the loss is over 1%, and ignoreNoResponse is false.
-function heatUp(txQueue, rxQueue, layer, packetSize, flowCount, ignoreNoResponse)
+function heatUp(txQueue, rxQueue, layer, flowCount, ignoreNoResponse)
   io.write("Heating up for " .. HEATUP_DURATION .. " seconds at " ..
              HEATUP_RATE .. " Mbps with " .. flowCount .. " flows... ")
   local tx, rx = startMeasureThroughput(txQueue, rxQueue, HEATUP_RATE,
-                                        layer, packetSize, flowCount,
+                                        layer, PACKET_SIZE, flowCount,
                                         HEATUP_DURATION):wait()
   local loss = (tx - rx) / tx
   if loss > 0.001 and not ignoreNoResponse then
@@ -192,7 +185,7 @@ end
 
 -- Measure latency under 1G load
 function measureLatencyUnderLoad(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ,
-                                 layer, packetSize, duration, reverseFlowCount)
+                                 layer, duration, reverseFlowCount)
   -- It's the same filter set every time
   -- so not setting it on subsequent attempts is OK
   io.write("\n\n!!! IMPORTANT: You can safely ignore the warnings" ..
@@ -208,12 +201,12 @@ function measureLatencyUnderLoad(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ,
 
   for _, flowCount in ipairs({60000}) do
     if reverseFlowCount > 0 then
-      heatUp(txRevQ, rxRevQ, layer, packetSize, reverseFlowCount, true)
+      heatUp(txRevQ, rxRevQ, layer, reverseFlowCount, true)
     end
-    heatUp(txQ, rxQ, layer, packetSize, flowCount, false)
+    heatUp(txQ, rxQ, layer, flowCount, false)
 
     io.write("Measuring latency for " .. flowCount .. " flows... ")
-    local throughputTask = startMeasureThroughput(txQ, rxQ, LATENCY_LOAD_RATE, layer, packetSize, flowCount, duration)
+    local throughputTask = startMeasureThroughput(txQ, rxQ, LATENCY_LOAD_RATE, layer, flowCount, duration)
     local latencyTask = startMeasureLatency(txQ2, rxQ2, layer, N_PROBE_FLOWS, duration, flowCount)
 
     -- We may have been interrupted
@@ -239,8 +232,7 @@ end
 
 -- Measure max throughput with less than 0.1% loss
 function measureMaxThroughputWithLowLoss(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ,
-                                         layer, packetSize,
-                                         duration, reverseFlowCount)
+                                         layer, duration, reverseFlowCount)
   -- Do not change the name and format of this file
   -- unless you change the rest of the scripts that depend on it!
   local outFile = io.open(RESULTS_FILE_NAME, "w")
@@ -248,10 +240,10 @@ function measureMaxThroughputWithLowLoss(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ,
 
   for _, flowCount in ipairs({60000}) do
     if reverseFlowCount > 0 then
-      heatUp(txRevQ, rxRevQ, layer, packetSize, reverseFlowCount, true)
+      heatUp(txRevQ, rxRevQ, layer, reverseFlowCount, true)
     end
 
-    heatUp(txQ, rxQ, layer, packetSize, flowCount, false)
+    heatUp(txQ, rxQ, layer, flowCount, false)
 
     io.write("Running binary search with " .. flowCount .. " flows...\n")
     local upperBound = RATE_MAX
@@ -263,7 +255,7 @@ function measureMaxThroughputWithLowLoss(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ,
     -- Binary search phase
     for i = 1, 10 do
       io.write("Step " .. i .. ": " .. rate .. " Mbps... ")
-      local tx, rx = startMeasureThroughput(txQ, rxQ, rate, layer, packetSize, flowCount, duration):wait()
+      local tx, rx = startMeasureThroughput(txQ, rxQ, rate, layer, flowCount, duration):wait()
 
       -- We may have been interrupted
       if not mg.running() then
@@ -339,5 +331,5 @@ function master(args)
     os.exit(1)
   end
 
-  measureFunc(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ, args.layer, args.packetsize, args.duration, args.reverse)
+  measureFunc(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ, args.layer, args.duration, args.reverse)
 end
