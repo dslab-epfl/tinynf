@@ -10,7 +10,7 @@ local ts      = require "timestamping"
 
 local PACKET_SIZE = 60 -- packets
 local BATCH_SIZE = 64 -- packets
-local FLOW_COUNT = 60000 -- flows
+local FLOW_COUNT = 32768 -- flows
 
 local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps
@@ -154,7 +154,7 @@ function _throughputTask(txQueue, rxQueue, layer, duration, direction, targetTx)
   local rx = rxCounter.total
 
   -- Sanity check; it's very easy to change the script and make it too expensive to generate 10 Gb/s
-  if tx  < 0.99 * targetTx then
+  if tx  < 0.98 * targetTx then
     io.write("Sent " .. tx .. " packets but expected around " .. targetTx .. ", broken benchmark! Did you change the script and add too many per-packet operations?\n")
     os.exit(1)
   end
@@ -277,7 +277,7 @@ function measureMaxThroughputWithLowLoss(dev0, dev1, layer, duration)
   local bestTx = 0
   local bestLoss = 1
   for i = 1, 10 do
-    io.write("Step " .. i .. ": " .. rate .. " Mbps... ")
+    io.write("Step " .. i .. ": " .. (2 * rate) .. " Mbps... ")
     local task0 = startMeasureThroughput(dev0:getTxQueue(0), dev1:getRxQueue(0), rate, layer, duration, 0)
     local task1 = startMeasureThroughput(dev1:getTxQueue(0), dev0:getRxQueue(0), rate, layer, duration, 1)
 
