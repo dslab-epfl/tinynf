@@ -1,0 +1,3 @@
+sudo pkill -9 tinynf # we shouldn't need this but in case it errored...
+cd ../benchmarking
+EXPIRATION_TIME=10000000 TN_VIGOR_NF=vignat ./bench.sh ~/tinynf/baselines/vigor throughput 4
