@@ -1,0 +1,11 @@
+# Index of the CPU on which the NF will run
+export MB_CPU=6
+# Devices on the middlebox
+export MB_DEV_0=06:00.0
+export MB_DEV_1=06:00.1
+
+# Hostname of the tester
+export TESTER_HOST=icnalsp3s4
+# Devices on the tester
+export TESTER_DEV_0=06:00.0
+export TESTER_DEV_1=06:00.1
