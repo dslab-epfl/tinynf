@@ -207,7 +207,7 @@ function heatUp(queuePairs, layer)
   for i, task in ipairs(tasks) do
     local loss = tasks[i]:wait()
     if loss == 1 then
-      io.write("Heatup " .. pair.description .. " did not get any packets back!\n")
+      io.write("Heatup " .. queuePairs[i].description .. " did not get any packets back!\n")
       os.exit(1)
     end
   end
@@ -329,7 +329,7 @@ function master(args)
 
   local queuePairs = {
     [1] = { tx = dev0:getTxQueue(0), rx = dev1:getRxQueue(0), direction = 0, description = "0->1" },
-    [2] = { tx = dev1:getTxQueue(0), rx = dev0:getRxQueue(0), direction = 0, description = "1->0" }
+    [2] = { tx = dev1:getTxQueue(0), rx = dev0:getRxQueue(0), direction = 1, description = "1->0" }
   }
 
   measureFunc = nil
