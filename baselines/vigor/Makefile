@@ -50,12 +50,6 @@ SPACE := $(null) #
 COMMA := ,
 CFLAGS += -DVIGOR_ARGS=\"$(subst $(SPACE),$(DQUOTE)$(COMMA)$(DQUOTE),$(TN_VIGOR_NF) $(NF_ARGS))\"
 
-# One-way trick
-ifeq (true,$(ONE_WAY))
-$(info Using one way trick)
-CFLAGS += -DASSUME_ONE_WAY
-endif
-
 # LTO makes a huge difference in Vigor perf (e.g. VigNAT goes from 4G to 8G)
 CFLAGS += -flto
 LDFLAGS += -flto

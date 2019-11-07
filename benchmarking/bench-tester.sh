@@ -28,8 +28,8 @@ sudo ./moongen/setup-hugetlbfs.sh
 
 echo '[bench-tester] Setting up the DPDK driver...'
 # code taken from libmoon's bind-interfaces-sh
-modprobe uio
-(lsmod | grep igb_uio > /dev/null) || insmod 'moongen/libmoon/deps/dpdk/x86_64-native-linuxapp-gcc/kmod/igb_uio.ko'
+sudo modprobe uio
+(lsmod | grep igb_uio > /dev/null) || sudo insmod 'moongen/libmoon/deps/dpdk/x86_64-native-linuxapp-gcc/kmod/igb_uio.ko'
 
 echo '[bench-tester] Configuring interfaces...'
 DPDK_DIR='moongen/libmoon/deps/dpdk'

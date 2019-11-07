@@ -44,9 +44,13 @@
 // TXPAD: We want all sent frames to be at least 64 bytes
 
 // Maximum number of send queues assigned to a pipe. Not based on any spec, can be redefined at will
+#ifndef IXGBE_PIPE_MAX_SENDS
 #define IXGBE_PIPE_MAX_SENDS 4u
+#endif
 // Scheduling period for bookkeeping and sending. Not based on any spec, can be redefined at will as long as it's a power of 2 for fast modulo
+#ifndef IXGBE_PIPE_SCHEDULING_PERIOD
 #define IXGBE_PIPE_SCHEDULING_PERIOD 32
+#endif
 static_assert((IXGBE_PIPE_SCHEDULING_PERIOD & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == 0, "Scheduling period must be a power of 2");
 
 // Section 7.1.2.5 L3/L4 5-tuple Filters:

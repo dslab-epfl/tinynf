@@ -106,6 +106,9 @@ int main(int argc, char** argv)
 
 	// Compat layer
 	TN_INFO("Running Vigor NF on top of TinyNF...");
+#ifdef ASSUME_ONE_WAY
+	TN_INFO("Assuming the NF only needs one-way pipes, hope you know what you're doing...");
+#endif
 	while(true) {
 		for (current_device = 0; current_device < devices_count; current_device++) {
 			tn_net_pipe_run_step(pipes[current_device], compat_packet_handler);
