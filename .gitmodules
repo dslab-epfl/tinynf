@@ -7,3 +7,6 @@
 [submodule "baselines/vigor/vigor"]
 	path = baselines/vigor/vigor
 	url = https://github.com/vigor-nf/vigor
+[submodule "baselines/click"]
+	path = baselines/click
+	url = https://github.com/kohler/click
