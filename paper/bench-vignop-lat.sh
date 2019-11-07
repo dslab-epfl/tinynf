@@ -1,0 +1,3 @@
+sudo pkill -9 tinynf # we shouldn't need this but in case it errored...
+cd ../benchmarking
+TN_VIGOR_NF=vignop ./bench.sh ~/tinynf/baselines/vigor latency 2

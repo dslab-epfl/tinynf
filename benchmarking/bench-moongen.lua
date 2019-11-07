@@ -9,7 +9,8 @@ local ts      = require "timestamping"
 
 local PACKET_SIZE = 60 -- packets
 local BATCH_SIZE = 64 -- packets
-local FLOW_COUNT = 32768 -- flows
+local FLOWS_COUNT = 32768 -- flows
+local DEFAULT_DURATION = 60 -- seconds
 
 local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps
@@ -17,8 +18,8 @@ local RATE_MAX   = 10000 -- Mbps
 local HEATUP_DURATION = 5 -- seconds
 local HEATUP_RATE     = 20 -- Mbps
 
-local LATENCY_LOAD_RATE = 1000 -- Mbps
-local N_PROBE_FLOWS     = 1000
+local LATENCY_LOAD_RATE   = 1000 -- Mbps
+local LATENCY_FLOWS_COUNT = 1000 -- flows
 
 local RESULTS_FILE_NAME = 'results.csv'
 
@@ -27,7 +28,7 @@ local RESULTS_FILE_NAME = 'results.csv'
 function configure(parser)
   parser:argument("type", "'latency' or 'throughput'.")
   parser:argument("layer", "Layer at which the flows are meaningful."):convert(tonumber)
-  parser:option("-d --duration", "Step duration, in seconds."):default(5):convert(tonumber)
+  parser:option("-d --duration", "Step duration, in seconds."):default(DEFAULT_DURATION):convert(tonumber)
 end
 
 -- Per-direction per-layer functions to configure a packet given a counter;
@@ -85,14 +86,14 @@ local packetInits = {
 }
 
 -- Helper function, has to be global because it's started as a task
-function _latencyTask(txQueue, rxQueue, layer, flowCount, duration, counterStart)
+function _latencyTask(txQueue, rxQueue, layer, duration, direction)
   -- Ensure that the throughput task is running
   mg.sleepMillis(1000)
 
   local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
   local hist = hist:new()
   local sendTimer = timer:new(duration - 1) -- we just slept for a second earlier, so deduce that
-  local rateLimiter = timer:new(1 / flowCount) -- ASSUMPTION: The NF is running
+  local rateLimiter = timer:new(1 / LATENCY_FLOWS_COUNT) -- ASSUMPTION: The NF is running
   -- with 1 second expiry time, we want new flows' latency
   local counter = 0
 
@@ -100,9 +101,9 @@ function _latencyTask(txQueue, rxQueue, layer, flowCount, duration, counterStart
     -- Minimum size for these packets is 84
     local packetSize = 84
     hist:update(timestamper:measureLatency(packetSize, function(buf)
-      packetInit(buf, packetSize)
-      packetConfigs[layer](buf:getUdpPacket(), counterStart + counter)
-      counter = (counter + 1) % flowCount
+      packetInits[direction](buf, packetSize)
+      packetConfigs[direction][layer](buf:getUdpPacket(), counter)
+      counter = (counter + 1) % LATENCY_FLOWS_COUNT
     end))
     rateLimiter:wait()
     rateLimiter:reset()
@@ -112,10 +113,8 @@ function _latencyTask(txQueue, rxQueue, layer, flowCount, duration, counterStart
 end
 
 -- Starts a latency-measuring task, which returns (median, stdev)
-function startMeasureLatency(txQueue, rxQueue, layer,
-                             flowCount, duration, counterStart)
-  return mg.startTask("_latencyTask", txQueue, rxQueue,
-                      layer, flowCount, duration, counterStart)
+function startMeasureLatency(txQueue, rxQueue, layer, duration, counterStart)
+  return mg.startTask("_latencyTask", txQueue, rxQueue, layer, duration, counterStart)
 end
 
 -- Helper function, has to be global because it's started as a task
@@ -136,7 +135,7 @@ function _throughputTask(txQueue, rxQueue, layer, duration, direction, targetTx)
       -- incAndWrap does this in a supposedly fast way;
       -- in practice it's actually slower!
       -- with incAndWrap this code cannot do 10G line rate
-      counter = (counter + 1) % FLOW_COUNT
+      counter = (counter + 1) % FLOWS_COUNT
     end
 
     bufs:offloadIPChecksums() -- UDP checksum is optional,
@@ -214,58 +213,55 @@ function heatUp(queuePairs, layer)
 end
 
 -- Measure latency under 1G load
-function measureLatencyUnderLoad(txQ, rxQ, txQ2, rxQ2, txRevQ, rxRevQ,
-                                 layer, duration, reverseFlowCount)
+function measureLatencyUnderLoad(queuePairs, extraPair, layer, duration)
+  heatUp(queuePairs, layer)
+
   -- It's the same filter set every time
   -- so not setting it on subsequent attempts is OK
-  io.write("\n\n!!! IMPORTANT: You can safely ignore the warnings" ..
-             " about setting an fdir filter !!!\n\n\n")
+  io.write("\n\n!!! IMPORTANT: You can safely ignore the warnings about setting an fdir filter !!!\n\n\n")
 
-  -- Do not change the name and format of this file
-  -- unless you change the rest of the scripts that depend on it!
   local outFile = io.open(RESULTS_FILE_NAME, "w")
-  outFile:write("#flows\trate (Mbps)\tmedianLat (ns)\tstdevLat (ns)\n")
+  outFile:write("median(ns),\tstdev(ns)\n")
 
   -- Latency task waits 1sec for throughput task to have started, so we compensate
   duration = duration + 1
 
-  for _, flowCount in ipairs({60000}) do
-    if reverseFlowCount > 0 then
-      heatUp(txRevQ, rxRevQ, layer, reverseFlowCount, true)
-    end
-    heatUp(txQ, rxQ, layer, flowCount, false)
+  io.write("Measuring latency... ")
+  local throughputTasks = {}
+  for i, pair in ipairs(queuePairs) do
+    throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, duration, pair.direction)
+  end
 
-    io.write("Measuring latency for " .. flowCount .. " flows... ")
-    local throughputTask = startMeasureThroughput(txQ, rxQ, LATENCY_LOAD_RATE, layer, flowCount, duration)
-    local latencyTask = startMeasureLatency(txQ2, rxQ2, layer, N_PROBE_FLOWS, duration, flowCount)
+  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, duration, extraPair.direction)
 
-    -- We may have been interrupted
-    if not mg.running() then
-      io.write("Interrupted\n")
-      os.exit(0)
-    end
+  -- We may have been interrupted
+  if not mg.running() then
+    io.write("Interrupted\n")
+    os.exit(0)
+  end
 
-    local tx, rx = throughputTask:wait()
-    local median, stdev = latencyTask:wait()
-    local loss = (tx - rx) / tx
+  local loss = 0
+  for _, task in ipairs(throughputTasks) do
+    loss = loss + task:wait()
+  end
 
-    if loss > 0.001 then
-      io.write("Too much loss!\n")
-      outFile:write(flowCount .. "\t" .. "too much loss" .. "\n")
-      break
-    else
-      io.write("median " .. median .. ", stdev " .. stdev .. "\n")
-      outFile:write(flowCount .. "\t" .. LATENCY_LOAD_RATE .. "\t" .. median .. "\t" .. stdev .. "\n")
-    end
+  local median, stdev = latencyTask:wait()
+
+  if loss > 0.001 then
+    io.write("Too much loss!\n")
+    outFile:write("too much loss" .. "\n")
+  else
+    io.write("median " .. median .. ", stdev " .. stdev .. "\n")
+    outFile:write(median .. ",\t" .. stdev .. "\n")
   end
 end
 
 -- Measure max throughput with less than 0.1% loss
-function measureMaxThroughputWithLowLoss(queuePairs, layer, duration)
+function measureMaxThroughputWithLowLoss(queuePairs, _, layer, duration)
   heatUp(queuePairs, layer)
 
   local outFile = io.open(RESULTS_FILE_NAME, "w")
-  outFile:write("#flows,\tMbps,\tloss\n")
+  outFile:write("Mbps,\tloss\n")
 
   local upperBound = RATE_MAX
   local lowerBound = RATE_MIN
@@ -281,8 +277,8 @@ function measureMaxThroughputWithLowLoss(queuePairs, layer, duration)
     end
 
     local loss = 0
-    for i, task in ipairs(tasks) do
-      loss = loss + tasks[i]:wait()
+    for _, task in ipairs(tasks) do
+      loss = loss + task:wait()
     end
 
     loss = loss / #queuePairs
@@ -310,7 +306,7 @@ function measureMaxThroughputWithLowLoss(queuePairs, layer, duration)
     if (i == 10) or (loss < 0.001 and bestRate == upperBound) then
       -- Note that we write 'bestRate' here, i.e. the last rate with < 0.001 loss, not the current one
       -- (which may cause > 0.001 loss since our binary search is bounded in steps)
-      outFile:write(FLOW_COUNT .. "\t" .. math.floor(#queuePairs * bestRate) .. "\t" .. bestLoss .. "\n")
+      outFile:write(math.floor(#queuePairs * bestRate) .. ",\t" .. bestLoss .. "\n")
       break
     end
   end
@@ -331,6 +327,7 @@ function master(args)
     [1] = { tx = dev0:getTxQueue(0), rx = dev1:getRxQueue(0), direction = 0, description = "0->1" },
     [2] = { tx = dev1:getTxQueue(0), rx = dev0:getRxQueue(0), direction = 1, description = "1->0" }
   }
+  local extraPair = { tx = dev0:getTxQueue(1), rx = dev1:getRxQueue(1), direction = 0, description = "0->1 extra" }
 
   measureFunc = nil
   if args.type == 'latency' then
@@ -342,5 +339,5 @@ function master(args)
     os.exit(1)
   end
 
-  measureFunc(queuePairs, args.layer, args.duration)
+  measureFunc(queuePairs, extraPair, args.layer, args.duration)
 end
