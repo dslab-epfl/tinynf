@@ -1,6 +1,6 @@
-#include "os/memory.h"
+#include "../memory.h"
 
-#include "os/linux/numa.h"
+#include "numa.h"
 #include "util/log.h"
 
 #include <fcntl.h>

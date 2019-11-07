@@ -1,9 +1,9 @@
 #include "net/network.h"
 
-#include "arch/dca.h"
-#include "arch/endian.h"
-#include "os/memory.h"
-#include "os/time.h"
+#include "env/dca.h"
+#include "env/endian.h"
+#include "env/memory.h"
+#include "env/time.h"
 #include "util/log.h"
 
 // Don't include assert.h since that's not allowed in freestanding implementations

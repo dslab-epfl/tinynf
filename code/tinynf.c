@@ -1,6 +1,6 @@
+#include "env/memory.h"
+#include "env/pci.h"
 #include "net/network.h"
-#include "os/memory.h"
-#include "os/pci.h"
 #include "util/log.h"
 #include "util/parse.h"
 

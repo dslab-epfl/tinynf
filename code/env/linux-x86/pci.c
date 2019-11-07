@@ -1,7 +1,7 @@
-#include "os/pci.h"
+#include "../pci.h"
 
-#include "os/linux/filesystem.h"
-#include "os/linux/numa.h"
+#include "filesystem.h"
+#include "numa.h"
 #include "util/log.h"
 
 #include <inttypes.h>

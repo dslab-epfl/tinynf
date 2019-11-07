@@ -1,7 +1,6 @@
 # Configuration
 DEBUG := false
-OS := linux
-ARCH := x86
+ENV := linux-x86
 NET := 82599
 APP := tinynf
 
@@ -14,7 +13,7 @@ DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ifeq (,$(FILES))
 FILES := $(DIR)/tinynf.c
 endif
-FILES += $(shell echo $(DIR)/os/$(OS)/*.c $(DIR)/arch/$(ARCH)/*.c $(DIR)/net/$(NET)/*.c $(DIR)/util/*.c)
+FILES += $(shell echo $(DIR)/env/$(ENV)/*.c $(DIR)/net/$(NET)/*.c $(DIR)/util/*.c)
 
 # Compiler and stripping args
 CFLAGS += -std=c17
@@ -34,7 +33,7 @@ CFLAGS += -DLOG_LEVEL=1
 endif
 
 # OS handling
-ifeq ($(OS),linux)
+ifeq ($(ENV),linux-x86)
 CFLAGS += -D_GNU_SOURCE
 LDFLAGS += -lnuma
 endif

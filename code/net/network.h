@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "os/pci.h"
+#include "env/pci.h"
 
 
 struct tn_net_device;

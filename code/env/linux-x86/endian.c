@@ -1,4 +1,4 @@
-#include "arch/endian.h"
+#include "../endian.h"
 
 
 // x86 is little-endian

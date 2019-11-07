@@ -1,6 +1,6 @@
 #pragma once
 
-#include "os/pci.h"
+#include "env/pci.h"
 
 #include <stdbool.h>
 #include <stdint.h>

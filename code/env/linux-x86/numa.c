@@ -1,4 +1,4 @@
-#include "os/linux/numa.h"
+#include "numa.h"
 
 #include <inttypes.h>
 #include <numaif.h>
