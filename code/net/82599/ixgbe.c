@@ -1339,7 +1339,7 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 }
 
 
-void tn_net_pipe_run_step(struct tn_net_pipe* pipe, tn_net_packet_handler* handler)
+bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_t* out_packet_length)
 {
 	pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
@@ -1371,16 +1371,19 @@ void tn_net_pipe_run_step(struct tn_net_pipe* pipe, tn_net_packet_handler* handl
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
 	if ((receive_metadata & BITL(32)) == 0) {
-		return;
+		return false;
 	}
 
 	// This cannot overflow because the packet is by definition in an allocated block of memory
-	uint8_t* packet = (uint8_t*) pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
+	*out_packet = (uint8_t*) pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
-	uint16_t receive_packet_length = receive_metadata & 0xFFu;
-	bool send_list[IXGBE_PIPE_MAX_SENDS] = {0};
-	uint16_t send_packet_length = handler(packet, receive_packet_length, send_list);
+	*out_packet_length = receive_metadata & 0xFFu;
 
+	return true;
+}
+
+void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* send_list)
+{
 	// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 	// "Buffer Address (64)", 1st line
 	// 2nd line:
@@ -1412,9 +1415,23 @@ void tn_net_pipe_run_step(struct tn_net_pipe* pipe, tn_net_packet_handler* handl
 	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first send ring, it will clear the Descriptor Done flag of the receive descriptor
 	// If not all send rings are used, we will write into an unused (but allocated!) ring, that's fine
 	for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-		*(pipe->rings[n] + 2u*pipe->processed_delimiter + 1) = (send_list[n] * (uint64_t) send_packet_length) | BITL(24+3) | BITL(24+1) | BITL(24);
+		*(pipe->rings[n] + 2u*pipe->processed_delimiter + 1) = (send_list[n] * (uint64_t) packet_length) | BITL(24+3) | BITL(24+1) | BITL(24);
 	}
 
 	// Increment the processed delimiter, modulo the ring size
 	pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
+}
+
+void tn_net_pipe_process(struct tn_net_pipe* pipe, tn_net_packet_handler* handler)
+{
+	uint8_t* packet;
+	uint16_t receive_packet_length;
+	if (!tn_net_pipe_receive(pipe, &packet, &receive_packet_length)) {
+		return;
+	}
+
+	bool send_list[IXGBE_PIPE_MAX_SENDS] = {0};
+	uint16_t send_packet_length = handler(packet, receive_packet_length, send_list);
+
+	tn_net_pipe_send(pipe, send_packet_length, send_list);
 }

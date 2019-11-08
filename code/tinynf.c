@@ -74,7 +74,7 @@ int main(int argc, char** argv)
 	TN_INFO("TinyNF initialized successfully!");
 
 	while(true) {
-		tn_net_pipe_run_step(pipes[0], tinynf_packet_handler);
-		tn_net_pipe_run_step(pipes[1], tinynf_packet_handler);
+		tn_net_pipe_process(pipes[0], tinynf_packet_handler);
+		tn_net_pipe_process(pipes[1], tinynf_packet_handler);
 	}
 }
