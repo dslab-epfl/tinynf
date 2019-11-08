@@ -7,9 +7,10 @@
 #include "nf.h"
 #include "nf-util.h"
 
-// DPDK global devices count hack
+// DPDK devices count and args parsing
+#include <tn_dpdk.h>
 #include <rte_ethdev.h>
-uint16_t devices_count;
+#include <rte_eal.h>
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -45,25 +46,21 @@ static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, b
 
 int main(int argc, char** argv)
 {
-	devices_count = (uint16_t) (argc - 1);
-	if (devices_count == 0 || devices_count > DEVICES_MAX_COUNT) {
+	int consumed = rte_eal_init(argc, argv);
+	if (consumed < 0) {
 		return 1;
 	}
-#ifdef ASSUME_ONE_WAY
-	if (devices_count != 2) {
-		return 1;
-	}
-#endif
+
+	argc -= consumed;
+	argv += consumed;
+
+	uint16_t devices_count = rte_eth_dev_count();
 
 	// TinyNF init
-	struct tn_pci_device pci_devices[DEVICES_MAX_COUNT];
-	if (!tn_util_parse_pci(devices_count, argv + 1, pci_devices)) {
-		return 2;
-	}
 	struct tn_net_device* devices[DEVICES_MAX_COUNT];
 	struct tn_net_pipe* pipes[DEVICES_MAX_COUNT];
 	for (uint16_t n = 0; n < devices_count; n++) {
-		if (!tn_net_device_init(pci_devices[n], &(devices[n]))) {
+		if (!tn_net_device_init(tn_dpdk_pci_devices[n], &(devices[n]))) {
 			return 1000 + n;
 		}
 		if (!tn_net_device_set_promiscuous(devices[n])) {
@@ -77,27 +74,28 @@ int main(int argc, char** argv)
 		}
 	}
 
-	for (uint16_t p = 0; p < devices_count; p++) {
 #ifdef ASSUME_ONE_WAY
-		if (!tn_net_pipe_add_send(pipes[p], devices[1-p], 0)) {
+	if (devices_count != 2) {
+TN_INFO("oh noes");
+		return 2;
+	}
+
+	for (uint16_t p = 0; p < devices_count; p++) {
+		if (!tn_net_pipe_add_send(pipes[p], devices[1 - p], 0)) {
 			return 10000 + p;
 		}
+	}
 #else
+	for (uint16_t p = 0; p < devices_count; p++) {
 		for (uint16_t q = 0; q < devices_count; q++) {
 			if (!tn_net_pipe_add_send(pipes[p], devices[q], p)) {
 				return 10000 + p * q;
 			}
 		}
-#endif
 	}
+#endif
 
-	// Vigor init
-	char* vigor_argv[] = {
-		VIGOR_ARGS, // must be passed during compilation
-		NULL
-	};
-	int vigor_argc = (sizeof(vigor_argv) / sizeof(vigor_argv[0])) - 1;
-	nf_config_init(vigor_argc, vigor_argv);
+	nf_config_init(argc, argv);
 	nf_config_print();
 
 	if (!nf_init()) {
@@ -111,7 +109,7 @@ int main(int argc, char** argv)
 #endif
 	while(true) {
 		for (current_device = 0; current_device < devices_count; current_device++) {
-			tn_net_pipe_run_step(pipes[current_device], compat_packet_handler);
+			tn_net_pipe_process(pipes[current_device], compat_packet_handler);
 		}
 	}
 }

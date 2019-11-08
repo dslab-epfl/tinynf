@@ -1,0 +1,9 @@
+VIGOR_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/vigor
+
+# Include the Vigor NF's makefile, minus the other makefiles
+VIGOR_MAKEFILE := $(shell mktemp)
+_IGNORED := $(shell cat $(VIGOR_DIR)/$(TN_VIGOR_NF)/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
+include $(VIGOR_MAKEFILE)
+
+run:
+	./tinynf $(TN_ARGS) -- $(NF_ARGS)
