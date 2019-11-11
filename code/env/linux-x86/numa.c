@@ -27,7 +27,7 @@ bool tn_numa_is_current_node(uint64_t node)
 #endif
 
 	char buffer[128];
-	snprintf(buffer, sizeof(buffer)/sizeof(char), "/sys/devices/system/cpu/cpu%d/node%"PRIu64, cpu, node);
+	snprintf(buffer, sizeof(buffer)/sizeof(char), "/sys/devices/system/cpu/cpu%d/node%" PRIu64, cpu, node);
 	return access(buffer, F_OK) == 0;
 }
 

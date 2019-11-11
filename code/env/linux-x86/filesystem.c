@@ -23,6 +23,7 @@ bool tn_fs_readline(char** out_line, const char* path_format, ...)
 	va_start(path_args, path_format);
 	FILE* file = NULL;
 	char* line = NULL;
+	char* fgets_result = NULL;
 
 	char path[PATH_SIZE];
 	if (vsnprintf(path, PATH_SIZE, path_format, path_args) >= PATH_SIZE) {
@@ -37,7 +38,7 @@ bool tn_fs_readline(char** out_line, const char* path_format, ...)
 	}
 
 	line = (char*) calloc(LINE_SIZE, sizeof(char));
-	const char* fgets_result = fgets(line, LINE_SIZE, file);
+	fgets_result = fgets(line, LINE_SIZE, file);
 	if (fgets_result == NULL) {
 		TN_DEBUG("Couldn't read a line");
 		goto error;
@@ -62,6 +63,7 @@ bool tn_fs_mmap(uintptr_t* out_addr, const char* path_format, ...)
 	va_list path_args;
 	va_start(path_args, path_format);
 	int fd = -1;
+	void* addr = NULL;
 
 	char path[PATH_SIZE];
 	if (vsnprintf(path, PATH_SIZE, path_format, path_args) >= PATH_SIZE) {
@@ -86,7 +88,7 @@ bool tn_fs_mmap(uintptr_t* out_addr, const char* path_format, ...)
 		TN_DEBUG("The file to mmap has a negative size");
 		goto error;
 	}
-	const void* addr = mmap(NULL, (size_t) stat.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	addr = mmap(NULL, (size_t) stat.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if (addr == MAP_FAILED) {
 		TN_DEBUG("Mmap failed");
 		goto error;

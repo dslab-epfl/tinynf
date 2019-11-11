@@ -3,10 +3,12 @@
 #include <stdbool.h>
 
 #include <tn_dpdk.h>
+#include "net/network.h"
+#include "util/parse.h"
 
 
 // We do not accept real DPDK arguments, but instead a list of PCI addresses for devices
-int rte_eal_init(int argc, char **argv)
+static inline int rte_eal_init(int argc, char **argv)
 {
 	bool foundEnd = false;
 	int count = 0;

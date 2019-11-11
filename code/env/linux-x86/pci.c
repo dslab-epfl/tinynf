@@ -34,7 +34,7 @@ static bool get_ioport_access(void)
 static bool get_device_node(const struct tn_pci_device device, uint64_t* out_node)
 {
 	char* node_str;
-	if (!tn_fs_readline(&node_str, "/sys/bus/pci/devices/0000:%02"PRIx8":%02"PRIx8".%"PRIx8"/numa_node", device.bus, device.device, device.function)) {
+	if (!tn_fs_readline(&node_str, "/sys/bus/pci/devices/0000:%02" PRIx8 ":%02" PRIx8 ".%" PRIx8 "/numa_node", device.bus, device.device, device.function)) {
 		TN_DEBUG("Could not read PCI numa node");
 		return false;
 	}
