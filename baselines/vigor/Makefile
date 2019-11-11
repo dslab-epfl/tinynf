@@ -49,5 +49,13 @@ CFLAGS += -DCAPACITY_POW2
 CFLAGS += -flto
 LDFLAGS += -flto
 
-# Finally, include the TinyNF makefile
+# Include the TinyNF makefile
 include ../../code/Makefile
+
+# Include the Vigor NF's makefile, minus the other makefiles, so we can get the NF's args
+VIGOR_MAKEFILE := $(shell mktemp)
+_IGNORED := $(shell cat $(VIGOR_DIR)/$(TN_VIGOR_NF)/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
+include $(VIGOR_MAKEFILE)
+
+run:
+	sudo ./tinynf $(TN_ARGS) -- $(NF_ARGS)

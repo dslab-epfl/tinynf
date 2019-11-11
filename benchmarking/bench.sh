@@ -1,6 +1,6 @@
 #!/bin/sh
 
-NF_FILE='tinynf' # or create a "Makefile.run" file with a "run" target, which will be used instead, passing args as TN_ARGS
+NF_FILE='tinynf' # or create a "run" target in the Makefile, and it will be used instead, passing args as TN_ARGS
 LOG_FILE='bench.log'
 RESULTS_FILE='bench.results'
 
@@ -43,11 +43,13 @@ echo '[bench] Building NF...'
 make -C "$NF_DIR" >/dev/null
 
 echo '[bench] Running NF...'
-if [ -f "$NF_DIR/Makefile.run" ]; then
-  # -E to preserve env vars, needed by Makefiles sometimes
-  TN_ARGS="$MB_DEV_0 $MB_DEV_1" sudo -E taskset -c "$MB_CPU" make -C "$NF_DIR" -f Makefile.run run >"$LOG_FILE" 2>&1 &
-else
+make -C "$NF_DIR" -q run >/dev/null 2>&1
+if [ $? -eq 2 ]; then
+  # Exit code 2 means the target does not exist
   sudo taskset -c "$MB_CPU" "$NF_DIR"/"$NF_FILE" "$MB_DEV_0" "$MB_DEV_1" >"$LOG_FILE" 2>&1 &
+else
+  # -E to inherit env vars, needed by Makefiles sometimes; the PATH needs to be explicitly inherited
+  TN_ARGS="$MB_DEV_0 $MB_DEV_1" taskset -c "$MB_CPU" make -C "$NF_DIR" run >"$LOG_FILE" 2>&1 &
 fi
 sleep 1 # so that the NF has time to fail if needed
 NF_PID=$(pgrep "$NF_FILE")
