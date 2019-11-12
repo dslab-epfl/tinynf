@@ -8,20 +8,27 @@
 
 
 // We do not accept real DPDK arguments, but instead a list of PCI addresses for devices
-static inline int rte_eal_init(int argc, char **argv)
+static inline int rte_eal_init(int argc, char** argv)
 {
 	bool foundEnd = false;
 	int count = 0;
+	char* device_args[TN_DPDK_DEVICES_MAX_COUNT];
 	// note that argv[0] is the program name
 	for (int n = 1; n < argc; n++) {
 		if (argv[n][0] == '-' && argv[n][1] == '-') {
-			foundEnd = true;
-			break;
+			if (argv[n][2] == '\0') {
+				foundEnd = true;
+				break;
+			} else {
+				// some other arg, like --no-shconf
+				continue;
+			}
 		}
+		device_args[count] = argv[n];
 		count++;
 	}
 
-	if (!tn_util_parse_pci(count, argv + 1, tn_dpdk_pci_devices)) {
+	if (!tn_util_parse_pci(count, device_args, tn_dpdk_pci_devices)) {
 		return -1;
 	}
 
