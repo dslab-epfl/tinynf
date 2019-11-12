@@ -1,5 +1,5 @@
 ifndef TN_VIGOR_NF
-$(error Please define TN_VIGOR_NF to a Vigor NF, e.g. 'vignat')
+$(error Please define TN_VIGOR_NF to a Vigor NF withot the vig prefix, e.g. 'nat')
 endif
 
 # Allow the use of special patterns in shell, as Vigor does
@@ -12,7 +12,7 @@ _IGNORED := $(shell ./setup.sh 2>/dev/null)
 VIGOR_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/vigor
 
 # Force the auto-generation of Vigor files; pretend we have VeriFast so the auto-generation doesn't fail
-_IGNORED := $(shell cd $(VIGOR_DIR)/$(TN_VIGOR_NF); dir=$$(mktemp -d); ln -s /bin/true "$$dir/verifast"; PATH="$$dir:$$PATH" make autogen; rm -rf "$$dir")
+_IGNORED := $(shell cd $(VIGOR_DIR)/vig$(TN_VIGOR_NF); dir=$$(mktemp -d); ln -s /bin/true "$$dir/verifast"; PATH="$$dir:$$PATH" make autogen; rm -rf "$$dir")
 
 ifeq (true,$(TN_VIGOR_CUSTOM))
 # Our main stub
@@ -25,7 +25,7 @@ FILES += $(shell echo $(VIGOR_DIR)/nf*.c)
 endif
 
 # Vigor NF files; don't include the loop file, Vigor only uses it during verification
-FILES += $(shell echo $(VIGOR_DIR)/$(TN_VIGOR_NF)/!(loop).c)
+FILES += $(shell echo $(VIGOR_DIR)/vig$(TN_VIGOR_NF)/!(loop).c)
 # Vigor's libVig; boilerplate-assumptions is a stub file for builtins
 FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/!(boilerplate-assumptions).c)
 
@@ -54,7 +54,7 @@ include ../../code/Makefile
 
 # Include the Vigor NF's makefile, minus the other makefiles, so we can get the NF's args
 VIGOR_MAKEFILE := $(shell mktemp)
-_IGNORED := $(shell cat $(VIGOR_DIR)/$(TN_VIGOR_NF)/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
+_IGNORED := $(shell cat $(VIGOR_DIR)/vig$(TN_VIGOR_NF)/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
 include $(VIGOR_MAKEFILE)
 
 run:

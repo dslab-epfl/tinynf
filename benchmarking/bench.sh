@@ -1,6 +1,14 @@
 #!/bin/sh
 
-NF_FILE='tinynf' # or create a "run" target in the Makefile, and it will be used instead, passing args as TN_ARGS
+# Parameters: <NF directory> <bench type (latency/throughput)> <layer of flows in bench>
+# Overrideable variables:
+# - NF_NAME, defaults to 'tinynf', the process name of the NF (used to check if it's alive and kill it later)
+# Overrideable behavior:
+# - By default, after compiling with make, runs ./$NF_NAME; override this by providing a 'run' target in the makefile in which case arguments are passed as the TN_ARGS variable
+
+if [ -z "$NF_NAME" ]; then
+  NF_NAME='tinynf'
+fi
 LOG_FILE='bench.log'
 RESULTS_FILE='bench.results'
 
@@ -22,7 +30,7 @@ if [ -z "$3" ]; then
 fi
 BENCH_LAYER="$3"
 
-if [ ! -z "$(pgrep "$NF_FILE")" ]; then
+if [ ! -z "$(pgrep "$NF_NAME")" ]; then
   echo '[ERROR] The NF is already running'
   exit 1
 fi
@@ -44,15 +52,13 @@ make -C "$NF_DIR" >/dev/null
 
 echo '[bench] Running NF...'
 make -C "$NF_DIR" -q run >/dev/null 2>&1
-if [ $? -eq 2 ]; then
-  # Exit code 2 means the target does not exist
-  sudo taskset -c "$MB_CPU" "$NF_DIR"/"$NF_FILE" "$MB_DEV_0" "$MB_DEV_1" >"$LOG_FILE" 2>&1 &
+if [ $? -eq 2 ]; then  # Exit code 2 means the target does not exist
+  sudo taskset -c "$MB_CPU" "$NF_DIR"/"$NF_NAME" "$MB_DEV_0" "$MB_DEV_1" >"$LOG_FILE" 2>&1 &
 else
-  # -E to inherit env vars, needed by Makefiles sometimes; the PATH needs to be explicitly inherited
   TN_ARGS="$MB_DEV_0 $MB_DEV_1" taskset -c "$MB_CPU" make -C "$NF_DIR" run >"$LOG_FILE" 2>&1 &
 fi
 sleep 1 # so that the NF has time to fail if needed
-NF_PID=$(pgrep "$NF_FILE")
+NF_PID=$(pgrep "$NF_NAME")
 if [ -z "$NF_PID" ]; then
   echo "[ERROR] Could not launch the NF. The $LOG_FILE file in the same directory as $0 may be useful"
   exit 1
