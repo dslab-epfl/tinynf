@@ -5,6 +5,8 @@ export TN_CC=g++
 cd click
 
 if [ ! -f 'Makefile' ]; then
+  cp ../tinynf.* elements/userlevel/.
+
   ./configure --enable-dpdk --enable-user-multithread
 fi
 
