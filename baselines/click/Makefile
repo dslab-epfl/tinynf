@@ -4,7 +4,10 @@ endif
 
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-# Run the setup script, in case it hasn't been run yet
+CLICK_DIR ?= $(THIS_DIR)/click
+CLICK_BURST ?= 1
+
+# Run the setup script, every time because we link libdpdk statically with Click
 _IGNORED := $(shell $(THIS_DIR)/setup.sh 2>/dev/null)
 
 default:
@@ -13,4 +16,4 @@ default:
 run:
 #	@printf '\n\n!!!\nClick may incorrectly claim that the CPU\n'
 #	@printf 'cores are not on the same NUMA node as the NICs, ignore this.\n!!!\n\n'
-	@sudo $(THIS_DIR)/click/bin/click burst=1 --dpdk $(TN_ARGS) -- $(THIS_DIR)/$(TN_CLICK_NF).click
+	@sudo $(CLICK_DIR)/bin/click burst=$(CLICK_BURST) --dpdk $(TN_ARGS) -- $(THIS_DIR)/$(TN_CLICK_NF).click
