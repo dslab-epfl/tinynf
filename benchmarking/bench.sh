@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -x
+
 # Parameters: <NF directory> <bench type (latency/throughput)> <layer of flows in bench>
 # Overrideable variables:
 # - NF_NAME, defaults to 'tinynf', the process name of the NF (used to check if it's alive and kill it later)

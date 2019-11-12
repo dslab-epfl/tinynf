@@ -19,6 +19,7 @@
 #define DEVICES_MAX_COUNT 128u
 
 static uint16_t current_device;
+static uint16_t devices_count;
 static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, bool* send_list)
 {
 	vigor_time_t vigor_now = current_time();
@@ -54,7 +55,7 @@ int main(int argc, char** argv)
 	argc -= consumed;
 	argv += consumed;
 
-	uint16_t devices_count = rte_eth_dev_count();
+	devices_count = rte_eth_dev_count();
 
 	// TinyNF init
 	struct tn_net_device* devices[DEVICES_MAX_COUNT];

@@ -1,6 +1,9 @@
-ifndef TN_VIGOR_NF
-$(error Please define TN_VIGOR_NF to a Vigor NF without the vig prefix, e.g. 'nat')
+ifndef TN_NF
+$(error Please define TN_NF to a Vigor NF without the vig prefix, e.g. 'nat')
 endif
+
+# Some Vigor NFs need a large-ish one to not be expiring flows all the time
+EXPIRATION_TIME := 10000000
 
 # Allow the use of special patterns in shell, as Vigor does
 SHELL := /bin/bash -O extglob -c
@@ -15,44 +18,46 @@ _IGNORED := $(shell $(THIS_DIR)/setup.sh 2>/dev/null)
 VIGOR_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/vigor
 
 # Force the auto-generation of Vigor files; pretend we have VeriFast so the auto-generation doesn't fail
-_IGNORED := $(shell cd $(VIGOR_DIR)/vig$(TN_VIGOR_NF); dir=$$(mktemp -d); ln -s /bin/true "$$dir/verifast"; PATH="$$dir:$$PATH" make autogen; rm -rf "$$dir")
+_IGNORED := $(shell cd $(VIGOR_DIR)/vig$(TN_NF); dir=$$(mktemp -d); ln -s /bin/true "$$dir/verifast"; PATH="$$dir:$$PATH" make autogen; rm -rf "$$dir")
 
 # Our main stub
-FILES += main.c
+TN_FILES += main.c
 # Vigor utility file (but not nf.c, since we have our own main!)
-FILES += $(VIGOR_DIR)/nf-util.c
+TN_FILES += $(VIGOR_DIR)/nf-util.c
 # Vigor NF files; don't include the loop file, Vigor only uses it during verification
-FILES += $(shell echo $(VIGOR_DIR)/vig$(TN_VIGOR_NF)/!(loop).c)
+TN_FILES += $(shell echo $(VIGOR_DIR)/vig$(TN_NF)/!(loop).c)
 # Vigor's libVig; boilerplate-assumptions is a stub file for builtins
-FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/!(boilerplate-assumptions).c)
+TN_FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/!(boilerplate-assumptions).c)
 
 # Vigor expects its root dir to be an include path
-CFLAGS += -I $(VIGOR_DIR)
+TN_CFLAGS += -I $(VIGOR_DIR)
 
 # Our DPDK stub headers, and the file that holds the global variables
+RTE_SDK := $(THIS_DIR)/../../shims/dpdk
+RTE_TARGET := .
 DPDK_DIR := $(RTE_SDK)/$(RTE_TARGET)
-CFLAGS += -isystem $(DPDK_DIR)/include
-FILES += $(DPDK_DIR)/tn_dpdk.c
+TN_CFLAGS += -isystem $(DPDK_DIR)/include
+TN_FILES += $(DPDK_DIR)/tn_dpdk.c
 
 # Vigor compiles with DPDK makefiles, which do not care about all those...
-CFLAGS += -Wno-reserved-id-macro -Wno-sign-conversion -Wno-missing-prototypes -Wno-unused-parameter -Wno-unused-value -Wno-unused-function \
-          -Wno-padded -Wno-tautological-unsigned-zero-compare -Wno-missing-variable-declarations -Wno-implicit-int-conversion -Wno-shorten-64-to-32 \
-          -Wno-extra-semi-stmt -Wno-gnu-zero-variadic-macro-arguments -Wno-empty-translation-unit -Wno-newline-eof -Wno-unused-variable -Wno-c++-compat \
-          -Wno-gnu-empty-struct -Wno-strict-prototypes -Wno-sign-compare -Wno-missing-noreturn
+TN_CFLAGS += -Wno-reserved-id-macro -Wno-sign-conversion -Wno-missing-prototypes -Wno-unused-parameter -Wno-unused-value -Wno-unused-function \
+             -Wno-padded -Wno-tautological-unsigned-zero-compare -Wno-missing-variable-declarations -Wno-implicit-int-conversion -Wno-shorten-64-to-32 \
+             -Wno-extra-semi-stmt -Wno-gnu-zero-variadic-macro-arguments -Wno-empty-translation-unit -Wno-newline-eof -Wno-unused-variable -Wno-c++-compat \
+             -Wno-gnu-empty-struct -Wno-strict-prototypes -Wno-sign-compare -Wno-missing-noreturn
 
 # Use Vigor's fast power-of-2-capacity map
-CFLAGS += -DCAPACITY_POW2
+TN_CFLAGS += -DCAPACITY_POW2
 
 # LTO makes a huge difference in Vigor perf (e.g. VigNAT goes from 4G to 8G)
-CFLAGS += -flto
-LDFLAGS += -flto
+TN_CFLAGS += -flto
+TN_LDFLAGS += -flto
 
 # Include the TinyNF makefile
 include ../../code/Makefile
 
 # Include the Vigor NF's makefile, minus the other makefiles, so we can get the NF's args
 VIGOR_MAKEFILE := $(shell mktemp)
-_IGNORED := $(shell cat $(VIGOR_DIR)/vig$(TN_VIGOR_NF)/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
+_IGNORED := $(shell cat $(VIGOR_DIR)/vig$(TN_NF)/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
 include $(VIGOR_MAKEFILE)
 
 run:

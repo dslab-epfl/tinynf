@@ -10,8 +10,9 @@ if [ ! -f 'Makefile' ]; then
   ./configure --enable-dpdk --enable-user-multithread
 fi
 
-if [ ! -f '.cflags' ] || [ "$(cat .cflags)" != "$TN_CFLAGS" ]; then
+FLAGS="$TN_CFLAGS $TN_CC $RTE_SDK $RTE_TARGET"
+if [ ! -f '.flags' ] || [ "$(cat .flags)" != "$FLAGS" ]; then
   make clean
   make
-  echo "$TN_CFLAGS" > '.cflags'
+  echo "$FLAGS" > '.cflags'
 fi
