@@ -128,7 +128,7 @@ static uint32_t ixgbe_reg_read(const uintptr_t addr, const uint32_t reg)
 {
 	uint32_t val_le = *((volatile uint32_t*)(addr + reg));
 	uint32_t result = tn_le_to_cpu(val_le);
-	TN_DEBUG("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
+	TN_VERBOSE("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;
 }
 static void ixgbe_reg_write_raw(const uintptr_t reg_addr, const uint32_t value)
@@ -138,7 +138,7 @@ static void ixgbe_reg_write_raw(const uintptr_t reg_addr, const uint32_t value)
 static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint32_t value)
 {
 	ixgbe_reg_write_raw(addr + reg, value);
-	TN_DEBUG("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
+	TN_VERBOSE("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
 
 #define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
@@ -541,7 +541,8 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	if (!tn_mem_phys_to_virt(dev_phys_addr, 128 * 1024, &device.addr)) {
 		return false;
 	}
-	TN_INFO("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, device.pci.bus, device.pci.device, device.pci.function, device.addr);
+
+	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, device.pci.bus, device.pci.device, device.pci.function, device.addr);
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"

@@ -9,6 +9,12 @@
 #define TN_PRINT(categ, ...) fprintf(stderr, "[%s] ", #categ); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); fflush(stderr)
 #endif
 
+#if LOG_LEVEL >= 3
+#define TN_VERBOSE(...) TN_PRINT(VERBOSE, __VA_ARGS__)
+#else
+#define TN_VERBOSE(...)
+#endif
+
 #if LOG_LEVEL >= 2
 #define TN_DEBUG(...) TN_PRINT(DEBUG, __VA_ARGS__)
 #else

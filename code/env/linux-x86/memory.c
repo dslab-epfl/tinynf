@@ -59,6 +59,7 @@ bool tn_mem_allocate(const uint64_t size, uintptr_t* out_addr)
 		0
 	);
 	if (page == MAP_FAILED) {
+		TN_DEBUG("Allocate mmap failed");
 		return false;
 	}
 
@@ -67,9 +68,11 @@ bool tn_mem_allocate(const uint64_t size, uintptr_t* out_addr)
 	// HACK: We're hoping that the Linux kernel will allocate memory on our node - in practice this seems to work
 	uint64_t node;
 	if (!tn_numa_get_addr_node(addr, &node)) {
+		TN_DEBUG("Could not get memory's NUMA node");
 		goto error;
 	}
 	if (!tn_numa_is_current_node(node)) {
+		TN_DEBUG("Allocated memory is not in our NUMA node");
 		goto error;
 	}
 
@@ -89,14 +92,17 @@ void tn_mem_free(const uintptr_t addr)
 bool tn_mem_phys_to_virt(const uintptr_t addr, const uint64_t size, uintptr_t* out_virt_addr)
 {
 	if (size > SIZE_MAX) {
+		TN_DEBUG("Cannot phys-to-virt more than SIZE_MAX");
 		return false;
 	}
 	if (addr != (uintptr_t) (off_t) addr) {
+		TN_DEBUG("Cannot phys-to-virt an addr that does not roundtrip to off_t");
 		return false;
 	}
 
 	int mem_fd = open("/dev/mem", O_SYNC | O_RDWR);
 	if (mem_fd == -1) {
+		TN_DEBUG("Could not open /dev/mem");
 		return false;
 	}
 
@@ -115,6 +121,7 @@ bool tn_mem_phys_to_virt(const uintptr_t addr, const uint64_t size, uintptr_t* o
 		(off_t) addr
 	);
 	if (mapped == MAP_FAILED) {
+		TN_DEBUG("Phys-to-virt mmap failed");
 		return false;
 	}
 
@@ -127,25 +134,25 @@ bool tn_mem_virt_to_phys(const uintptr_t addr, uintptr_t* out_phys_addr)
 {
 	const uintptr_t page_size = get_page_size();
 	if (page_size == 0) {
-		TN_INFO("Could not retrieve the page size"); // TODO adopt a policy for log levels and stick to it
+		TN_DEBUG("Could not retrieve the page size");
 		return false;
 	}
 
 	const uintptr_t page = addr / page_size;
 	const uintptr_t map_offset = page * sizeof(uint64_t);
 	if (map_offset != (uintptr_t) (off_t) map_offset) {
-		TN_INFO("Map offset does not fit in off_t");
+		TN_DEBUG("Cannot virt-to-phys with an offset that does not roundtrip to off_t");
 		return false;
 	}
 
 	const int map_fd = open("/proc/self/pagemap", O_RDONLY);
 	if (map_fd < 0) {
-		TN_INFO("Could not open the pagemap");
+		TN_DEBUG("Could not open the pagemap");
 		return false;
 	}
 
 	if (lseek(map_fd, (off_t) map_offset, SEEK_SET) == (off_t) -1) {
-		TN_INFO("Could not seek the pagemap");
+		TN_DEBUG("Could not seek the pagemap");
 		close(map_fd);
 		return false;
 	}
@@ -154,19 +161,19 @@ bool tn_mem_virt_to_phys(const uintptr_t addr, uintptr_t* out_phys_addr)
 	const ssize_t read_result = read(map_fd, &metadata, sizeof(uint64_t));
 	close(map_fd);
 	if (read_result != sizeof(uint64_t)) {
-		TN_INFO("Could not read the pagemap");
+		TN_DEBUG("Could not read the pagemap");
 		return false;
 	}
 
 	// We want the PFN, but it's only meaningful if the page is present; bit 63 indicates whether it is
 	if ((metadata & 0x8000000000000000) == 0) {
-		TN_INFO("Page not present");
+		TN_DEBUG("Page not present");
 		return false;
 	}
 	// PFN = bits 0-54
 	const uint64_t pfn = metadata & 0x7FFFFFFFFFFFFF;
 	if (pfn == 0) {
-		TN_INFO("Page not mapped");
+		TN_DEBUG("Page not mapped");
 		return false;
 	}
 

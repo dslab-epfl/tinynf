@@ -78,7 +78,7 @@ uint32_t tn_pci_read(const struct tn_pci_device device, const uint8_t reg)
 	const uint32_t addr = get_pci_reg_addr(device, reg);
 	pci_address(addr);
 	const uint32_t result = inl(PCI_CONFIG_DATA);
-	TN_DEBUG("PCI read: 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, result);
+	TN_VERBOSE("PCI read: 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, result);
 	return result;
 }
 
@@ -92,5 +92,5 @@ void tn_pci_write(const struct tn_pci_device device, const uint8_t reg, const ui
 	const uint32_t addr = get_pci_reg_addr(device, reg);
 	pci_address(addr);
 	outl(value, PCI_CONFIG_DATA);
-	TN_DEBUG("PCI write: 0x%08" PRIx32 " := 0x%08" PRIx32, addr, value);
+	TN_VERBOSE("PCI write: 0x%08" PRIx32 " := 0x%08" PRIx32, addr, value);
 }
