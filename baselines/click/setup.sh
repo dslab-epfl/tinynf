@@ -1,5 +1,6 @@
 export RTE_SDK="$(pwd)/../../shims/dpdk"
 export RTE_TARGET=.
+export TN_CC=g++
 
 cd click
 if [ ! -f 'Makefile' ]; then

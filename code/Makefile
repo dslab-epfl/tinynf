@@ -9,10 +9,13 @@
 # - TN_CC, default undocumented, compiler to use
 # - TN_STRIP, default undocumented, stripper to use
 # Appendable variables:
-# - TN_FILES, defaults to all TinyNF files, files to compile; if not set, the "main" TinyNF file will be included
+# - TN_FILES, defaults to all TinyNF files, files to compile
 # - TN_CFLAGS, defaults making sense for TinyNF, compilation flags to use
 # - TN_LDFLAGS, defaults making sense for TinyNF, loader flags to use
 # - TN_STRIPFLAGS, defaults making sense for TinyNF, stripper flags to use
+# Special behavior when TN_FILES is not set:
+# - The "main" TinyNF file is included in compilation
+# - Compiler warnings are enabled
 
 # Configuration
 TN_DEBUG ?= 1
@@ -24,16 +27,15 @@ TN_APP ?= tinynf
 TN_CC ?= clang-8 # clang has -Weverything, no need to manually list warnings we want; hardcode version for reproducibility
 TN_STRIP ?= strip
 
-# Files; only include our main file if we are not used by another makefile that already set FILES
+# Files
 TN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ifeq (,$(TN_FILES))
 TN_FILES := $(TN_DIR)/tinynf.c
+TN_CFLAGS += -Weverything
 endif
 TN_FILES += $(shell echo $(TN_DIR)/env/$(TN_ENV)/*.c $(TN_DIR)/net/$(TN_NET)/*.c $(TN_DIR)/util/*.c)
 
 # Compiler and stripping args
-TN_CFLAGS += -std=c17
-TN_CFLAGS += -Weverything
 TN_CFLAGS += -march=native
 TN_CFLAGS += -I $(TN_DIR)
 TN_CFLAGS += -DLOG_LEVEL=$(TN_DEBUG)
