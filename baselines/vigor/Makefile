@@ -5,8 +5,11 @@ endif
 # Allow the use of special patterns in shell, as Vigor does
 SHELL := /bin/bash -O extglob -c
 
+# Get this directory
+THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
 # Run the setup script, in case it hasn't been run yet
-_IGNORED := $(shell ./setup.sh 2>/dev/null)
+_IGNORED := $(shell $(THIS_DIR)/setup.sh 2>/dev/null)
 
 # Get the Vigor directory
 VIGOR_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/vigor
