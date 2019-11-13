@@ -1,18 +1,18 @@
 #!/bin/sh
 
-set -eux
-
 if [ -z "$1" ]; then
   echo "[ERROR] Please provide the directory of the NF as the first argument to $0"
   exit 1
 fi
 NF_DIR="$1"
-NF_DIR_CLEAN="$(echo "$NF_DIR" | sed 's|/|_|g')"
+NF_DIR_CLEAN="$(echo "$NF_DIR" | sed 's|/*$||' | sed 's|/|_|g')" # remove trailing slash, replace / by _
+
+THIS_DIR="$(pwd)"
 
 cd ../benchmarking
 
 for kind in throughput latency; do
-  file="$(pwd)/$NF_DIR_CLEAN-$kind.results"
+  file="$THIS_DIR/$NF_DIR_CLEAN-$kind.results"
   rm -f "$file"
 
   for nf in nop nat fw pol bridge lb; do
