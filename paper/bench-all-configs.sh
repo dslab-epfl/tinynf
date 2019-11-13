@@ -26,9 +26,10 @@ for kind in throughput latency; do
 
       for oneway in $ways; do
         sends=2
-        if [ "$oneway" = 'true' ]; then sends=1; fi
+        onewayflag=""
+        if [ "$oneway" = 'true' ]; then sends=1; onewayflag="-DASSUME_ONE_WAY"; fi
 
-        TN_NF="$nf" CFLAGS="-DASSUME_ONE_WAY=$oneway -DIXGBE_PIPE_SCHEDULING_PERIOD=$period -DIXGBE_PIPE_MAX_SENDS=$sends" ./bench.sh "$NF_DIR" "$kind" "$layer"
+        TN_NF="$nf" TN_CFLAGS="$onewayflag -DIXGBE_PIPE_SCHEDULING_PERIOD=$period -DIXGBE_PIPE_MAX_SENDS=$sends" ./bench.sh "$NF_DIR" "$kind" "$layer"
 
         if [ ! -f "$file" ]; then
           header="$(printf "nf,\tperiod,\toneway,\t%s\n" "$(head -n 1 bench.results)")"
