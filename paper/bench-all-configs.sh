@@ -38,6 +38,6 @@ for kind in throughput latency; do
     done
   done
   sorted_file="$(cat $file | sort -V)" # -V sorts the numbers within the text in a human-friendly order
-  echo "$header" > file
+  echo "$header" > "$file"
   echo "$sorted_file" >> "$file"
 done
