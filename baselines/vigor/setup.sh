@@ -1,4 +1,4 @@
-# Simplified version of the vigor setup script, with only what we need
+# Simplified version of the vigor setup script, with only what we need to run Vigor on top of our code
 
 sudo apt-get install -y opam m4 python3.6
 opam init -y

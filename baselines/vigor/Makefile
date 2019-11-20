@@ -48,10 +48,6 @@ TN_CFLAGS += -Wno-reserved-id-macro -Wno-sign-conversion -Wno-missing-prototypes
 # Use Vigor's fast power-of-2-capacity map
 TN_CFLAGS += -DCAPACITY_POW2
 
-# LTO makes a huge difference in Vigor perf (e.g. VigNAT goes from 4G to 8G)
-TN_CFLAGS += -flto
-TN_LDFLAGS += -flto
-
 # Include the TinyNF makefile
 include ../../code/Makefile
 
@@ -61,4 +57,4 @@ _IGNORED := $(shell cat $(VIGOR_DIR)/vig$(TN_NF)/Makefile | grep -v 'include.*Ma
 include $(VIGOR_MAKEFILE)
 
 run:
-	sudo ./tinynf $(TN_ARGS) -- $(NF_ARGS)
+	@sudo ./tinynf $(TN_ARGS) -- $(NF_ARGS)

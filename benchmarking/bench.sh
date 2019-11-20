@@ -1,9 +1,10 @@
 #!/bin/sh
+set -x
+
 # Parameters: <NF directory> <bench type (latency/throughput)> <layer of flows in bench>
+# Builds the NF using 'make' then runs it with 'make run' passing the PCI devices as '$TN_ARGS'
 # Overrideable variables:
 # - NF_NAME, defaults to 'tinynf', the process name of the NF (used to check if it's alive and kill it later)
-# Overrideable behavior:
-# - By default, after compiling with make, runs ./$NF_NAME; override this by providing a 'run' target in the makefile in which case arguments are passed as the TN_ARGS variable
 
 if [ -z "$NF_NAME" ]; then
   NF_NAME='tinynf'
@@ -29,16 +30,18 @@ if [ -z "$3" ]; then
 fi
 BENCH_LAYER="$3"
 
-if [ ! -z "$(pgrep "$NF_NAME")" ]; then
+if [ ! -z "$(pgrep -x "$NF_NAME")" ]; then
   echo '[ERROR] The NF is already running'
   exit 1
 fi
 
-if [ ! -f config ]; then
+THIS_DIR="$(dirname "$(readlink -f "$0")")"
+
+if [ ! -f "$THIS_DIR/config" ]; then
   echo "[ERROR] Please create a 'config' file from the 'config.template' file in the same directory as $0"
   exit 1
 fi
-. ./config
+. "$THIS_DIR/config"
 
 echo '[bench] Cloning submodules...'
 git submodule update --init --recursive
@@ -50,16 +53,19 @@ echo '[bench] Building NF...'
 make -C "$NF_DIR" >/dev/null
 
 echo '[bench] Running NF...'
-make -C "$NF_DIR" -q run >/dev/null 2>&1
-if [ $? -eq 2 ]; then  # Exit code 2 means the target does not exist
-  sudo taskset -c "$MB_CPU" "$NF_DIR"/"$NF_NAME" "$MB_DEV_0" "$MB_DEV_1" >"$LOG_FILE" 2>&1 &
-else
-  TN_ARGS="$MB_DEV_0 $MB_DEV_1" taskset -c "$MB_CPU" make -C "$NF_DIR" run >"$LOG_FILE" 2>&1 &
-fi
-sleep 1 # so that the NF has time to fail if needed
-NF_PID=$(pgrep "$NF_NAME")
+TN_ARGS="$MB_DEV_0 $MB_DEV_1" taskset -c "$MB_CPU" make -C "$NF_DIR" run >"$LOG_FILE" 2>&1 &
+
+# Sleep for as much as 20 seconds if the NF needs a while to start, but as little as possible
+for i in $(seq 1 20); do
+  sleep 1
+  NF_PID="$(pgrep -x "$NF_NAME")"
+  if [ ! -z "$NF_PID" ]; then
+    break
+  fi
+done
 if [ -z "$NF_PID" ]; then
   echo "[ERROR] Could not launch the NF. The $LOG_FILE file in the same directory as $0 may be useful"
+  cat "$LOG_FILE"
   exit 1
 fi
 
@@ -71,5 +77,8 @@ scp "$TESTER_HOST:tinynf-benchmarking/results.csv" "$RESULTS_FILE"
 
 echo '[bench] Stopping NF...'
 sudo kill -9 "$NF_PID" >/dev/null 2>&1
+# TODO DELETE NEXT 2 LINES
+cat "$LOG_FILE"
+cat "$RESULTS_FILE"
 
 echo "[bench] Done! Results are in $RESULTS_FILE, and the log in $LOG_FILE, in the same directory as $0"

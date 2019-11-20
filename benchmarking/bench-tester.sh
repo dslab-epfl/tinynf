@@ -24,6 +24,7 @@ if [ ! -f moongen/build/MoonGen ]; then
 fi
 
 echo '[bench-tester] Setting up hugepages...'
+sudo rm -rf /dev/hugepages/* # make sure there are no leftovers from a previous run
 sudo ./moongen/setup-hugetlbfs.sh
 
 echo '[bench-tester] Setting up the DPDK driver...'

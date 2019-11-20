@@ -13,6 +13,6 @@ fi
 FLAGS="$TN_CFLAGS $TN_CC $RTE_SDK $RTE_TARGET"
 if [ ! -f '.flags' ] || [ "$(cat .flags)" != "$FLAGS" ]; then
   make clean
-  make
+  EXTRA_CFLAGS="$TN_CFLAGS" make
   echo "$FLAGS" > '.cflags'
 fi

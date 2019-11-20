@@ -32,38 +32,37 @@ static inline int rte_eal_init(int argc, char** argv)
 
 	for (int n = 0; n < count; n++) {
 		if (!tn_net_device_init(tn_dpdk_pci_devices[n], &(tn_dpdk_devices[n].device))) {
-			return -1;
+			return -2;
 		}
 
 		if (!tn_net_pipe_init(&(tn_dpdk_devices[n].pipe))) {
-			return -1;
+			return -3;
 		}
 
 		if (!tn_net_pipe_set_receive(tn_dpdk_devices[n].pipe, tn_dpdk_devices[n].device, 0)) {
-			return -1;
+			return -4;
 		}
 	}
 
 #ifdef ASSUME_ONE_WAY
 	if (count != 2) {
-		return -1;
+		return -5;
 	}
 
 	for (int n = 0; n < count; n++) {
 		if (!tn_net_pipe_add_send(tn_dpdk_devices[n].pipe, tn_dpdk_devices[1 - n].device, n)) {
-			return -1;
+			return -6;
 		}
 	}
 #else
 	for (int n = 0; n < count; n++) {
 		for (int d = 0; d < count; d++) {
 			if (!tn_net_pipe_add_send(tn_dpdk_devices[n].pipe, tn_dpdk_devices[d].device, n)) {
-				return -1;
+				return -7;
 			}
 		}
 	}
 #endif
-
 
 	tn_dpdk_devices_count = count;
 
