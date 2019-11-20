@@ -1,3 +1,5 @@
+git submodule update --init --recursive
+
 export RTE_SDK="$(pwd)/../../shims/dpdk"
 export RTE_TARGET=.
 export TN_CC=g++
