@@ -16,6 +16,8 @@
 # Special behavior when TN_FILES is not set:
 # - The "main" TinyNF file is included in compilation
 # - Compiler warnings are enabled
+# Special behavior when the variable TN_NO_DEFAULT_TARGET is set:
+# - The default target is not defined
 
 # Configuration
 TN_DEBUG ?= 1
@@ -55,10 +57,12 @@ TN_CFLAGS += -D_GNU_SOURCE
 TN_LDFLAGS += -lnuma
 endif
 
+ifndef TN_NO_DEFAULT_TARGET
 # TODO proper dependency tracking...
-.PHONY: default
-default:
+.PHONY: tn_default
+tn_default:
 	@$(TN_CC) $(TN_CFLAGS) $(TN_FILES) -c
 	@$(TN_CC) $(TN_LDFLAGS) $(subst .c,.o,$(notdir $(TN_FILES))) -o $(TN_APP)
 	@$(TN_STRIP) $(TN_STRIPFLAGS) $(TN_APP)
 	@rm -f $(subst .c,.o,$(notdir $(TN_FILES)))
+endif

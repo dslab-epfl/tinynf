@@ -14,9 +14,10 @@ CONFIG_RTE_LIBRTE_VHOST_USER=y
 TN_DPDK_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/..
 TN_DIR := $(TN_DPDK_DIR)/../../code
 TN_FILES := $(TN_DPDK_DIR)/tn_dpdk.c
+TN_NO_DEFAULT_TARGET := true # don't expose our own target
 include $(TN_DIR)/Makefile
 _IGNORED := $(shell mkdir -p "$(TN_DPDK_DIR)/lib"; \
-                    $(TN_CC) -shared -fPIC $(TN_CFLAGS) -I$(TN_DPDK_DIR)/include $(TN_FILES) -o "$(TN_DPDK_DIR)/lib/libdpdk.so")
+                    $(TN_CC) -shared -fPIC $(TN_CFLAGS) -I $(TN_DPDK_DIR)/include $(TN_FILES) -o "$(TN_DPDK_DIR)/lib/libdpdk.so")
 
-# Statically link our libdpdk so we don't have to mess with LD_LIBRARY_PATH (and don't forget libnuma!)
+# Statically link our libdpdk so we don't have to mess with LD_LIBRARY_PATH
 EXTRA_LDLIBS += "$(TN_DPDK_DIR)/lib/libdpdk.so" $(TN_LDFLAGS)
