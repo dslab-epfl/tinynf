@@ -14,6 +14,7 @@ CONFIG_RTE_LIBRTE_VHOST_USER=y
 TN_DPDK_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/..
 TN_DIR := $(TN_DPDK_DIR)/../../code
 TN_FILES := $(TN_DPDK_DIR)/tn_dpdk.c
+TN_CC ?= $(CC)
 TN_NO_DEFAULT_TARGET := true # don't expose our own target
 include $(TN_DIR)/Makefile
 _IGNORED := $(shell mkdir -p "$(TN_DPDK_DIR)/lib"; \
