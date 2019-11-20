@@ -4,11 +4,17 @@ endif
 
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-CLICK_DIR ?= $(THIS_DIR)/click
 CLICK_BURST ?= 1
 
-compile:
-	@$(THIS_DIR)/setup.sh 2>/dev/null
-
+ifeq ($(RTE_TARGET),.)
 run:
-	@sudo $(CLICK_DIR)/bin/click burst=$(CLICK_BURST) --dpdk $(TN_ARGS) -- $(THIS_DIR)/$(TN_NF).click
+	@TN_CC=g++ $(THIS_DIR)/setup.sh 2>/dev/null
+	@sudo $(THIS_DIR)/click/bin/click burst=$(CLICK_BURST) --dpdk $(TN_ARGS) -- $(THIS_DIR)/$(TN_NF).click
+else
+# these extra cflags are a workaround for Click not compiling with DPDK 17.11
+# the --dpdk appears necessary even if we give no args, in order to actually use DPDK
+run:
+	@$(THIS_DIR)/../reset-dpdk.sh $(TN_ARGS)
+	@EXTRA_CFLAGS='-I "$(RTE_SDK)/$(RTE_TARGET)/include" --include=rte_bus_pci.h' $(THIS_DIR)/setup.sh 2>/dev/null
+	@sudo $(THIS_DIR)/click/bin/click burst=$(CLICK_BURST) --dpdk -- $(THIS_DIR)/$(TN_NF).click
+endif
