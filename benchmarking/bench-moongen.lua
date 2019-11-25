@@ -153,7 +153,7 @@ function _throughputTask(txQueue, rxQueue, layer, duration, direction, targetTx)
 
   -- Sanity check; it's very easy to change the script and make it too expensive to generate 10 Gb/s
   if tx  < 0.98 * targetTx then
-    io.write("Sent " .. tx .. " packets but expected around " .. targetTx .. ", broken benchmark! Did you change the script and add too many per-packet operations?\n")
+    io.write("Sent " .. tx .. " packets but expected at least " .. targetTx .. ", broken benchmark! Did you change the script and add too many per-packet operations?\n")
     os.exit(1)
   end
 
@@ -215,10 +215,6 @@ end
 -- Measure latency under 1G load
 function measureLatencyUnderLoad(queuePairs, extraPair, layer, duration)
   heatUp(queuePairs, layer)
-
-  -- It's the same filter set every time
-  -- so not setting it on subsequent attempts is OK
-  io.write("\n\n!!! IMPORTANT: You can safely ignore the warnings about setting an fdir filter !!!\n\n\n")
 
   local outFile = io.open(RESULTS_FILE_NAME, "w")
   outFile:write("median(ns),\tstdev(ns)\n")

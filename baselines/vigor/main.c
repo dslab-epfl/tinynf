@@ -77,7 +77,6 @@ int main(int argc, char** argv)
 
 #ifdef ASSUME_ONE_WAY
 	if (devices_count != 2) {
-TN_INFO("oh noes");
 		return 2;
 	}
 

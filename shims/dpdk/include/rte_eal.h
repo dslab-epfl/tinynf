@@ -47,7 +47,7 @@ static inline int rte_eal_init(int argc, char** argv)
 	}
 
 #ifdef ASSUME_ONE_WAY
-	if (count != 2) {
+	if (devices_count != 2) {
 		return -5;
 	}
 

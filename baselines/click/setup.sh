@@ -3,7 +3,7 @@ set -x
 
 git submodule update --init --recursive
 
-cd click
+cd "$(dirname "$(readlink -f "$0")")/click"
 
 FLAGS="$TN_CFLAGS $TN_LDFLAGS $TN_CC $EXTRA_CFLAGS $RTE_SDK $RTE_TARGET"
 if [ ! -f '.flags' ] || [ "$(cat .flags)" != "$FLAGS" ]; then

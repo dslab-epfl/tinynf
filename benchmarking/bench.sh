@@ -1,6 +1,4 @@
 #!/bin/sh
-set -x
-
 # Parameters: <NF directory> <bench type (latency/throughput)> <layer of flows in bench>
 # Builds the NF using 'make' then runs it with 'make run' passing the PCI devices as '$TN_ARGS'
 # Overrideable variables:
@@ -50,10 +48,10 @@ echo '[bench] Copying scripts on tester...'
 rsync -a -q --exclude '*.log' --exclude '*.results' . "$TESTER_HOST:tinynf-benchmarking"
 
 echo '[bench] Building NF...'
-make -C "$NF_DIR" >/dev/null
+TN_ARGS="$MB_DEV_0 $MB_DEV_1" make -C "$NF_DIR" >"$LOG_FILE" 2>&1
 
 echo '[bench] Running NF...'
-TN_ARGS="$MB_DEV_0 $MB_DEV_1" taskset -c "$MB_CPU" make -C "$NF_DIR" run >"$LOG_FILE" 2>&1 &
+TN_ARGS="$MB_DEV_0 $MB_DEV_1" taskset -c "$MB_CPU" make -C "$NF_DIR" run >>"$LOG_FILE" 2>&1 &
 
 # Sleep for as much as 20 seconds if the NF needs a while to start, but as little as possible
 for i in $(seq 1 20); do
@@ -77,8 +75,5 @@ scp "$TESTER_HOST:tinynf-benchmarking/results.csv" "$RESULTS_FILE"
 
 echo '[bench] Stopping NF...'
 sudo kill -9 "$NF_PID" >/dev/null 2>&1
-# TODO DELETE NEXT 2 LINES
-cat "$LOG_FILE"
-cat "$RESULTS_FILE"
 
 echo "[bench] Done! Results are in $RESULTS_FILE, and the log in $LOG_FILE, in the same directory as $0"
