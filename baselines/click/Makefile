@@ -5,7 +5,10 @@ endif
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 compile:
-	@TN_CC=g++ $(THIS_DIR)/setup.sh >/dev/null 2>&1
+	@RTE_SDK=$(THIS_DIR)/../../shims/dpdk RTE_TARGET=. TN_CC=g++ $(THIS_DIR)/setup.sh >/dev/null 2>&1
 
 run:
-	sudo $(THIS_DIR)/click/bin/click dev0=$(word 1,$(TN_ARGS)) dev1=$(word 2,$(TN_ARGS)) $(THIS_DIR)/$(TN_NF).click
+	@sudo $(THIS_DIR)/click/bin/click dev0=$(word 1,$(TN_ARGS)) dev1=$(word 2,$(TN_ARGS)) $(THIS_DIR)/$(TN_NF).click
+
+print-nf-name:
+	@echo click

@@ -23,3 +23,6 @@ compile:
 run:
 	@make -C $(VIGOR_DIR)/vig$(TN_NF) run
 endif
+
+print-nf-name:
+	@echo nf

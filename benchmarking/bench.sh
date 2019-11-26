@@ -1,12 +1,9 @@
 #!/bin/sh
 # Parameters: <NF directory> <bench type (latency/throughput)> <layer of flows in bench>
 # Builds the NF using 'make' then runs it with 'make run' passing the PCI devices as '$TN_ARGS'
-# Overrideable variables:
-# - NF_NAME, defaults to 'tinynf', the process name of the NF (used to check if it's alive and kill it later)
+# Overrideable behavior:
+# - The NF process name defaults to 'tinynf', but will be the value printed out by 'make print-nf-name' if this task exists
 
-if [ -z "$NF_NAME" ]; then
-  NF_NAME='tinynf'
-fi
 LOG_FILE='bench.log'
 RESULTS_FILE='bench.results'
 
@@ -27,6 +24,14 @@ if [ -z "$3" ]; then
   exit 1
 fi
 BENCH_LAYER="$3"
+
+# Get NF name, as explained in the script header
+make -C "$NF_DIR" -q print-nf-name >/dev/null 2>&1
+if [ $? -eq 2 ]; then
+  NF_NAME=tinynf # no print-nf-name task, use default
+else
+  NF_NAME="$(make -C "$NF_DIR" -s print-nf-name)" # -s to not print 'Entering directory...'
+fi
 
 if [ ! -z "$(pgrep -x "$NF_NAME")" ]; then
   echo '[ERROR] The NF is already running'
