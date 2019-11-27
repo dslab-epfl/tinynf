@@ -47,18 +47,19 @@ for NF_KIND in ['custom', 'dpdk-shim', 'dpdk']:
     PERIOD_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
     ONEWAY_CHOICES = [True] # no reason not to since we're doing custom anyway
     NF_DIR = NF_DIR_BASE
+    CUSTOM_ENV = {}
   elif NF_KIND == 'dpdk-shim':
     LTO_CHOICES = [True, False]
     PERIOD_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
     ONEWAY_CHOICES = [True, False]
     NF_DIR = NF_DIR_BASE + '/with-dpdk'
-    os.environ['RTE_SDK'] = THIS_DIR + '/../shims/dpdk'
-    os.environ['RTE_TARGET'] = '.'
+    CUSTOM_ENV = { 'RTE_SDK': THIS_DIR + '/../shims/dpdk', 'RTE_TARGET': '.' }
   else:
     LTO_CHOICES = [False]
     PERIOD_CHOICES = ['']
     ONEWAY_CHOICES = [False]
     NF_DIR = NF_DIR_BASE + '/with-dpdk'
+    CUSTOM_ENV = {}
 
   # Bridge can't do one-way, by definition it may need to flood
   # (even with only 2 devices, enabling one-way would be misleading)
@@ -90,6 +91,7 @@ for NF_KIND in ['custom', 'dpdk-shim', 'dpdk']:
           ENV['TN_NF'] = NF
           ENV['TN_LDFLAGS'] = LTO_FLAG
           ENV['TN_CFLAGS'] = LTO_FLAG + ' ' + ONEWAY_FLAG + ' ' + PERIOD_FLAG
+          ENV.update(CUSTOM_ENV)
           subprocess.run(['sh', 'bench.sh', NF_DIR, BENCH_KIND, LAYER], cwd=BENCH_DIR, env=ENV)
 
           with open(BENCH_DIR + '/bench.results', newline='') as FILE:
@@ -133,9 +135,10 @@ import matplotlib.pyplot as plt
 fig = plt.figure()
 ax = fig.add_subplot(1, 1, 1)
 
-for (KEY, ITEMS) in RESULTS.items():
-  markers, errorbars, errorcaps = ax.errorbar(x=[int(t) for (t, lm, ls) in ITEMS.values()], y=[int(lm) for (t, lm, ls) in ITEMS.values()], yerr=[int(float(ls)) for (t, lm, ls) in ITEMS.values()], label=KEY)
-  [bar.set_alpha(0.5) for bar in errorbars]
+for (INDEX, (KEY, ITEMS)) in enumerate(RESULTS.items()):
+  line, caps, bars = ax.errorbar(x=[int(t) for (t, lm, ls) in ITEMS.values()], y=[int(lm) for (t, lm, ls) in ITEMS.values()], yerr=[int(float(ls)) for (t, lm, ls) in ITEMS.values()], label=KEY)
+  line.set_linestyle((INDEX % 4, (4, 2))) # dashes, with an offset to avoid colliding all lines
+  [bar.set_alpha(0.3) for bar in bars]
 
 PLOT_TITLE = NF_DIR_NAME.title()
 if NF == 'nop':
@@ -151,10 +154,10 @@ elif NF == 'fw':
 else:
   PLOT_TITLE += ' ' + NF
 
-fig.suptitle(PLOT_TITLE)
+fig.suptitle(PLOT_TITLE, y=0.5) # reduce y from its default of ~1 to leave less blank space at the top
 plt.axis([0, 15000, 0, 20000])
 plt.xlabel('Throughput (Mbps)')
 plt.ylabel('Latency (ns)')
 plt.legend(loc='upper left')
 
-plt.savefig(FILE_PREFIX + '.png')
+plt.savefig(FILE_PREFIX + '.pdf', bbox_inches='tight')
