@@ -21,6 +21,8 @@ local HEATUP_RATE     = 20 -- Mbps
 local LATENCY_LOAD_RATE   = 1000 -- Mbps
 local LATENCY_FLOWS_COUNT = 1000 -- flows
 
+local FLOOD_RATE = 10000 -- Mbps
+
 local RESULTS_FILE_NAME = 'results.csv'
 
 
@@ -308,6 +310,21 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer, duration)
   end
 end
 
+function flood(queuePairs, extraPair, layer, duration)
+  io.write("Flooding. Stop with Ctrl+C. Ignore the 'broken benchmark' notices after you stop.\n")
+
+  local tasks = {}
+  for i, pair in ipairs(queuePairs) do
+    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, FLOOD_RATE, layer, 10 * 1000 * 1000, pair.direction) -- 10M seconds counts as forever
+  end
+
+  for _, task in ipairs(tasks) do
+    task:wait()
+  end
+
+  io.write("The flood finished? Did you actually wait that long?\n")
+end
+
 function master(args)
   -- We have 2 devices, and can thus do two kinds of benchmarks:
   --  Throughput: binary-search how much throughput the NF can handle without dropping more than 0.1% of packets,
@@ -330,6 +347,8 @@ function master(args)
     measureFunc = measureLatencyUnderLoad
   elseif args.type == 'throughput' then
     measureFunc = measureMaxThroughputWithLowLoss
+  elseif args.type == 'flood' then
+    measureFunc = flood
   else
     print("Unknown type.")
     os.exit(1)
