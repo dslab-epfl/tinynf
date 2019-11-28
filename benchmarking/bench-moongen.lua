@@ -10,7 +10,7 @@ local ts      = require "timestamping"
 local PACKET_SIZE = 60 -- packets
 local BATCH_SIZE = 64 -- packets
 local FLOWS_COUNT = 60000 -- flows
-local DEFAULT_DURATION = 5 -- seconds
+local DEFAULT_DURATION = 30 -- seconds
 
 local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps

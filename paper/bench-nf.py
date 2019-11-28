@@ -16,6 +16,7 @@ if len(sys.argv) != 3: # script itself + 2 args
   sys.exit(1)
 
 NF_DIR_BASE = os.path.realpath(sys.argv[1])
+NF_DIR_NAME = os.path.basename(NF_DIR_BASE)
 NF = sys.argv[2]
 
 # Necessary if DPDK has been used before and didn't exit cleanly (call sh to have it expand the *)
@@ -39,9 +40,12 @@ elif NF == 'pol':
   os.environ['POLICER_RATE'] = '10000000000'
 
 
-RESULTS = {}
+NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk']
+if NF_DIR_NAME == 'click': # only Click supports this
+  NF_KIND_CHOICES.append('dpdk-batch')
 
-for NF_KIND in ['custom', 'dpdk-shim', 'dpdk']:
+RESULTS = {}
+for NF_KIND in NF_KIND_CHOICES:
   if NF_KIND == 'custom':
     LTO_CHOICES = [True, False]
     PERIOD_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
@@ -59,7 +63,10 @@ for NF_KIND in ['custom', 'dpdk-shim', 'dpdk']:
     PERIOD_CHOICES = ['']
     ONEWAY_CHOICES = [False]
     NF_DIR = NF_DIR_BASE + '/with-dpdk'
-    CUSTOM_ENV = {}
+    if NF_KIND == 'dpdk-batch':
+      CUSTOM_ENV = {'TN_BATCH_SIZE': '32'}
+    else:
+      CUSTOM_ENV = {}
 
   # Bridge can't do one-way, by definition it may need to flood
   # (even with only 2 devices, enabling one-way would be misleading)
@@ -102,6 +109,8 @@ for NF_KIND in ['custom', 'dpdk-shim', 'dpdk']:
 
         if NF_KIND == 'dpdk':
           KEY = 'original'
+        elif NF_KIND == 'dpdk-batch':
+          KEY = 'original with batching'
         elif NF_KIND == 'dpdk-shim':
           KEY = 'shim'
           if ONEWAY:
@@ -117,7 +126,6 @@ for NF_KIND in ['custom', 'dpdk-shim', 'dpdk']:
 
         RESULTS[KEY][PERIOD] = VALUES
 
-NF_DIR_NAME = os.path.basename(NF_DIR_BASE)
 FILE_PREFIX = THIS_DIR + '/' + NF_DIR_NAME + '-' + NF
 
 with open(FILE_PREFIX + '.csv', 'w', newline='') as FILE:
@@ -136,7 +144,7 @@ fig = plt.figure()
 ax = fig.add_subplot(1, 1, 1)
 
 for (INDEX, (KEY, ITEMS)) in enumerate(RESULTS.items()):
-  line, caps, bars = ax.errorbar(x=[int(t) for (t, lm, ls) in ITEMS.values()], y=[int(lm) for (t, lm, ls) in ITEMS.values()], yerr=[int(float(ls)) for (t, lm, ls) in ITEMS.values()], label=KEY)
+  line, caps, bars = ax.errorbar(x=[int(t) for (t, lm, ls) in ITEMS.values()], y=[int(lm) for (t, lm, ls) in ITEMS.values()], yerr=[int(float(ls)) for (t, lm, ls) in ITEMS.values()], label=KEY, fmt='o')
   line.set_linestyle((INDEX % 4, (4, 2))) # dashes, with an offset to avoid colliding all lines
   [bar.set_alpha(0.3) for bar in bars]
 

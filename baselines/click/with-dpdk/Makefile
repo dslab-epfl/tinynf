@@ -4,14 +4,14 @@ endif
 
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-CLICK_BURST ?= 1
+TN_BATCH_SIZE ?= 1
 
 ifeq ($(RTE_TARGET),.)
 compile:
 	@TN_CC=g++ $(THIS_DIR)/../setup.sh >/dev/null 2>&1
 
 run:
-	@sudo $(THIS_DIR)/../click/bin/click burst=$(CLICK_BURST) --dpdk $(TN_ARGS) -- $(THIS_DIR)/$(TN_NF).click
+	@sudo $(THIS_DIR)/../click/bin/click burst=$(TN_BATCH_SIZE) --dpdk $(TN_ARGS) -- $(THIS_DIR)/$(TN_NF).click
 else
 # these extra cflags are a workaround for Click not compiling with DPDK 17.11
 compile:
@@ -20,7 +20,7 @@ compile:
 
 # the --dpdk appears necessary even if we give no args, in order to actually use DPDK
 run:
-	@sudo $(THIS_DIR)/../click/bin/click burst=$(CLICK_BURST) --dpdk -- $(THIS_DIR)/$(TN_NF).click
+	@sudo $(THIS_DIR)/../click/bin/click burst=$(TN_BATCH_SIZE) --dpdk -- $(THIS_DIR)/$(TN_NF).click
 endif
 
 print-nf-name:
