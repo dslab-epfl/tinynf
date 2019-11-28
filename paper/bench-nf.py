@@ -7,6 +7,7 @@ import glob
 import os
 import subprocess
 import sys
+import time
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 BENCH_DIR = THIS_DIR + '/../benchmarking/'
@@ -22,11 +23,10 @@ NF = sys.argv[2]
 # Necessary if DPDK has been used before and didn't exit cleanly (call sh to have it expand the *)
 subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
 
-# Pick the layer
 if NF == 'bridge':
-  LAYER = '2'
+  LAYER = '2' # MAC
 elif NF == 'pol':
-  LAYER = '3'
+  LAYER = '3' # Policer is by IP
 else:
   LAYER = '4'
 
@@ -45,19 +45,19 @@ if NF_DIR_NAME == 'click': # only Click supports this
   NF_KIND_CHOICES.append('dpdk-batch')
 
 RESULTS = {}
+COLORS = {}
 for NF_KIND in NF_KIND_CHOICES:
-  if NF_KIND == 'custom':
+  if NF_KIND == 'custom' or NF_KIND == 'dpdk-shim':
     LTO_CHOICES = [True, False]
-    PERIOD_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
-    ONEWAY_CHOICES = [True] # no reason not to since we're doing custom anyway
-    NF_DIR = NF_DIR_BASE
-    CUSTOM_ENV = {}
-  elif NF_KIND == 'dpdk-shim':
-    LTO_CHOICES = [True, False]
-    PERIOD_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
+    PERIOD_CHOICES = ['2', '32', '512']  # slower, more data: ['2', '4', '8', '16', '32', '64', '128', '256', '512']
     ONEWAY_CHOICES = [True, False]
-    NF_DIR = NF_DIR_BASE + '/with-dpdk'
-    CUSTOM_ENV = { 'RTE_SDK': THIS_DIR + '/../shims/dpdk', 'RTE_TARGET': '.' }
+
+    if NF_KIND == 'custom':
+      NF_DIR = NF_DIR_BASE
+      CUSTOM_ENV = {}
+    else:
+      NF_DIR = NF_DIR_BASE + '/with-dpdk'
+      CUSTOM_ENV = { 'RTE_SDK': THIS_DIR + '/../shims/dpdk', 'RTE_TARGET': '.' }
   else:
     LTO_CHOICES = [False]
     PERIOD_CHOICES = ['']
@@ -99,27 +99,38 @@ for NF_KIND in NF_KIND_CHOICES:
           ENV['TN_LDFLAGS'] = LTO_FLAG
           ENV['TN_CFLAGS'] = LTO_FLAG + ' ' + ONEWAY_FLAG + ' ' + PERIOD_FLAG
           ENV.update(CUSTOM_ENV)
-          subprocess.run(['sh', 'bench.sh', NF_DIR, BENCH_KIND, LAYER], cwd=BENCH_DIR, env=ENV)
 
-          with open(BENCH_DIR + '/bench.results', newline='') as FILE:
-            CSV = list(csv.reader(FILE))
-            VALUES.append(CSV[1][0].strip())
-            if BENCH_KIND == 'latency':
-              VALUES.append(CSV[1][1].strip())
+          # can fail for spurious reasons, e.g. random DNS failures
+          for ATTEMPT in range(0, 5):
+            RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR, BENCH_KIND, LAYER], cwd=BENCH_DIR, env=ENV).returncode
+            if RESULT == 0:
+              break
+            else:
+              time.sleep(60) # wait a minute (literally)
+
+          with open(BENCH_DIR + '/bench.result', mode='r') as FILE:
+            VALUES.append(FILE.read().strip())
 
         if NF_KIND == 'dpdk':
           KEY = 'original'
+          COLORS[KEY] = 'gold'
         elif NF_KIND == 'dpdk-batch':
           KEY = 'original with batching'
+          COLORS[KEY] = 'goldenrod'
         elif NF_KIND == 'dpdk-shim':
           KEY = 'shim'
+          COLORS[KEY] = 'blue'
           if ONEWAY:
             KEY += ', simple'
+            COLORS[KEY] = 'violet'
         else:
           KEY = 'custom'
+          COLORS[KEY] = 'red'
 
         if LTO:
-          KEY += ', LTO'
+          NEWKEY = KEY + ', LTO'
+          COLORS[NEWKEY] = 'dark' + COLORS[KEY]
+          KEY = NEWKEY
 
         if KEY not in RESULTS:
           RESULTS[KEY] = {}
@@ -130,7 +141,7 @@ FILE_PREFIX = THIS_DIR + '/' + NF_DIR_NAME + '-' + NF
 
 with open(FILE_PREFIX + '.csv', 'w', newline='') as FILE:
   CSV = csv.writer(FILE)
-  CSV.writerow(['Key', 'Period', 'Throughput', 'Latency-median', 'Latency-stdev'])
+  CSV.writerow(['Key', 'Period', 'Throughput', 'Latency'])
   for (KEY, ITEMS) in RESULTS.items():
     for (PERIOD, VALUES) in ITEMS.items():
       CSV.writerow([KEY, PERIOD] + VALUES)
@@ -144,9 +155,7 @@ fig = plt.figure()
 ax = fig.add_subplot(1, 1, 1)
 
 for (INDEX, (KEY, ITEMS)) in enumerate(RESULTS.items()):
-  line, caps, bars = ax.errorbar(x=[int(t) for (t, lm, ls) in ITEMS.values()], y=[int(lm) for (t, lm, ls) in ITEMS.values()], yerr=[int(float(ls)) for (t, lm, ls) in ITEMS.values()], label=KEY, fmt='o')
-  line.set_linestyle((INDEX % 4, (4, 2))) # dashes, with an offset to avoid colliding all lines
-  [bar.set_alpha(0.3) for bar in bars]
+  ax.scatter(x=[int(t) for (t, l) in ITEMS.values()], y=[int(l) for (t, l) in ITEMS.values()], label=KEY, c=COLORS[KEY])
 
 PLOT_TITLE = NF_DIR_NAME.title()
 if NF == 'nop':
@@ -162,8 +171,8 @@ elif NF == 'fw':
 else:
   PLOT_TITLE += ' ' + NF
 
-fig.suptitle(PLOT_TITLE, y=0.5) # reduce y from its default of ~1 to leave less blank space at the top
-plt.axis([0, 15000, 0, 20000])
+fig.suptitle(PLOT_TITLE, y=0.85) # put the title inside the plot to save space
+plt.axis([0, 14000, 0, 20000])
 plt.xlabel('Throughput (Mbps)')
 plt.ylabel('Latency (ns)')
 plt.legend(loc='upper left')

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Parameters: <NF directory> <bench type (latency/throughput)> <layer of flows in bench>
 # Builds the NF using 'make' then runs it with 'make run' passing the PCI devices as '$TN_ARGS'
+# Exits with a non-zero code if the benchmark fails for any reason
 # Overrideable behavior:
 # - The NF process name defaults to 'tinynf', but will be the value printed out by 'make print-nf-name' if this task exists
 
@@ -51,14 +52,22 @@ git submodule update --init --recursive
 
 echo '[bench] Copying scripts on tester...'
 rsync -a -q --exclude '*.log' --exclude '*.result' . "$TESTER_HOST:tinynf-benchmarking"
+if [ $? -ne 0 ]; then
+  echo '[FATAL] Could not copy scripts'
+  exit 1
+fi
 
 echo '[bench] Building NF...'
 TN_ARGS="$MB_DEV_0 $MB_DEV_1" make -C "$NF_DIR" >"$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+  echo "[FATAL] Could not build; the $LOG_FILE file in the same directory as $0 may be useful"
+  exit 1
+fi
 
 echo '[bench] Running NF...'
 TN_ARGS="$MB_DEV_0 $MB_DEV_1" taskset -c "$MB_CPU" make -C "$NF_DIR" run >>"$LOG_FILE" 2>&1 &
 
-# Sleep for as much as 20 seconds if the NF needs a while to start, but as little as possible
+# Sleep for as much as 20 seconds if the NF needs a while to start
 for i in $(seq 1 20); do
   sleep 1
   NF_PID="$(pgrep -x "$NF_NAME")"
@@ -67,16 +76,23 @@ for i in $(seq 1 20); do
   fi
 done
 if [ -z "$NF_PID" ]; then
-  echo "[ERROR] Could not launch the NF. The $LOG_FILE file in the same directory as $0 may be useful"
-  cat "$LOG_FILE"
+  echo "[FATAL] Could not launch the NF; the $LOG_FILE file in the same directory as $0 may be useful"
   exit 1
 fi
 
 echo '[bench] Running benchmark on tester...'
 ssh "$TESTER_HOST" "cd tinynf-benchmarking; ./bench-tester.sh $BENCH_TYPE $BENCH_LAYER"
+if [ $? -ne 0 ]; then
+  echo '[FATAL] Run failed'
+  exit 1
+fi
 
 echo '[bench] Fetching result...'
 scp "$TESTER_HOST:tinynf-benchmarking/bench.result" "$RESULT_FILE"
+if [ $? -ne 0 ]; then
+  echo '[FATAL] Could not fetch result'
+  exit 1
+fi
 
 echo '[bench] Stopping NF...'
 sudo kill -9 "$NF_PID" >/dev/null 2>&1

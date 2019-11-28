@@ -88,30 +88,37 @@ local packetInits = {
 }
 
 -- Helper function, has to be global because it's started as a task
+-- Note that MoonGen doesn't want us to create more than one timestamper, so we do all iterations inside the task
+-- (this also means the io.write calls are buffered until the task has finished...)
 function _latencyTask(txQueue, rxQueue, layer, duration, direction)
-  -- Ensure that the throughput task is running
-  mg.sleepMillis(1000)
-
   local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
-  local hist = hist:new()
-  local sendTimer = timer:new(duration - 1) -- we just slept for a second earlier, so deduce that
-  local rateLimiter = timer:new(1 / LATENCY_FLOWS_COUNT) -- ASSUMPTION: The NF is running
-  -- with 1 second expiry time, we want new flows' latency
-  local counter = 0
+  local rateLimiter = timer:new(1 / LATENCY_FLOWS_COUNT)
+  local lats = {}
 
-  while sendTimer:running() and mg.running() do
-    -- Minimum size for these packets is 84
-    local packetSize = 84
-    hist:update(timestamper:measureLatency(packetSize, function(buf)
-      packetInits[direction](buf, packetSize)
-      packetConfigs[direction][layer](buf:getUdpPacket(), counter)
-      counter = (counter + 1) % LATENCY_FLOWS_COUNT
-    end))
-    rateLimiter:wait()
-    rateLimiter:reset()
+  for i = 1, 10 do
+    io.write("Attempt " .. i .. " ... ")
+    local hist = hist:new()
+    local sendTimer = timer:new(duration)
+    local counter = 0
+
+    while sendTimer:running() and mg.running() do
+      -- Minimum size for these packets is 84
+      local packetSize = 84
+      hist:update(timestamper:measureLatency(packetSize, function(buf)
+        packetInits[direction](buf, packetSize)
+        packetConfigs[direction][layer](buf:getUdpPacket(), counter)
+        counter = (counter + 1) % LATENCY_FLOWS_COUNT
+      end))
+      rateLimiter:wait()
+      rateLimiter:reset()
+    end
+
+    lats[i] = hist:percentile(99)
+    io.write("99th percentile = " .. lats[i] .. "\n")
   end
-  
-  return hist:percentile(99)
+
+  table.sort(lats)
+  return lats[10]
 end
 
 -- Starts a latency-measuring task, which returns the 99th percentile latency
@@ -218,46 +225,40 @@ end
 function measureLatencyUnderLoad(queuePairs, extraPair, layer, duration)
   heatUp(queuePairs, layer)
 
-  -- Latency task waits 1sec for throughput task to have started, so we compensate
-  duration = duration + 1
+  io.write("Measuring latency; you won't see results til the end...\n")
 
-  io.write("Measuring latency\n")
-  local outFile = io.open(RESULTS_FILE_NAME, "w")
-
-  lats = {}
-  for n = 1, 10 do
-    io.write("Attempt " .. n .. " ... ")
-    local throughputTasks = {}
-    for i, pair in ipairs(queuePairs) do
-      throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, duration, pair.direction)
-    end
-
-    local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, duration, extraPair.direction)
-
-    -- We may have been interrupted
-    if not mg.running() then
-      io.write("Interrupted\n")
-      os.exit(0)
-    end
-
-    local loss = 0
-    for _, task in ipairs(throughputTasks) do
-      loss = loss + task:wait()
-    end
-
-    if loss > 0.001 then
-      io.write("Too much loss!\n")
-      outFile:write("too much loss" .. "\n")
-      os.exit(0)
-    end
-
-    lats[n] = latencyTask:wait()
-    io.write("99th percentile = " .. lats[n] .. "\n")
+  local throughputTasks = {}
+  for i, pair in ipairs(queuePairs) do
+    -- latency task does 10 attempts; add 2 seconds as margin
+    throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, duration * 10 + 2, pair.direction)
   end
 
-  table.sort(lats)
-  io.write("Worst 99th percentile = " .. lats[10] .. "\n")
-  outFile:write(lats[10] .. "\n")
+  -- Ensure that the throughput tasks are running (leaves us 1 second as margin)
+  mg.sleepMillis(1000)
+
+  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, duration, extraPair.direction)
+
+  local loss = 0
+  for _, task in ipairs(throughputTasks) do
+    loss = loss + task:wait()
+  end
+
+  local lat = latencyTask:wait()
+
+  -- We may have been interrupted
+  if not mg.running() then
+    io.write("Interrupted\n")
+    os.exit(0)
+  end
+
+  if loss > 0.001 then
+    io.write("Too much loss!\n")
+    outFile:write("too much loss" .. "\n")
+    os.exit(0)
+  end
+
+  local outFile = io.open(RESULTS_FILE_NAME, "w")
+  outFile:write(lat .. "\n")
 end
 
 -- Measure max throughput with less than 0.1% loss
