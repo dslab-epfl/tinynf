@@ -23,7 +23,7 @@ local LATENCY_FLOWS_COUNT = 1000 -- flows
 
 local FLOOD_RATE = 10000 -- Mbps
 
-local RESULTS_FILE_NAME = 'results.csv'
+local RESULTS_FILE_NAME = 'bench.result'
 
 
 -- Arguments for the script
@@ -111,10 +111,10 @@ function _latencyTask(txQueue, rxQueue, layer, duration, direction)
     rateLimiter:reset()
   end
   
-  return hist:median(), hist:standardDeviation()
+  return hist:percentile(99)
 end
 
--- Starts a latency-measuring task, which returns (median, stdev)
+-- Starts a latency-measuring task, which returns the 99th percentile latency
 function startMeasureLatency(txQueue, rxQueue, layer, duration, counterStart)
   return mg.startTask("_latencyTask", txQueue, rxQueue, layer, duration, counterStart)
 end
@@ -218,55 +218,57 @@ end
 function measureLatencyUnderLoad(queuePairs, extraPair, layer, duration)
   heatUp(queuePairs, layer)
 
-  local outFile = io.open(RESULTS_FILE_NAME, "w")
-  outFile:write("median(ns),\tstdev(ns)\n")
-
   -- Latency task waits 1sec for throughput task to have started, so we compensate
   duration = duration + 1
 
-  io.write("Measuring latency... ")
-  local throughputTasks = {}
-  for i, pair in ipairs(queuePairs) do
-    throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, duration, pair.direction)
+  io.write("Measuring latency\n")
+  local outFile = io.open(RESULTS_FILE_NAME, "w")
+
+  lats = {}
+  for n = 1, 10 do
+    io.write("Attempt " .. n .. " ... ")
+    local throughputTasks = {}
+    for i, pair in ipairs(queuePairs) do
+      throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, duration, pair.direction)
+    end
+
+    local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, duration, extraPair.direction)
+
+    -- We may have been interrupted
+    if not mg.running() then
+      io.write("Interrupted\n")
+      os.exit(0)
+    end
+
+    local loss = 0
+    for _, task in ipairs(throughputTasks) do
+      loss = loss + task:wait()
+    end
+
+    if loss > 0.001 then
+      io.write("Too much loss!\n")
+      outFile:write("too much loss" .. "\n")
+      os.exit(0)
+    end
+
+    lats[n] = latencyTask:wait()
+    io.write("99th percentile = " .. lats[n] .. "\n")
   end
 
-  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, duration, extraPair.direction)
-
-  -- We may have been interrupted
-  if not mg.running() then
-    io.write("Interrupted\n")
-    os.exit(0)
-  end
-
-  local loss = 0
-  for _, task in ipairs(throughputTasks) do
-    loss = loss + task:wait()
-  end
-
-  local median, stdev = latencyTask:wait()
-
-  if loss > 0.001 then
-    io.write("Too much loss!\n")
-    outFile:write("too much loss" .. "\n")
-  else
-    io.write("median " .. median .. ", stdev " .. stdev .. "\n")
-    outFile:write(median .. ",\t" .. stdev .. "\n")
-  end
+  table.sort(lats)
+  io.write("Worst 99th percentile = " .. lats[10] .. "\n")
+  outFile:write(lats[10] .. "\n")
 end
 
 -- Measure max throughput with less than 0.1% loss
 function measureMaxThroughputWithLowLoss(queuePairs, _, layer, duration)
   heatUp(queuePairs, layer)
 
-  local outFile = io.open(RESULTS_FILE_NAME, "w")
-  outFile:write("Mbps,\tloss\n")
-
   local upperBound = RATE_MAX
   local lowerBound = RATE_MIN
   local rate = upperBound
   local bestRate = 0
   local bestTx = 0
-  local bestLoss = 1
   for i = 1, 10 do
     io.write("Step " .. i .. ": " .. (#queuePairs * rate) .. " Mbps... ")
     local tasks = {}
@@ -292,7 +294,6 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer, duration)
     if (loss < 0.001) then
       bestRate = rate
       bestTx = tx
-      bestLoss = loss
       lowerBound = rate
       rate = rate + (upperBound - rate)/2
     else
@@ -304,7 +305,8 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer, duration)
     if (i == 10) or (loss < 0.001 and bestRate == upperBound) then
       -- Note that we write 'bestRate' here, i.e. the last rate with < 0.001 loss, not the current one
       -- (which may cause > 0.001 loss since our binary search is bounded in steps)
-      outFile:write(math.floor(#queuePairs * bestRate) .. ",\t" .. bestLoss .. "\n")
+      local outFile = io.open(RESULTS_FILE_NAME, "w")
+      outFile:write(math.floor(#queuePairs * bestRate) .. "\n")
       break
     end
   end

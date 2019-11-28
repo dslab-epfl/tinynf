@@ -41,7 +41,7 @@ for pci in "$TESTER_DEV_0" "$TESTER_DEV_1"; do
 done
 
 # Remove the output to avoid a stale one if the script fails
-rm -f results.csv
+rm -f bench.result
 
 echo '[bench-tester] Running...'
 sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE" "$BENCH_LAYER"

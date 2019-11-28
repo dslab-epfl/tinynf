@@ -5,7 +5,7 @@
 # - The NF process name defaults to 'tinynf', but will be the value printed out by 'make print-nf-name' if this task exists
 
 LOG_FILE='bench.log'
-RESULTS_FILE='bench.results'
+RESULT_FILE='bench.result'
 
 if [ -z "$1" ]; then
   echo "[ERROR] Please provide the directory of the NF as the first argument to $0"
@@ -50,7 +50,7 @@ echo '[bench] Cloning submodules...'
 git submodule update --init --recursive
 
 echo '[bench] Copying scripts on tester...'
-rsync -a -q --exclude '*.log' --exclude '*.results' . "$TESTER_HOST:tinynf-benchmarking"
+rsync -a -q --exclude '*.log' --exclude '*.result' . "$TESTER_HOST:tinynf-benchmarking"
 
 echo '[bench] Building NF...'
 TN_ARGS="$MB_DEV_0 $MB_DEV_1" make -C "$NF_DIR" >"$LOG_FILE" 2>&1
@@ -75,10 +75,10 @@ fi
 echo '[bench] Running benchmark on tester...'
 ssh "$TESTER_HOST" "cd tinynf-benchmarking; ./bench-tester.sh $BENCH_TYPE $BENCH_LAYER"
 
-echo '[bench] Fetching results...'
-scp "$TESTER_HOST:tinynf-benchmarking/results.csv" "$RESULTS_FILE"
+echo '[bench] Fetching result...'
+scp "$TESTER_HOST:tinynf-benchmarking/bench.result" "$RESULT_FILE"
 
 echo '[bench] Stopping NF...'
 sudo kill -9 "$NF_PID" >/dev/null 2>&1
 
-echo "[bench] Done! Results are in $RESULTS_FILE, and the log in $LOG_FILE, in the same directory as $0"
+echo "[bench] Done! Result is in $RESULT_FILE, and the log in $LOG_FILE, in the same directory as $0"
