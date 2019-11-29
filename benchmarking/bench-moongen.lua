@@ -161,7 +161,7 @@ function _throughputTask(txQueue, rxQueue, layer, duration, direction, targetTx)
   local rx = rxCounter.total
 
   -- Sanity check; it's very easy to change the script and make it too expensive to generate 10 Gb/s
-  if tx  < 0.98 * targetTx then
+  if mg.running() and tx  < 0.98 * targetTx then
     io.write("Sent " .. tx .. " packets but expected at least " .. targetTx .. ", broken benchmark! Did you change the script and add too many per-packet operations?\n")
     os.exit(1)
   end
@@ -314,7 +314,7 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer, duration)
 end
 
 function flood(queuePairs, extraPair, layer, duration)
-  io.write("Flooding. Stop with Ctrl+C. Ignore the 'broken benchmark' notices after you stop.\n")
+  io.write("Flooding. Stop with Ctrl+C.\n")
 
   local tasks = {}
   for i, pair in ipairs(queuePairs) do
@@ -324,8 +324,6 @@ function flood(queuePairs, extraPair, layer, duration)
   for _, task in ipairs(tasks) do
     task:wait()
   end
-
-  io.write("The flood finished? Did you actually wait that long?\n")
 end
 
 function master(args)
