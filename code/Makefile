@@ -26,7 +26,7 @@ TN_NET ?= 82599
 TN_APP ?= tinynf
 
 # Toolchain
-TN_CC ?= clang-8 # clang has -Weverything, no need to manually list warnings we want; hardcode version for reproducibility
+TN_CC ?= clang-9 # clang has -Weverything, no need to manually list warnings we want; hardcode version for reproducibility
 TN_STRIP ?= strip
 
 # Files
