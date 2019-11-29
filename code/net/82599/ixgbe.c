@@ -1344,7 +1344,6 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	return true;
 }
 
-
 bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_t* out_packet_length)
 {
 	pipe->scheduling_counter = pipe->scheduling_counter + 1u;
@@ -1359,7 +1358,7 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 			if (head_is_used) {
 				uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
 				uint64_t diff = head - pipe->processed_delimiter; // TODO it'd be nice if we didn't need it here so we could modulo it only when writing, not at every iter
-				if (diff < min_diff) {
+				if (diff <= min_diff) {
 					earliest_send_head = head;
 					min_diff = diff;
 				}
