@@ -8,8 +8,10 @@ local timer   = require "timer"
 local ts      = require "timestamping"
 
 local PACKET_SIZE = 60 -- packets
-local BATCH_SIZE = 64 -- packets
+local PACKET_BATCH_SIZE = 64 -- packets
+
 local FLOWS_COUNT = 60000 -- flows
+
 local DEFAULT_DURATION = 30 -- seconds
 
 local RATE_MIN   = 0 -- Mbps
@@ -113,8 +115,11 @@ function _latencyTask(txQueue, rxQueue, layer, duration, direction)
       rateLimiter:reset()
     end
 
+    io.write("1%: " .. hist:percentile( 1) .. " / 25%: " .. hist:percentile(25) ..
+         " / 50%: " .. hist:percentile(50) .. " / 75%: " .. hist:percentile(75) ..
+         " / 95%: " .. hist:percentile(95) .. " / 99%: " .. hist:percentile(99) .. "ns\n")
+
     lats[i] = hist:percentile(99)
-    io.write("99th percentile = " .. lats[i] .. "\n")
   end
 
   table.sort(lats)
@@ -127,28 +132,35 @@ function startMeasureLatency(txQueue, rxQueue, layer, duration, counterStart)
 end
 
 -- Helper function, has to be global because it's started as a task
-function _throughputTask(txQueue, rxQueue, layer, duration, direction, targetTx)
+function _throughputTask(txQueue, rxQueue, layer, duration, direction, flowBatchSize, targetTx)
   local mempool = memory.createMemPool(function(buf) packetInits[direction](buf, PACKET_SIZE) end)
   -- "nil" == no output
   local txCounter = stats:newDevTxCounter(txQueue, "nil")
   local rxCounter = stats:newDevRxCounter(rxQueue, "nil")
-  local bufs = mempool:bufArray(BATCH_SIZE)
+  local bufs = mempool:bufArray(PACKET_BATCH_SIZE)
   local packetConfig = packetConfigs[direction][layer]
   local sendTimer = timer:new(duration)
   local counter = 0
+  local batchCounter = 0
 
   while sendTimer:running() and mg.running() do
     bufs:alloc(PACKET_SIZE)
     for _, buf in ipairs(bufs) do
       packetConfig(buf:getUdpPacket(), counter)
-      -- incAndWrap does this in a supposedly fast way;
-      -- in practice it's actually slower!
-      -- with incAndWrap this code cannot do 10G line rate
-      counter = (counter + 1) % FLOWS_COUNT
+      batchCounter = batchCounter + 1
+      if batchCounter == flowBatchSize then
+        batchCounter = 0
+        -- incAndWrap does this in a supposedly fast way;
+        -- in practice it's actually slower!
+        -- with incAndWrap this code cannot do 10G line rate
+        counter = counter + 1--(counter + 1) % FLOWS_COUNT
+        if counter == FLOWS_COUNT then
+          counter = 0
+        end
+      end
     end
 
-    bufs:offloadIPChecksums() -- UDP checksum is optional,
-    -- let's do the least possible amount of work
+    bufs:offloadIPChecksums() -- UDP checksum is optional, let's do the least possible amount of work
     txQueue:send(bufs)
     txCounter:update()
     rxCounter:update()
@@ -170,7 +182,7 @@ function _throughputTask(txQueue, rxQueue, layer, duration, direction, targetTx)
 end
 
 -- Starts a throughput-measuring task, which returns the loss (0 if no loss)
-function startMeasureThroughput(txQueue, rxQueue, rate, layer, duration, direction)
+function startMeasureThroughput(txQueue, rxQueue, rate, layer, duration, direction, flowBatchSize)
   -- Get the rate that should be given to MoonGen
   -- using packets of the given size to achieve the given true rate
   function moongenRate(rate)
@@ -191,8 +203,7 @@ function startMeasureThroughput(txQueue, rxQueue, rate, layer, duration, directi
     local moongenByteRate = packetsPerSec * (PACKET_SIZE + 4)
     local moongenRate = moongenByteRate * 8 / (1024 * 1024)
     if moongenRate < 10 then
-      printf("WARNING - Rate %f (corresponding to desired rate %d) too low," ..
-               " will be set to 10 instead.", moongenRate, rate)
+      printf("WARNING - Rate %f (corresponding to desired rate %d) too low, will be set to 10 instead.", moongenRate, rate)
       moongenRate = 10
     end
     return math.floor(moongenRate)
@@ -200,7 +211,7 @@ function startMeasureThroughput(txQueue, rxQueue, rate, layer, duration, directi
 
   txQueue:setRate(moongenRate(rate))
   local targetTx = (rate * 1000 * 1000) / ((PACKET_SIZE + 24) * 8) * duration
-  return mg.startTask("_throughputTask", txQueue, rxQueue, layer, duration, direction, targetTx)
+  return mg.startTask("_throughputTask", txQueue, rxQueue, layer, duration, direction, flowBatchSize, targetTx)
 end
 
 
@@ -209,7 +220,11 @@ function heatUp(queuePairs, layer)
   io.write("Heatup... (" .. HEATUP_DURATION .. " seconds)\n")
   local tasks = {}
   for i, pair in ipairs(queuePairs) do
-    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, HEATUP_RATE, layer, HEATUP_DURATION, pair.direction)
+    -- flow batch size 32 to ensure at least one packet of every flow is not dropped (unless the NF is really broken),
+    -- thus NFs such as NATs will have the right mappings after heatup
+    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, HEATUP_RATE, layer, HEATUP_DURATION, pair.direction, 32)
+    -- ensure the flows are "opened" before their counterparts come from the other direction, for NFs like NATs
+    mg.sleepMillis(100)
   end
 
   for i, task in ipairs(tasks) do
@@ -230,7 +245,7 @@ function measureLatencyUnderLoad(queuePairs, extraPair, layer, duration)
   local throughputTasks = {}
   for i, pair in ipairs(queuePairs) do
     -- latency task does 10 attempts; add 2 seconds as margin
-    throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, duration * 10 + 2, pair.direction)
+    throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, duration * 10 + 2, pair.direction, 1)
   end
 
   -- Ensure that the throughput tasks are running (leaves us 1 second as margin)
@@ -253,7 +268,24 @@ function measureLatencyUnderLoad(queuePairs, extraPair, layer, duration)
 
   if loss > 0.001 then
     io.write("Too much loss!\n")
-    outFile:write("too much loss" .. "\n")
+    os.exit(1)
+  else
+    local outFile = io.open(RESULTS_FILE_NAME, "w")
+    outFile:write(lat .. "\n")
+  end
+end
+
+-- Measure latency
+function measureLatencyAlone(queuePairs, extraPair, layer, duration)
+  heatUp(queuePairs, layer)
+
+  io.write("Measuring latency without load; you won't see results til the end...\n")
+
+  local lat = startMeasureLatency(extraPair.tx, extraPair.rx, layer, duration, extraPair.direction):wait()
+
+  -- We may have been interrupted
+  if not mg.running() then
+    io.write("Interrupted\n")
     os.exit(0)
   end
 
@@ -274,7 +306,7 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer, duration)
     io.write("Step " .. i .. ": " .. (#queuePairs * rate) .. " Mbps... ")
     local tasks = {}
     for i, pair in ipairs(queuePairs) do
-      tasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, duration, pair.direction)
+      tasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, duration, pair.direction, 1)
     end
 
     local loss = 0
@@ -318,7 +350,7 @@ function flood(queuePairs, extraPair, layer, duration)
 
   local tasks = {}
   for i, pair in ipairs(queuePairs) do
-    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, FLOOD_RATE, layer, 10 * 1000 * 1000, pair.direction) -- 10M seconds counts as forever
+    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, FLOOD_RATE, layer, 10 * 1000 * 1000, pair.direction, 1) -- 10M seconds counts as forever in my book
   end
 
   for _, task in ipairs(tasks) do
@@ -346,6 +378,8 @@ function master(args)
   measureFunc = nil
   if args.type == 'latency' then
     measureFunc = measureLatencyUnderLoad
+  elseif args.type == 'latency-alone' then
+    measureFunc = measureLatencyAlone
   elseif args.type == 'throughput' then
     measureFunc = measureMaxThroughputWithLowLoss
   elseif args.type == 'flood' then

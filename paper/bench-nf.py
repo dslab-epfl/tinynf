@@ -49,7 +49,9 @@ COLORS = {}
 for NF_KIND in NF_KIND_CHOICES:
   if NF_KIND == 'custom' or NF_KIND == 'dpdk-shim':
     LTO_CHOICES = [True, False]
-    PERIOD_CHOICES = ['2', '32', '512']  # slower, more data: ['2', '4', '8', '16', '32', '64', '128', '256', '512']
+    #PERIOD_CHOICES = ['2', '32', '512']
+    # slower, more data:
+    PERIOD_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
     ONEWAY_CHOICES = [True, False]
 
     if NF_KIND == 'custom':
@@ -115,7 +117,7 @@ for NF_KIND in NF_KIND_CHOICES:
           KEY = 'original'
           COLORS[KEY] = 'gold'
         elif NF_KIND == 'dpdk-batch':
-          KEY = 'original with batching'
+          KEY = 'original, batching'
           COLORS[KEY] = 'goldenrod'
         elif NF_KIND == 'dpdk-shim':
           KEY = 'shim'
@@ -173,8 +175,8 @@ else:
 
 fig.suptitle(PLOT_TITLE, y=0.85) # put the title inside the plot to save space
 plt.axis([0, 14000, 0, 20000])
-plt.xlabel('Throughput (Mbps)')
-plt.ylabel('Latency (ns)')
+plt.xlabel('Max throughput with <0.1% loss (Mbps)')
+plt.ylabel('99th percentile latency (ns)')
 plt.legend(loc='upper left')
 
 plt.savefig(FILE_PREFIX + '.pdf', bbox_inches='tight')
