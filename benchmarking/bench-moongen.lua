@@ -18,7 +18,7 @@ local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps
 
 local HEATUP_DURATION = 5 -- seconds
-local HEATUP_RATE     = 20 -- Mbps
+local HEATUP_RATE     = 100 -- Mbps
 
 local LATENCY_LOAD_RATE   = 1000 -- Mbps
 local LATENCY_FLOWS_COUNT = 1000 -- flows
