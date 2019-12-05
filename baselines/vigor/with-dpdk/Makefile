@@ -8,6 +8,10 @@ VIGOR_DIR := $(THIS_DIR)/../vigor
 # Run the setup script, in case it hasn't been run yet
 _IGNORED := $(shell $(THIS_DIR)/../setup.sh 2>/dev/null)
 
+TN_NO_DEFAULT_TARGET := true
+include $(THIS_DIR)/../../../code/Makefile
+TN_CFLAGS += -w # don't even bother with warnings, there are so many in Vigor
+
 # Vigor's make run always compiles, so no need to have a separate compile step
 ifeq ($(RTE_TARGET),.)
 compile:

@@ -36,11 +36,8 @@ DPDK_DIR := $(RTE_SDK)/$(RTE_TARGET)
 TN_CFLAGS += -isystem $(DPDK_DIR)/include
 TN_FILES += $(DPDK_DIR)/tn_dpdk.c
 
-# Vigor compiles with DPDK makefiles, which do not care about all those...
-TN_CFLAGS += -Wno-reserved-id-macro -Wno-sign-conversion -Wno-missing-prototypes -Wno-unused-parameter -Wno-unused-value -Wno-unused-function \
-             -Wno-padded -Wno-tautological-unsigned-zero-compare -Wno-missing-variable-declarations -Wno-implicit-int-conversion -Wno-shorten-64-to-32 \
-             -Wno-extra-semi-stmt -Wno-gnu-zero-variadic-macro-arguments -Wno-empty-translation-unit -Wno-newline-eof -Wno-unused-variable -Wno-c++-compat \
-             -Wno-gnu-empty-struct -Wno-strict-prototypes -Wno-sign-compare -Wno-missing-noreturn
+# Vigor compiles with DPDK makefiles, which do not care about extremely many warnings, so let's not even bother
+TN_CFLAGS += -w
 
 # Use Vigor's fast power-of-2-capacity map
 TN_CFLAGS += -DCAPACITY_POW2
