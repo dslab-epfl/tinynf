@@ -26,6 +26,9 @@ if [ -z "$3" ]; then
 fi
 BENCH_LAYER="$3"
 
+# Do not leave outdated results behind
+rm -f "$RESULT_FILE"
+
 # Get NF name, as explained in the script header
 make -C "$NF_DIR" -q print-nf-name >/dev/null 2>&1
 if [ $? -eq 2 ]; then

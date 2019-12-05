@@ -20,9 +20,6 @@ NF_DIR_BASE = os.path.realpath(sys.argv[1])
 NF_DIR_NAME = os.path.basename(NF_DIR_BASE)
 NF = sys.argv[2]
 
-# Necessary if DPDK has been used before and didn't exit cleanly (call sh to have it expand the *)
-subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
-
 if NF == 'bridge':
   LAYER = '2' # MAC
 elif NF == 'pol':
@@ -31,6 +28,8 @@ else:
   LAYER = '4'
 
 # Vigor-specific
+# Expiration time default is 10us which is nothing; use 120Mus (i.e. 120s) instead
+os.environ['EXPIRATION_TIME'] = '120000000'
 # Bridge needs double the standard capacity since it stores both input and output flows
 if NF == 'bridge':
   os.environ['CAPACITY'] = '131072'
@@ -48,10 +47,13 @@ RESULTS = {}
 COLORS = {}
 for NF_KIND in NF_KIND_CHOICES:
   if NF_KIND == 'custom' or NF_KIND == 'dpdk-shim':
+    # Necessary if DPDK has been used before and didn't exit cleanly (call sh to have it expand the *)
+    subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
+
     LTO_CHOICES = [True, False]
-    #PERIOD_CHOICES = ['2', '32', '512']
+    PERIOD_CHOICES = ['32', '512']
     # slower, more data:
-    PERIOD_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
+    #PERIOD_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
     ONEWAY_CHOICES = [True, False]
 
     if NF_KIND == 'custom':
@@ -104,6 +106,8 @@ for NF_KIND in NF_KIND_CHOICES:
 
           # can fail for spurious reasons, e.g. random DNS failures
           for ATTEMPT in range(0, 5):
+            print('Running: bench.sh ' + NF_DIR + ' ' + BENCH_KIND + ' ' + LAYER)
+            print('Environment: ' + str(ENV))
             RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR, BENCH_KIND, LAYER], cwd=BENCH_DIR, env=ENV).returncode
             if RESULT == 0:
               break
@@ -128,6 +132,9 @@ for NF_KIND in NF_KIND_CHOICES:
         else:
           KEY = 'custom'
           COLORS[KEY] = 'red'
+          if ONEWAY:
+            KEY += ', simple'
+            COLORS[KEY] = 'green'
 
         if LTO:
           NEWKEY = KEY + ', LTO'

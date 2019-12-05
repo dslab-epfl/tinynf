@@ -2,9 +2,6 @@ ifndef TN_NF
 $(error Please define TN_NF to a Vigor NF without the vig prefix, e.g. 'nat')
 endif
 
-# Some Vigor NFs need a large-ish one to not be expiring flows all the time
-EXPIRATION_TIME := 10000000
-
 # Allow the use of special patterns in shell, as Vigor does
 SHELL := /bin/bash -O extglob -c
 
