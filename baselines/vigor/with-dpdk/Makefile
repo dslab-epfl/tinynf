@@ -8,17 +8,13 @@ VIGOR_DIR := $(THIS_DIR)/../vigor
 # Run the setup script, in case it hasn't been run yet
 _IGNORED := $(shell $(THIS_DIR)/../setup.sh 2>/dev/null)
 
-TN_NO_DEFAULT_TARGET := true
-include $(THIS_DIR)/../../../code/Makefile
-TN_CFLAGS += -w # don't even bother with warnings, there are so many in Vigor
-
 # Vigor's make run always compiles, so no need to have a separate compile step
 ifeq ($(RTE_TARGET),.)
 compile:
-	# nothing
+	@# nothing
 
 run:
-	@CC=$(TN_CC) NF_DPDK_ARGS="$(TN_ARGS)" make -C $(VIGOR_DIR)/vig$(TN_NF) run
+	@NF_DPDK_ARGS="$(TN_ARGS)" make -C $(VIGOR_DIR)/vig$(TN_NF) run
 else
 compile:
 	@$(THIS_DIR)/../../reset-dpdk.sh $(TN_ARGS)

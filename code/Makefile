@@ -62,7 +62,7 @@ ifndef TN_NO_DEFAULT_TARGET
 .PHONY: tn_default
 tn_default:
 	@$(TN_CC) $(TN_CFLAGS) $(TN_FILES) -c
-	@$(TN_CC) $(TN_LDFLAGS) $(subst .c,.o,$(notdir $(TN_FILES))) -o $(TN_APP)
+	@$(TN_CC) $(subst .c,.o,$(notdir $(TN_FILES))) $(TN_LDFLAGS) -o $(TN_APP)
 	@$(TN_STRIP) $(TN_STRIPFLAGS) $(TN_APP)
 	@rm -f $(subst .c,.o,$(notdir $(TN_FILES)))
 endif

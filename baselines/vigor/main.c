@@ -16,7 +16,7 @@
 #include <stddef.h>
 
 
-#define DEVICES_MAX_COUNT 128u
+#define DEVICES_MAX_COUNT 2u
 
 static uint16_t current_device;
 static uint16_t devices_count;
