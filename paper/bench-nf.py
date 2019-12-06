@@ -128,13 +128,13 @@ for NF_KIND in NF_KIND_CHOICES:
           COLORS[KEY] = 'blue'
           if ONEWAY:
             KEY += ', simple'
-            COLORS[KEY] = 'violet'
+            COLORS[KEY] = 'cyan'
         else:
           KEY = 'custom'
           COLORS[KEY] = 'red'
           if ONEWAY:
             KEY += ', simple'
-            COLORS[KEY] = 'green'
+            COLORS[KEY] = 'magenta'
 
         if LTO:
           NEWKEY = KEY + ', LTO'
@@ -180,10 +180,10 @@ elif NF == 'fw':
 else:
   PLOT_TITLE += ' ' + NF
 
-fig.suptitle(PLOT_TITLE, y=0.85) # put the title inside the plot to save space
+fig.suptitle(PLOT_TITLE, y=0.85, x=0.6) # put the title inside the plot to save space
 plt.axis([0, 14000, 0, 20000])
 plt.xlabel('Max throughput with <0.1% loss (Mbps)')
 plt.ylabel('99th percentile latency (ns)')
-plt.legend(loc='upper left')
+plt.legend(loc='upper left', handletextpad=0.3)
 
 plt.savefig(FILE_PREFIX + '.pdf', bbox_inches='tight')
