@@ -20,9 +20,9 @@
 
 static uint16_t current_device;
 static uint16_t devices_count;
+static vigor_time_t vigor_now;
 static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, bool* send_list)
 {
-	vigor_time_t vigor_now = current_time();
 	int vigor_output = nf_process(current_device, packet, packet_length, vigor_now);
 	// Vigor needs this to be called after nf_process
 	nf_return_all_chunks(packet);
@@ -108,6 +108,7 @@ int main(int argc, char** argv)
 	TN_INFO("Assuming the NF only needs one-way pipes, hope you know what you're doing...");
 #endif
 	while(true) {
+		vigor_now = current_time();
 		for (current_device = 0; current_device < devices_count; current_device++) {
 			tn_net_pipe_process(pipes[current_device], compat_packet_handler);
 		}
