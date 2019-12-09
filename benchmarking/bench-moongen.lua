@@ -12,7 +12,7 @@ local PACKET_BATCH_SIZE = 64 -- packets
 
 local FLOWS_COUNT = 60000 -- flows
 
-local DEFAULT_DURATION = 5 -- seconds
+local DURATION = 5 -- seconds
 
 local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps
@@ -32,7 +32,11 @@ local RESULTS_FILE_NAME = 'bench.result'
 function configure(parser)
   parser:argument("type", "'latency' or 'throughput'.")
   parser:argument("layer", "Layer at which the flows are meaningful."):convert(tonumber)
-  parser:option("-d --duration", "Step duration, in seconds."):default(DEFAULT_DURATION):convert(tonumber)
+end
+
+-- Helper function to print a histogram as a CSV row: min, max, median, stdev, 99th
+function histogramToString(hist)
+  return hist:min() .. ", " .. hist:max() .. ", " .. hist:median() .. ", " .. hist:standardDeviation() .. ", " .. hist:percentile(99)
 end
 
 -- Per-direction per-layer functions to configure a packet given a counter;
@@ -95,12 +99,14 @@ local packetInits = {
 function _latencyTask(txQueue, rxQueue, layer, duration, direction)
   local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
   local rateLimiter = timer:new(1 / LATENCY_FLOWS_COUNT)
-  local lats = {}
+  local hists = {}
 
+  io.write("Results notation: min, max, median, stdev, 99th\n")
+  
   for i = 1, 10 do
     io.write("Attempt " .. i .. " ... ")
     local hist = hist:new()
-    local sendTimer = timer:new(duration)
+    local sendTimer = timer:new(DURATION)
     local counter = 0
 
     while sendTimer:running() and mg.running() do
@@ -115,18 +121,19 @@ function _latencyTask(txQueue, rxQueue, layer, duration, direction)
       rateLimiter:reset()
     end
 
-    io.write("1%: " .. hist:percentile( 1) .. " / 25%: " .. hist:percentile(25) ..
-         " / 50%: " .. hist:percentile(50) .. " / 75%: " .. hist:percentile(75) ..
-         " / 95%: " .. hist:percentile(95) .. " / 99%: " .. hist:percentile(99) .. "ns\n")
+    io.write(histogramToString(hist) .. "\n")
 
-    lats[i] = hist:percentile(99)
+    hists[i] = hist
   end
 
-  table.sort(lats)
-  return lats[10]
+  function compare(a, b)
+    return a:median() < b:median()
+  end
+  table.sort(hists, compare)
+  return hists[10]
 end
 
--- Starts a latency-measuring task, which returns the 99th percentile latency
+-- Starts a latency-measuring task, which returns the histogram
 function startMeasureLatency(txQueue, rxQueue, layer, duration, counterStart)
   return mg.startTask("_latencyTask", txQueue, rxQueue, layer, duration, counterStart)
 end
@@ -237,7 +244,7 @@ function heatUp(queuePairs, layer)
 end
 
 -- Measure latency under 1G load
-function measureLatencyUnderLoad(queuePairs, extraPair, layer, duration)
+function measureLatencyUnderLoad(queuePairs, extraPair, layer)
   heatUp(queuePairs, layer)
 
   io.write("Measuring latency; you won't see results til the end...\n")
@@ -245,13 +252,13 @@ function measureLatencyUnderLoad(queuePairs, extraPair, layer, duration)
   local throughputTasks = {}
   for i, pair in ipairs(queuePairs) do
     -- latency task does 10 attempts; add 2 seconds as margin
-    throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, duration * 10 + 2, pair.direction, 1)
+    throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, DURATION * 10 + 2, pair.direction, 1)
   end
 
   -- Ensure that the throughput tasks are running (leaves us 1 second as margin)
   mg.sleepMillis(1000)
 
-  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, duration, extraPair.direction)
+  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, DURATION, extraPair.direction)
 
   local loss = 0
   for _, task in ipairs(throughputTasks) do
@@ -267,21 +274,21 @@ function measureLatencyUnderLoad(queuePairs, extraPair, layer, duration)
   end
 
   if loss > 0.001 then
-    io.write("Too much loss!\n")
+    io.write("Too much loss! (" .. (loss / #queuePairs) .. ")\n")
     os.exit(1)
   else
     local outFile = io.open(RESULTS_FILE_NAME, "w")
-    outFile:write(lat .. "\n")
+    outFile:write(histogramToString(lat) .. "\n")
   end
 end
 
 -- Measure latency
-function measureLatencyAlone(queuePairs, extraPair, layer, duration)
+function measureLatencyAlone(queuePairs, extraPair, layer)
   heatUp(queuePairs, layer)
 
   io.write("Measuring latency without load; you won't see results til the end...\n")
 
-  local lat = startMeasureLatency(extraPair.tx, extraPair.rx, layer, duration, extraPair.direction):wait()
+  local lat = startMeasureLatency(extraPair.tx, extraPair.rx, layer, DURATION, extraPair.direction):wait()
 
   -- We may have been interrupted
   if not mg.running() then
@@ -290,11 +297,11 @@ function measureLatencyAlone(queuePairs, extraPair, layer, duration)
   end
 
   local outFile = io.open(RESULTS_FILE_NAME, "w")
-  outFile:write(lat .. "\n")
+  outFile:write(histogramToString(lat) .. "\n")
 end
 
 -- Measure max throughput with less than 0.1% loss
-function measureMaxThroughputWithLowLoss(queuePairs, _, layer, duration)
+function measureMaxThroughputWithLowLoss(queuePairs, _, layer)
   heatUp(queuePairs, layer)
 
   local upperBound = RATE_MAX
@@ -306,7 +313,7 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer, duration)
     io.write("Step " .. i .. ": " .. (#queuePairs * rate) .. " Mbps... ")
     local tasks = {}
     for i, pair in ipairs(queuePairs) do
-      tasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, duration, pair.direction, 1)
+      tasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, DURATION, pair.direction, 1)
     end
 
     local loss = 0
@@ -345,7 +352,7 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer, duration)
   end
 end
 
-function flood(queuePairs, extraPair, layer, duration)
+function flood(queuePairs, extraPair, layer)
   io.write("Flooding. Stop with Ctrl+C.\n")
 
   local tasks = {}
@@ -389,5 +396,5 @@ function master(args)
     os.exit(1)
   end
 
-  measureFunc(queuePairs, extraPair, args.layer, args.duration)
+  measureFunc(queuePairs, extraPair, args.layer)
 end
