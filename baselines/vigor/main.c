@@ -32,7 +32,7 @@ static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, b
 #else
 	if (vigor_output == FLOOD_FRAME) {
 		for (uint16_t n = 0; n < devices_count; n++) {
-			send_list[n] = true;
+			send_list[n] = n != current_device;
 		}
 	} else if (vigor_output == current_device) {
 		// Nothing; this means "drop", Vigor has no notion of sending back to the same device
