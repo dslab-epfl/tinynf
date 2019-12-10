@@ -149,4 +149,4 @@ with open(FILE_PREFIX + '.csv', 'w') as FILE:
   FILE.write('Key, Period, Throughput, Latency-Min, Latency-Max, Latency-Median, Latency-Stdev, Latency-99th\n')
   for (KEY, ITEMS) in RESULTS.items():
     for (PERIOD, VALUES) in ITEMS.items():
-      FILE.write('"' + KEY + '", ' + PERIOD + ', ' + VALUES.join(', ') + '\n')
+      FILE.write('"' + KEY + '", ' + PERIOD + ', ' + ', '.join(VALUES) + '\n')
