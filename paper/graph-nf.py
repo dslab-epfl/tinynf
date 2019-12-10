@@ -73,7 +73,8 @@ else:
   title += ' ' + nf
 
 fig.suptitle(title, y=0.85, x=0.52) # put the title inside the plot to save space
-plt.axis([0, 14000, 0, 30000])
+ax.set_xlim(left=0)
+ax.set_ylim(bottom=0)
 plt.xlabel('Max throughput with <0.1% loss (Mbps)')
 plt.ylabel('99th percentile latency (ns)')
 plt.legend(loc='upper left', handletextpad=0.3)
