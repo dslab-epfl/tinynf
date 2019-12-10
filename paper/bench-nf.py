@@ -2,7 +2,6 @@
 
 # I rewrote this in Python from a Bash script. So I kept the naming convention of ALL_CAPS even though it's ugly. Oh well.
 
-import csv
 import glob
 import os
 import subprocess
@@ -51,9 +50,9 @@ for NF_KIND in NF_KIND_CHOICES:
     subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
 
     LTO_CHOICES = [True, False]
-    PERIOD_CHOICES = ['32', '512']
+    #PERIOD_CHOICES = ['32', '512']
     # slower, more data:
-    #PERIOD_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
+    PERIOD_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
     ONEWAY_CHOICES = [True, False]
 
     if NF_KIND == 'custom':
@@ -75,7 +74,7 @@ for NF_KIND in NF_KIND_CHOICES:
   # Bridge can't do one-way, by definition it may need to flood
   # (even with only 2 devices, enabling one-way would be misleading)
   if NF == 'bridge':
-    ONEWAY_CHOICES = ['false']
+    ONEWAY_CHOICES = [False]
 
   for ONEWAY in ONEWAY_CHOICES:
     if ONEWAY:
@@ -95,28 +94,6 @@ for NF_KIND in NF_KIND_CHOICES:
         else:
           PERIOD_FLAG = '-DIXGBE_PIPE_SCHEDULING_PERIOD=' + PERIOD
 
-        # Bench kind is the only thing guaranteed to not need a recompilation (as long as the NF Makefile is smart), so let's do it in the inner loop
-        VALUES = []
-        for BENCH_KIND in ['throughput', 'latency']:
-          ENV = dict(os.environ)
-          ENV['TN_NF'] = NF
-          ENV['TN_LDFLAGS'] = LTO_FLAG
-          ENV['TN_CFLAGS'] = LTO_FLAG + ' ' + ONEWAY_FLAG + ' ' + PERIOD_FLAG
-          ENV.update(CUSTOM_ENV)
-
-          # can fail for spurious reasons, e.g. random DNS failures
-          for ATTEMPT in range(0, 5):
-            print('Running: bench.sh ' + NF_DIR + ' ' + BENCH_KIND + ' ' + LAYER)
-            print('Environment: ' + str(ENV))
-            RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR, BENCH_KIND, LAYER], cwd=BENCH_DIR, env=ENV).returncode
-            if RESULT == 0:
-              break
-            else:
-              time.sleep(60) # wait a minute (literally)
-
-          with open(BENCH_DIR + '/bench.result', mode='r') as FILE:
-            VALUES.append(FILE.read().strip())
-
         if NF_KIND == 'dpdk':
           KEY = 'original'
           COLORS[KEY] = 'gold'
@@ -135,11 +112,31 @@ for NF_KIND in NF_KIND_CHOICES:
           if ONEWAY:
             KEY += ', simple'
             COLORS[KEY] = 'magenta'
-
         if LTO:
           NEWKEY = KEY + ', LTO'
           COLORS[NEWKEY] = 'dark' + COLORS[KEY]
           KEY = NEWKEY
+
+        # Bench kind is the only thing guaranteed to not need a recompilation (as long as the NF Makefile is smart), so let's do it in the inner loop
+        VALUES = []
+        for BENCH_KIND in ['throughput', 'latency']:
+          ENV = dict(os.environ)
+          ENV['TN_NF'] = NF
+          ENV['TN_LDFLAGS'] = LTO_FLAG
+          ENV['TN_CFLAGS'] = LTO_FLAG + ' ' + ONEWAY_FLAG + ' ' + PERIOD_FLAG
+          ENV.update(CUSTOM_ENV)
+
+          # can fail for spurious reasons, e.g. random DNS failures
+          for ATTEMPT in range(0, 5):
+            print('Benchmarking "' + KEY + '" for ' + BENCH_KIND + ' (period: ' + str(PERIOD) + ') ...')
+            RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR, BENCH_KIND, LAYER], cwd=BENCH_DIR, env=ENV).returncode
+            if RESULT == 0:
+              break
+            else:
+              time.sleep(60) # wait a minute (literally)
+
+          with open(BENCH_DIR + '/bench.result', mode='r') as FILE:
+            VALUES.append(FILE.read().strip())
 
         if KEY not in RESULTS:
           RESULTS[KEY] = {}
@@ -148,42 +145,8 @@ for NF_KIND in NF_KIND_CHOICES:
 
 FILE_PREFIX = THIS_DIR + '/' + NF_DIR_NAME + '-' + NF
 
-with open(FILE_PREFIX + '.csv', 'w', newline='') as FILE:
-  CSV = csv.writer(FILE)
-  CSV.writerow(['Key', 'Period', 'Throughput', 'Latency'])
+with open(FILE_PREFIX + '.csv', 'w') as FILE:
+  FILE.write('Key, Period, Throughput, Latency-Min, Latency-Max, Latency-Median, Latency-Stdev, Latency-99th\n')
   for (KEY, ITEMS) in RESULTS.items():
     for (PERIOD, VALUES) in ITEMS.items():
-      CSV.writerow([KEY, PERIOD] + VALUES)
-
-# and now for the reason this is Python in the first place...
-import matplotlib as mpl
-mpl.use('Agg') # this doesn't need an X server
-import matplotlib.pyplot as plt
-
-fig = plt.figure()
-ax = fig.add_subplot(1, 1, 1)
-
-for (INDEX, (KEY, ITEMS)) in enumerate(RESULTS.items()):
-  ax.scatter(x=[int(t) for (t, l) in ITEMS.values()], y=[int(l) for (t, l) in ITEMS.values()], label=KEY, c=COLORS[KEY])
-
-PLOT_TITLE = NF_DIR_NAME.title()
-if NF == 'nop':
-  PLOT_TITLE += ' No-op'
-elif NF == 'nat':
-  PLOT_TITLE += ' NAT'
-elif NF == 'bridge':
-  PLOT_TITLE += ' Bridge'
-elif NF == 'policer':
-  PLOT_TITLE += ' Policer'
-elif NF == 'fw':
-  PLOT_TITLE += ' Firewall'
-else:
-  PLOT_TITLE += ' ' + NF
-
-fig.suptitle(PLOT_TITLE, y=0.85, x=0.6) # put the title inside the plot to save space
-plt.axis([0, 14000, 0, 20000])
-plt.xlabel('Max throughput with <0.1% loss (Mbps)')
-plt.ylabel('99th percentile latency (ns)')
-plt.legend(loc='upper left', handletextpad=0.3)
-
-plt.savefig(FILE_PREFIX + '.pdf', bbox_inches='tight')
+      FILE.write('"' + KEY + '", ' + PERIOD + ', ' + VALUES.join(', ') + '\n')
