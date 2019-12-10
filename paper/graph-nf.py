@@ -15,7 +15,7 @@ csv_file_path = os.path.realpath(sys.argv[1])
 
 values = {}
 with open(csv_file_path, 'r', newline='') as csv_file:
-  reader = csv.DictReader(csv_file)
+  reader = csv.DictReader(csv_file, skipinitialspace=True)
   for row in reader:
     key = row['Key']
     if key not in values:
