@@ -19,20 +19,19 @@ fi
 . ./config
 
 if [ ! -f moongen/build/MoonGen ]; then
-  echo '[bench-tester] Building MoonGen...'
+  echo '[bench] Building MoonGen...'
   ./moongen/build.sh
 fi
 
-echo '[bench-tester] Setting up hugepages...'
+echo '[bench] Setting up tester...'
+
 sudo rm -rf /dev/hugepages/* # make sure there are no leftovers from a previous run
 sudo ./moongen/setup-hugetlbfs.sh
 
-echo '[bench-tester] Setting up the DPDK driver...'
 # code taken from libmoon's bind-interfaces-sh
 sudo modprobe uio
 (lsmod | grep igb_uio > /dev/null) || sudo insmod 'moongen/libmoon/deps/dpdk/x86_64-native-linuxapp-gcc/kmod/igb_uio.ko'
 
-echo '[bench-tester] Configuring interfaces...'
 DPDK_DIR='moongen/libmoon/deps/dpdk'
 for pci in "$TESTER_DEV_0" "$TESTER_DEV_1"; do
   if ! sudo "$DPDK_DIR/usertools/dpdk-devbind.py" --status | grep -F "$pci" | grep -q 'drv=igb_uio'; then
@@ -43,5 +42,14 @@ done
 # Remove the output to avoid a stale one if the script fails
 rm -f bench.result
 
-echo '[bench-tester] Running...'
-sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE" "$BENCH_LAYER"
+# Ignore pointless DPDK output lines
+echo '[bench] Running benchmark...'
+sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE" "$BENCH_LAYER" 2>&1 \
+  | grep -v 'EAL: Detected [0-9]' \
+  | grep -Fv 'EAL: No free hugepages reported in hugepages-1048576kB' \
+  | grep -Fv 'EAL: Probing VFIO support...' \
+  | grep -Fv 'EAL: PCI device' \
+  | grep -Fv 'EAL:   probe driver:' \
+  | grep -v '^   Device' \
+  | grep -Fv 'PMD: ixgbe_dev_link_status_print' \
+  | grep -Fv '[INFO]'

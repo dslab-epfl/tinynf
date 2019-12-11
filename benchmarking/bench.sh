@@ -6,7 +6,6 @@
 # - The NF process name defaults to 'tinynf', but will be the value printed out by 'make print-nf-name' if this task exists
 
 LOG_FILE='bench.log'
-RESULT_FILE='bench.result'
 
 if [ -z "$1" ]; then
   echo "[ERROR] Please provide the directory of the NF as the first argument to $0"
@@ -27,7 +26,7 @@ fi
 BENCH_LAYER="$3"
 
 # Do not leave outdated results behind
-rm -f "$RESULT_FILE"
+rm -f *.result
 
 # Get NF name, as explained in the script header
 make -C "$NF_DIR" -q print-nf-name >/dev/null 2>&1
@@ -50,26 +49,29 @@ if [ ! -f "$THIS_DIR/config" ]; then
 fi
 . "$THIS_DIR/config"
 
-echo '[bench] Cloning submodules...'
-git submodule update --init --recursive
+echo '[bench] Setting up the benchmark...'
 
-echo '[bench] Copying scripts on tester...'
+git submodule update --init --recursive
+if [ $? -ne 0 ]; then
+  echo '[FATAL] Could not update submodules'
+  exit 1
+fi
+
 rsync -a -q --exclude '*.log' --exclude '*.result' . "$TESTER_HOST:tinynf-benchmarking"
 if [ $? -ne 0 ]; then
   echo '[FATAL] Could not copy scripts'
   exit 1
 fi
 
-echo '[bench] Building NF...'
+echo '[bench] Building and running the NF...'
+
 TN_ARGS="$MB_DEV_0 $MB_DEV_1" make -C "$NF_DIR" >"$LOG_FILE" 2>&1
 if [ $? -ne 0 ]; then
   echo "[FATAL] Could not build; the $LOG_FILE file in the same directory as $0 may be useful"
   exit 1
 fi
 
-echo '[bench] Running NF...'
 TN_ARGS="$MB_DEV_0 $MB_DEV_1" taskset -c "$MB_CPU" make -C "$NF_DIR" run >>"$LOG_FILE" 2>&1 &
-
 # Sleep (as little as possible) if the NF needs a while to start
 for i in $(seq 1 30); do
   sleep 1
@@ -84,13 +86,11 @@ if [ -z "$NF_PID" ]; then
 fi
 
 # Ensure we always kill the NF at the end, even in cases of failure
-echo '[bench] Running benchmark on tester...'
 ssh "$TESTER_HOST" "cd tinynf-benchmarking; ./bench-tester.sh $BENCH_TYPE $BENCH_LAYER"
 if [ $? -eq 0 ]; then
-  echo '[bench] Fetching result...'
-  scp "$TESTER_HOST:tinynf-benchmarking/bench.result" "$RESULT_FILE"
+  scp "$TESTER_HOST"':tinynf-benchmarking/*.result' . >/dev/null 2>&1
   if [ $? -eq 0 ]; then
-    echo "[bench] Done! Result is in $RESULT_FILE, and the log in $LOG_FILE, in the same directory as $0"
+    echo "[bench] Done! Results are in *.result files, and the log in $LOG_FILE, in the same directory as $0"
     RESULT=0
   else
     echo '[FATAL] Could not fetch result'
@@ -101,7 +101,6 @@ else
   RESULT=1
 fi
 
-echo '[bench] Stopping NF...'
 sudo kill -9 "$NF_PID" >/dev/null 2>&1
 
 exit $RESULT

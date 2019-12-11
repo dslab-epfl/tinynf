@@ -13,6 +13,7 @@ local PACKET_BATCH_SIZE = 64 -- packets
 local FLOWS_COUNT = 60000 -- flows
 
 local DURATION = 5 -- seconds
+local STEPS = 10 -- number of trials for throughput, multiplier for latency
 
 local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps
@@ -26,7 +27,7 @@ local LATENCY_FLOWS_COUNT = 1000 -- flows
 local FLOOD_RATE = 10000 -- Mbps
 
 local RESULTS_FILE_NAME = 'bench.result'
-
+local RESULTS_DETAILED_FILE_NAME = 'bench-detailed.result' -- contains full numbers for latency
 
 -- Arguments for the script
 function configure(parser)
@@ -37,6 +38,17 @@ end
 -- Helper function to print a histogram as a CSV row: min, max, median, stdev, 99th
 function histogramToString(hist)
   return hist:min() .. ", " .. hist:max() .. ", " .. hist:median() .. ", " .. hist:standardDeviation() .. ", " .. hist:percentile(99)
+end
+
+-- Helper function to write all histogram values to a file
+function dumpHistogram(hist, filename)
+  file = io.open(filename, "w")
+  for v in hist:samples() do
+    for i = 1, v.v do
+      file:write(v.k .. "\n")
+    end
+  end
+  file:close()
 end
 
 -- Per-direction per-layer functions to configure a packet given a counter;
@@ -99,38 +111,28 @@ local packetInits = {
 function _latencyTask(txQueue, rxQueue, layer, duration, direction)
   local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
   local rateLimiter = timer:new(1 / LATENCY_FLOWS_COUNT)
-  local hists = {}
 
-  io.write("Results notation: min, max, median, stdev, 99th\n")
+  io.write("[bench] Results notation: min, max, median, stdev, 99th\n")
   
-  for i = 1, 10 do
-    io.write("Attempt " .. i .. " ... ")
-    local hist = hist:new()
-    local sendTimer = timer:new(DURATION)
-    local counter = 0
+  local hist = hist:new()
+  local sendTimer = timer:new(DURATION)
+  local counter = 0
 
-    while sendTimer:running() and mg.running() do
-      -- Minimum size for these packets is 84
-      local packetSize = 84
-      hist:update(timestamper:measureLatency(packetSize, function(buf)
-        packetInits[direction](buf, packetSize)
-        packetConfigs[direction][layer](buf:getUdpPacket(), counter)
-        counter = (counter + 1) % LATENCY_FLOWS_COUNT
-      end))
-      rateLimiter:wait()
-      rateLimiter:reset()
-    end
-
-    io.write(histogramToString(hist) .. "\n")
-
-    hists[i] = hist
+  while sendTimer:running() and mg.running() do
+    -- Minimum size for these packets is 84
+    local packetSize = 84
+    hist:update(timestamper:measureLatency(packetSize, function(buf)
+      packetInits[direction](buf, packetSize)
+      packetConfigs[direction][layer](buf:getUdpPacket(), counter)
+      counter = (counter + 1) % LATENCY_FLOWS_COUNT
+    end))
+    rateLimiter:wait()
+    rateLimiter:reset()
   end
 
-  function compare(a, b)
-    return a:median() < b:median()
-  end
-  table.sort(hists, compare)
-  return hists[10]
+  io.write("[bench] " .. histogramToString(hist) .. "\n")
+
+  return hist
 end
 
 -- Starts a latency-measuring task, which returns the histogram
@@ -160,10 +162,7 @@ function _throughputTask(txQueue, rxQueue, layer, duration, direction, flowBatch
         -- incAndWrap does this in a supposedly fast way;
         -- in practice it's actually slower!
         -- with incAndWrap this code cannot do 10G line rate
-        counter = counter + 1--(counter + 1) % FLOWS_COUNT
-        if counter == FLOWS_COUNT then
-          counter = 0
-        end
+        counter = (counter + 1) % FLOWS_COUNT
       end
     end
 
@@ -181,7 +180,7 @@ function _throughputTask(txQueue, rxQueue, layer, duration, direction, flowBatch
 
   -- Sanity check; it's very easy to change the script and make it too expensive to generate 10 Gb/s
   if mg.running() and tx  < 0.98 * targetTx then
-    io.write("Sent " .. tx .. " packets but expected at least " .. targetTx .. ", broken benchmark! Did you change the script and add too many per-packet operations?\n")
+    io.write("[FATAL] Sent " .. tx .. " packets but expected at least " .. targetTx .. ", broken benchmark! Did you change the script and add too many per-packet operations?\n")
     os.exit(1)
   end
 
@@ -224,7 +223,7 @@ end
 
 -- Heats up at the given layer
 function heatUp(queuePairs, layer)
-  io.write("Heatup... (" .. HEATUP_DURATION .. " seconds)\n")
+  io.write("[bench] Heating up...\n")
   local tasks = {}
   for i, pair in ipairs(queuePairs) do
     -- flow batch size 32 to ensure at least one packet of every flow is not dropped (unless the NF is really broken),
@@ -237,7 +236,7 @@ function heatUp(queuePairs, layer)
   for i, task in ipairs(tasks) do
     local loss = tasks[i]:wait()
     if loss == 1 then
-      io.write("Heatup " .. queuePairs[i].description .. " did not get any packets back!\n")
+      io.write("[FATAL] Heatup " .. queuePairs[i].description .. " did not get any packets back!\n")
       os.exit(1)
     end
   end
@@ -247,18 +246,18 @@ end
 function measureLatencyUnderLoad(queuePairs, extraPair, layer)
   heatUp(queuePairs, layer)
 
-  io.write("Measuring latency; you won't see results til the end...\n")
+  io.write("[bench] Measuring latency...\n")
 
   local throughputTasks = {}
   for i, pair in ipairs(queuePairs) do
-    -- latency task does 10 attempts; add 2 seconds as margin
-    throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, DURATION * 10 + 2, pair.direction, 1)
+    -- add 2 seconds as margin
+    throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, DURATION * STEPS + 2, pair.direction, 1)
   end
 
   -- Ensure that the throughput tasks are running (leaves us 1 second as margin)
   mg.sleepMillis(1000)
 
-  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, DURATION, extraPair.direction)
+  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, DURATION * STEPS, extraPair.direction)
 
   local loss = 0
   for _, task in ipairs(throughputTasks) do
@@ -274,11 +273,12 @@ function measureLatencyUnderLoad(queuePairs, extraPair, layer)
   end
 
   if loss > 0.001 then
-    io.write("Too much loss! (" .. (loss / #queuePairs) .. ")\n")
+    io.write("[FATAL] Too much loss! (" .. (loss / #queuePairs) .. ")\n")
     os.exit(1)
   else
     local outFile = io.open(RESULTS_FILE_NAME, "w")
     outFile:write(histogramToString(lat) .. "\n")
+    dumpHistogram(lat, RESULTS_DETAILED_FILE_NAME)
   end
 end
 
@@ -286,9 +286,9 @@ end
 function measureLatencyAlone(queuePairs, extraPair, layer)
   heatUp(queuePairs, layer)
 
-  io.write("Measuring latency without load; you won't see results til the end...\n")
+  io.write("[bench] Measuring latency without load...\n")
 
-  local lat = startMeasureLatency(extraPair.tx, extraPair.rx, layer, DURATION, extraPair.direction):wait()
+  local lat = startMeasureLatency(extraPair.tx, extraPair.rx, layer, DURATION * STEPS, extraPair.direction):wait()
 
   -- We may have been interrupted
   if not mg.running() then
@@ -298,6 +298,7 @@ function measureLatencyAlone(queuePairs, extraPair, layer)
 
   local outFile = io.open(RESULTS_FILE_NAME, "w")
   outFile:write(histogramToString(lat) .. "\n")
+  dumpHistogram(lat, RESULTS_DETAILED_FILE_NAME)
 end
 
 -- Measure max throughput with less than 0.1% loss
@@ -309,8 +310,8 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer)
   local rate = upperBound
   local bestRate = 0
   local bestTx = 0
-  for i = 1, 10 do
-    io.write("Step " .. i .. ": " .. (#queuePairs * rate) .. " Mbps... ")
+  for i = 1, STEPS do
+    io.write("[bench] Step " .. i .. ": " .. (#queuePairs * rate) .. " Mbps... ")
     local tasks = {}
     for i, pair in ipairs(queuePairs) do
       tasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, DURATION, pair.direction, 1)
@@ -353,7 +354,7 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer)
 end
 
 function flood(queuePairs, extraPair, layer)
-  io.write("Flooding. Stop with Ctrl+C.\n")
+  io.write("[bench] Flooding. Stop with Ctrl+C.\n")
 
   local tasks = {}
   for i, pair in ipairs(queuePairs) do

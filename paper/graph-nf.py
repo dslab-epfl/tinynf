@@ -65,7 +65,7 @@ elif nf == 'nat':
   title += ' NAT'
 elif nf == 'bridge':
   title += ' Bridge'
-elif nf == 'policer':
+elif nf == 'pol':
   title += ' Policer'
 elif nf == 'fw':
   title += ' Firewall'
