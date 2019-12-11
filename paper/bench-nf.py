@@ -1,9 +1,9 @@
 #!/usr/bin/python3
-
 # I rewrote this in Python from a Bash script. So I kept the naming convention of ALL_CAPS even though it's ugly. Oh well.
 
 import glob
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -18,6 +18,10 @@ if len(sys.argv) != 3: # script itself + 2 args
 NF_DIR_BASE = os.path.realpath(sys.argv[1])
 NF_DIR_NAME = os.path.basename(NF_DIR_BASE)
 NF = sys.argv[2]
+
+OUTPUT_DIR = THIS_DIR + '/results/' + NF_DIR_NAME + '/' + NF
+shutil.rmtree(OUTPUT_DIR)
+OUTPUT_LATENCIES_DIR_BASE = OUTPUT_DIR + '/latencies'
 
 if NF == 'bridge':
   LAYER = '2' # MAC
@@ -36,7 +40,6 @@ if NF == 'bridge':
 elif NF == 'pol':
   os.environ['POLICER_BURST'] = '10000000000'
   os.environ['POLICER_RATE'] = '10000000000'
-
 
 NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk']
 if NF_DIR_NAME == 'click': # only Click supports this
@@ -63,7 +66,7 @@ for NF_KIND in NF_KIND_CHOICES:
       CUSTOM_ENV = { 'RTE_SDK': THIS_DIR + '/../shims/dpdk', 'RTE_TARGET': '.' }
   else:
     LTO_CHOICES = [False]
-    PERIOD_CHOICES = ['']
+    PERIOD_CHOICES = ['NA']
     ONEWAY_CHOICES = [False]
     NF_DIR = NF_DIR_BASE + '/with-dpdk'
     if NF_KIND == 'dpdk-batch':
@@ -89,7 +92,7 @@ for NF_KIND in NF_KIND_CHOICES:
         LTO_FLAG = ''
 
       for PERIOD in PERIOD_CHOICES:
-        if PERIOD == '':
+        if PERIOD == 'NA':
           PERIOD_FLAG = ''
         else:
           PERIOD_FLAG = '-DIXGBE_PIPE_SCHEDULING_PERIOD=' + PERIOD
@@ -127,25 +130,29 @@ for NF_KIND in NF_KIND_CHOICES:
           ENV.update(CUSTOM_ENV)
 
           # can fail for spurious reasons, e.g. random DNS failures
-          for ATTEMPT in range(0, 5):
-            print('Benchmarking "' + KEY + '" for ' + BENCH_KIND + ' (period: ' + str(PERIOD) + ') ...')
+          while True:
+            print('[!!!] Benchmarking "' + KEY + '" for ' + BENCH_KIND + ' (period: ' + str(PERIOD) + ') ...')
             RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR, BENCH_KIND, LAYER], cwd=BENCH_DIR, env=ENV).returncode
             if RESULT == 0:
               break
             else:
-              time.sleep(60) # wait a minute (literally)
+              time.sleep(60)
 
           with open(BENCH_DIR + '/bench.result', mode='r') as FILE:
             VALUES.append(FILE.read().strip())
+
+          if BENCH_KIND == 'latency':
+            DIR = OUTPUT_LATENCIES_DIR_BASE + '/' + KEY
+            os.makedirs(DIR, exist_ok=True)
+            os.rename(BENCH_DIR + '/bench-detailed.result', DIR + '/' + PERIOD)
 
         if KEY not in RESULTS:
           RESULTS[KEY] = {}
 
         RESULTS[KEY][PERIOD] = VALUES
 
-FILE_PREFIX = THIS_DIR + '/' + NF_DIR_NAME + '-' + NF
-
-with open(FILE_PREFIX + '.csv', 'w') as FILE:
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+with open(OUTPUT_DIR + '/data.csv', 'w') as FILE:
   FILE.write('Key, Period, Throughput, Latency-Min, Latency-Max, Latency-Median, Latency-Stdev, Latency-99th\n')
   for (KEY, ITEMS) in RESULTS.items():
     for (PERIOD, VALUES) in ITEMS.items():

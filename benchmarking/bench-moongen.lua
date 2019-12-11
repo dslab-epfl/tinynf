@@ -109,12 +109,9 @@ local packetInits = {
 -- Note that MoonGen doesn't want us to create more than one timestamper, so we do all iterations inside the task
 -- (this also means the io.write calls are buffered until the task has finished...)
 function _latencyTask(txQueue, rxQueue, layer, duration, direction)
-  local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
-  local rateLimiter = timer:new(1 / LATENCY_FLOWS_COUNT)
-
-  io.write("[bench] Results notation: min, max, median, stdev, 99th\n")
-  
   local hist = hist:new()
+  local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
+  local rateLimiter = timer:new(1 / LATENCY_FLOWS_COUNT)  
   local sendTimer = timer:new(DURATION)
   local counter = 0
 
@@ -130,6 +127,7 @@ function _latencyTask(txQueue, rxQueue, layer, duration, direction)
     rateLimiter:reset()
   end
 
+  io.write("[bench] min, max, median, stdev, 99th\n")
   io.write("[bench] " .. histogramToString(hist) .. "\n")
 
   return hist

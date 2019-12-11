@@ -1,2 +1,2 @@
-*.csv
-*.pdf
+results
+__pycache__
