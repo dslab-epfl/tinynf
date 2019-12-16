@@ -8,6 +8,8 @@ VIGOR_DIR := $(THIS_DIR)/../vigor
 # Run the setup script, in case it hasn't been run yet
 _IGNORED := $(shell $(THIS_DIR)/../setup.sh 2>/dev/null)
 
+TN_BATCH_SIZE ?= 1
+
 # Vigor's make run always compiles, so no need to have a separate compile step
 ifeq ($(RTE_TARGET),.)
 compile:
@@ -20,7 +22,7 @@ compile:
 	@$(THIS_DIR)/../../reset-dpdk.sh $(TN_ARGS)
 
 run:
-	@make -C $(VIGOR_DIR)/vig$(TN_NF) run
+	@EXTRA_CFLAGS="-DVIGOR_BATCH_SIZE=$(TN_BATCH_SIZE)" make -C $(VIGOR_DIR)/vig$(TN_NF) run
 endif
 
 print-nf-name:

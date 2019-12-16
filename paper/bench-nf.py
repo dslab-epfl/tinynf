@@ -20,7 +20,7 @@ NF_DIR_NAME = os.path.basename(NF_DIR_BASE)
 NF = sys.argv[2]
 
 OUTPUT_DIR = THIS_DIR + '/results/' + NF_DIR_NAME + '/' + NF
-shutil.rmtree(OUTPUT_DIR)
+shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
 OUTPUT_LATENCIES_DIR_BASE = OUTPUT_DIR + '/latencies'
 
 if NF == 'bridge':
@@ -41,9 +41,7 @@ elif NF == 'pol':
   os.environ['POLICER_BURST'] = '10000000000'
   os.environ['POLICER_RATE'] = '10000000000'
 
-NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk']
-if NF_DIR_NAME == 'click': # only Click supports this
-  NF_KIND_CHOICES.append('dpdk-batch')
+NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk', 'dpdk-batch']
 
 RESULTS = {}
 COLORS = {}
