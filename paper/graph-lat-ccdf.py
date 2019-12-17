@@ -30,6 +30,9 @@ for vals in values:
 import matplotlib as mpl
 mpl.use('Agg') # avoid the need for an X server
 import matplotlib.pyplot as plt
+# Avoid margins for axes
+plt.rcParams['axes.ymargin'] = 0
+plt.rcParams['axes.xmargin'] = 0
 
 axes = []
 if limit == 0:
@@ -43,7 +46,7 @@ else:
   # Remove the left spine for the outlier one
   ax2.spines['left'].set_visible(False)
   # see https://matplotlib.org/examples/pylab_examples/broken_axis.html
-  ax2.set_xlim(left=after_limit)
+  ax2.set_xlim(after_limit, max([max(arr) for arr in values]))
   ax1.set_xlim(0, limit)
   ax2.yaxis.set_ticks_position('none')
   d = .015 # size of the diagonal lines in the axes cordinates
@@ -51,6 +54,11 @@ else:
   ax2.plot((-d, +d), (-d, +d), **kwargs)
   # because our plots have different widths, we must be a little clever... the offset is a magic value found by trial and error
   ax2.plot((-d-0.24, +d-0.24), (-d, +d), **kwargs)
+  # add cut lines for the grid
+  kwargs.update(color='xkcd:light grey')
+  for offset in [0.2, 0.4, 0.6, 0.8, 1]:
+    ax2.plot((-d, +d), (-d+offset, +d+offset), **kwargs)
+    ax2.plot((-d-0.24, +d-0.24), (-d+offset, +d+offset), **kwargs)
   ax2.set_zorder(1000) # required so the bottom "cut" diagonal line shows properly
   plt.subplots_adjust(wspace=0.1)
 
@@ -69,11 +77,11 @@ for ax in axes:
         poly.set_xy(poly.get_xy()[:-1])
 
 for ax in axes:
- ax.set_axisbelow(True)
+  ax.grid(True, color='xkcd:light grey')
+  ax.set_axisbelow(True) # ensure the grid ends up below the data
 
-fig.suptitle(get_title(kind, nf), y=0.9) # put the title inside the plot to save space
+fig.suptitle(get_title(kind, nf), y=0.92)
 fig.text(0.5, 0.02, 'Latency (us)', ha='center')
 fig.text(0.02, 0.5, 'Cumulative probability', va='center', rotation='vertical')
-plt.grid(True, color='xkcd:light grey')
-plt.legend(loc='center right', handletextpad=0.3)
+plt.legend(loc='center right', handletextpad=0.3, borderaxespad=0)
 plt.savefig(get_output_filename(kind, nf, 'latencies.pdf'), bbox_inches='tight')
