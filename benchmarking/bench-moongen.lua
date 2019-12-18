@@ -18,8 +18,10 @@ local STEPS = 10 -- number of trials for throughput, multiplier for latency
 local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps
 
-local HEATUP_DURATION = 5 -- seconds
-local HEATUP_RATE     = 100 -- Mbps
+-- heatup needs to open all ports consecutively on a NAT so that reverse packets can go through
+local HEATUP_DURATION   = 5 -- seconds
+local HEATUP_RATE       = 1000 -- Mbps
+local HEATUP_BATCH_SIZE = 64 -- packets
 
 local LATENCY_LOAD_RATE   = 1000 -- Mbps
 local LATENCY_FLOWS_COUNT = 1000 -- flows
@@ -224,17 +226,15 @@ function heatUp(queuePairs, layer)
   io.write("[bench] Heating up...\n")
   local tasks = {}
   for i, pair in ipairs(queuePairs) do
-    -- flow batch size 32 to ensure at least one packet of every flow is not dropped (unless the NF is really broken),
-    -- thus NFs such as NATs will have the right mappings after heatup
-    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, HEATUP_RATE, layer, HEATUP_DURATION, pair.direction, 32)
+    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, HEATUP_RATE, layer, HEATUP_DURATION, pair.direction, HEATUP_BATCH_SIZE)
     -- ensure the flows are "opened" before their counterparts come from the other direction, for NFs like NATs
     mg.sleepMillis(100)
   end
 
   for i, task in ipairs(tasks) do
     local loss = tasks[i]:wait()
-    if loss == 1 then
-      io.write("[FATAL] Heatup " .. queuePairs[i].description .. " did not get any packets back!\n")
+    if loss > 0.01 then
+      io.write("[FATAL] Heatup " .. queuePairs[i].description .. " lost " .. (loss * 100) .. "% of packets!\n")
       os.exit(1)
     end
   end

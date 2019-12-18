@@ -31,8 +31,8 @@ else:
   LAYER = '4'
 
 # Vigor-specific
-# Expiration time default is 10us which is nothing; use 120Mus (i.e. 120s) instead
-os.environ['EXPIRATION_TIME'] = '120000000'
+# Expiration time default is 10us which is nothing
+os.environ['EXPIRATION_TIME'] = '4000000'
 # Bridge needs double the standard capacity since it stores both input and output flows
 if NF == 'bridge':
   os.environ['CAPACITY'] = '131072'
@@ -44,7 +44,6 @@ elif NF == 'pol':
 NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk']
 
 RESULTS = {}
-COLORS = {}
 for NF_KIND in NF_KIND_CHOICES:
   PARAM_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
   CUSTOM_ENV = {}
@@ -91,23 +90,16 @@ for NF_KIND in NF_KIND_CHOICES:
 
         if NF_KIND == 'dpdk':
           KEY = 'original'
-          COLORS[KEY] = 'gold'
         elif NF_KIND == 'dpdk-shim':
           KEY = 'shim'
-          COLORS[KEY] = 'blue'
           if ONEWAY:
             KEY += ', simple'
-            COLORS[KEY] = 'cyan'
         else:
           KEY = 'custom'
-          COLORS[KEY] = 'red'
           if ONEWAY:
             KEY += ', simple'
-            COLORS[KEY] = 'magenta'
         if LTO:
-          NEWKEY = KEY + ', LTO'
-          COLORS[NEWKEY] = 'dark' + COLORS[KEY]
-          KEY = NEWKEY
+          KEY = KEY + ', LTO'
 
         # Bench kind is the only thing guaranteed to not need a recompilation (as long as the NF Makefile is smart), so let's do it in the inner loop
         VALUES = []
