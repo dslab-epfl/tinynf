@@ -1,17 +1,19 @@
 #!/usr/bin/python3
 
+from common import *
 import csv
 import os
 import sys
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
-if len(sys.argv) != 2: # script itself + 1 arg
-  print('[ERROR] Please provide 1 arguments: the CSV filename to graph')
+if len(sys.argv) != 3: # script itself + 2 args
+  print('[ERROR] Please provide 2 arguments: the kind and NF')
   sys.exit(1)
 
-csv_file_name = os.path.basename(sys.argv[1])
-csv_file_path = os.path.realpath(sys.argv[1])
+kind = sys.argv[1]
+nf = sys.argv[2]
+csv_file_path = get_output_filename(kind, nf, 'data.csv')
 
 values = {}
 with open(csv_file_path, 'r', newline='') as csv_file:
@@ -34,43 +36,14 @@ ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 
 for key, value in values.items():
-  if key == 'original, batching':
-    color = 'goldenrod'
-  elif key == 'original':
-    color = 'gold'
-  elif 'shim' in key:
-    color = 'blue'
-    if 'simple' in key:
-      color = 'turquoise'
-  elif 'custom' in key:
-    color = 'red'
-    if 'simple' in key:
-      color = 'magenta'
-
-  if 'LTO' not in key:
-    color = 'light ' + color
-
+  color = get_color(key)
   x = [float(r['Throughput']) for r in value]
   y = [float(r['Latency-99th']) for r in value]
   # We want opaque dots with non-opaque lines, 'plot' doesn't seem to support that scenario alone
-  ax.plot(x, y, color='xkcd:' + color, alpha=0.3, linestyle='dashed')
-  ax.scatter(x, y, color='xkcd:' + color, label=key)
+  ax.plot(x, y, color=color, alpha=0.3, linestyle='dashed')
+  ax.scatter(x, y, color=color, label=key)
 
-title_parts = csv_file_name.replace('.csv', '').split('-')
-title = title_parts[0].title()
-nf = title_parts[1]
-if nf == 'nop':
-  title += ' No-op'
-elif nf == 'nat':
-  title += ' NAT'
-elif nf == 'bridge':
-  title += ' Bridge'
-elif nf == 'pol':
-  title += ' Policer'
-elif nf == 'fw':
-  title += ' Firewall'
-else:
-  title += ' ' + nf
+title = get_title(kind, nf)
 
 fig.suptitle(title, y=0.85, x=0.52) # put the title inside the plot to save space
 ax.set_xlim(left=0)
@@ -79,4 +52,4 @@ plt.xlabel('Max throughput with <0.1% loss (Mbps)')
 plt.ylabel('99th percentile latency (ns)')
 plt.legend(loc='upper left', handletextpad=0.3)
 
-plt.savefig(os.path.splitext(csv_file_name)[0] + '.pdf', bbox_inches='tight')
+plt.savefig(get_output_filename(kind, nf, 'data.pdf'), bbox_inches='tight')

@@ -42,7 +42,6 @@ elif NF == 'pol':
   os.environ['POLICER_RATE'] = '10000000000'
 
 NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk']
-NF_KIND_CHOICES=['dpdk']
 
 RESULTS = {}
 COLORS = {}
