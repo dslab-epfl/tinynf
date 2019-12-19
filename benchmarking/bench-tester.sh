@@ -52,4 +52,6 @@ sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE" "$BENCH_LAYER" 2>&1
   | grep -Fv 'EAL:   probe driver:' \
   | grep -v '^   Device' \
   | grep -Fv 'PMD: ixgbe_dev_link_status_print' \
-  | grep -Fv '[INFO]'
+  | grep -Fv '[INFO]' \
+  | grep -Fv '[WARN]  Error setting fdir filter: Invalid argument'
+# that last one is a MoonGen bug when measuring latency multiple times in the same script; the latency results are still correct

@@ -25,8 +25,8 @@ if [ -z "$3" ]; then
 fi
 BENCH_LAYER="$3"
 
-# Do not leave outdated results behind
-rm -f *.result
+# Ensure there are no outdated (and thus misleading) results/logs
+rm -rf results *.log
 
 # Get NF name, as explained in the script header
 make -C "$NF_DIR" -q print-nf-name >/dev/null 2>&1
@@ -57,7 +57,7 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-rsync -a -q --exclude '*.log' --exclude '*.result' . "$TESTER_HOST:tinynf-benchmarking"
+rsync -a -q . "$TESTER_HOST:tinynf-benchmarking"
 if [ $? -ne 0 ]; then
   echo '[FATAL] Could not copy scripts'
   exit 1
@@ -88,9 +88,9 @@ fi
 # Ensure we always kill the NF at the end, even in cases of failure
 ssh "$TESTER_HOST" "cd tinynf-benchmarking; ./bench-tester.sh $BENCH_TYPE $BENCH_LAYER"
 if [ $? -eq 0 ]; then
-  scp "$TESTER_HOST"':tinynf-benchmarking/*.result' . >/dev/null 2>&1
+  scp -r "$TESTER_HOST"':tinynf-benchmarking/results' . >/dev/null 2>&1
   if [ $? -eq 0 ]; then
-    echo "[bench] Done! Results are in *.result files, and the log in $LOG_FILE, in the same directory as $0"
+    echo "[bench] Done! Results are in the results/ folder, and the log in $LOG_FILE, in the same directory as $0"
     RESULT=0
   else
     echo '[FATAL] Could not fetch result'

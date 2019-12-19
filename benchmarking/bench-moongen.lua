@@ -12,8 +12,8 @@ local PACKET_BATCH_SIZE = 64 -- packets
 
 local FLOWS_COUNT = 60000 -- flows
 
-local DURATION = 5 -- seconds
-local STEPS = 10 -- number of trials for throughput, multiplier for latency
+local THROUGHPUT_STEPS_DURATION = 30 -- seconds
+local THROUGHPUT_STEPS_COUNT = 10 -- number of trials
 
 local RATE_MIN   = 0 -- Mbps
 local RATE_MAX   = 10000 -- Mbps
@@ -23,13 +23,15 @@ local HEATUP_DURATION   = 5 -- seconds
 local HEATUP_RATE       = 1000 -- Mbps
 local HEATUP_BATCH_SIZE = 64 -- packets
 
-local LATENCY_LOAD_RATE   = 1000 -- Mbps
-local LATENCY_FLOWS_COUNT = 1000 -- flows
+local LATENCY_DURATION = 60 -- seconds
+local LATENCY_LOAD_INCREMENT = 500 -- Mbps
+local LATENCY_LOAD_PADDING   = 250 -- Mbps; removed from max load when measuring latency
 
 local FLOOD_RATE = 10000 -- Mbps
 
-local RESULTS_FILE_NAME = 'bench.result'
-local RESULTS_DETAILED_FILE_NAME = 'bench-detailed.result' -- contains full numbers for latency
+local RESULTS_FOLDER_NAME = 'results'
+local RESULTS_THROUGHPUT_FILE_NAME = 'throughput'
+local RESULTS_LATENCIES_FOLDER_NAME = 'latencies'
 
 -- Arguments for the script
 function configure(parser)
@@ -110,11 +112,11 @@ local packetInits = {
 -- Helper function, has to be global because it's started as a task
 -- Note that MoonGen doesn't want us to create more than one timestamper, so we do all iterations inside the task
 -- (this also means the io.write calls are buffered until the task has finished...)
-function _latencyTask(txQueue, rxQueue, layer, duration, direction)
+function _latencyTask(txQueue, rxQueue, layer, direction)
   local hist = hist:new()
   local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
-  local rateLimiter = timer:new(1 / LATENCY_FLOWS_COUNT)  
-  local sendTimer = timer:new(DURATION)
+  local rateLimiter = timer:new(1 / FLOWS_COUNT)
+  local sendTimer = timer:new(LATENCY_DURATION)
   local counter = 0
 
   while sendTimer:running() and mg.running() do
@@ -123,21 +125,20 @@ function _latencyTask(txQueue, rxQueue, layer, duration, direction)
     hist:update(timestamper:measureLatency(packetSize, function(buf)
       packetInits[direction](buf, packetSize)
       packetConfigs[direction][layer](buf:getUdpPacket(), counter)
-      counter = (counter + 1) % LATENCY_FLOWS_COUNT
+      counter = (counter + 1) % FLOWS_COUNT
     end))
     rateLimiter:wait()
     rateLimiter:reset()
   end
 
-  io.write("[bench] min, max, median, stdev, 99th\n")
   io.write("[bench] " .. histogramToString(hist) .. "\n")
 
   return hist
 end
 
 -- Starts a latency-measuring task, which returns the histogram
-function startMeasureLatency(txQueue, rxQueue, layer, duration, counterStart)
-  return mg.startTask("_latencyTask", txQueue, rxQueue, layer, duration, counterStart)
+function startMeasureLatency(txQueue, rxQueue, layer, counterStart)
+  return mg.startTask("_latencyTask", txQueue, rxQueue, layer, counterStart)
 end
 
 -- Helper function, has to be global because it's started as a task
@@ -240,67 +241,10 @@ function heatUp(queuePairs, layer)
   end
 end
 
--- Measure latency under 1G load
-function measureLatencyUnderLoad(queuePairs, extraPair, layer)
-  heatUp(queuePairs, layer)
 
-  io.write("[bench] Measuring latency...\n")
-
-  local throughputTasks = {}
-  for i, pair in ipairs(queuePairs) do
-    -- add 2 seconds as margin
-    throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, LATENCY_LOAD_RATE, layer, DURATION * STEPS + 2, pair.direction, 1)
-  end
-
-  -- Ensure that the throughput tasks are running (leaves us 1 second as margin)
-  mg.sleepMillis(1000)
-
-  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, DURATION * STEPS, extraPair.direction)
-
-  local loss = 0
-  for _, task in ipairs(throughputTasks) do
-    loss = loss + task:wait()
-  end
-
-  local lat = latencyTask:wait()
-
-  -- We may have been interrupted
-  if not mg.running() then
-    io.write("Interrupted\n")
-    os.exit(0)
-  end
-
-  if loss > 0.001 then
-    io.write("[FATAL] Too much loss! (" .. (loss / #queuePairs) .. ")\n")
-    os.exit(1)
-  else
-    local outFile = io.open(RESULTS_FILE_NAME, "w")
-    outFile:write(histogramToString(lat) .. "\n")
-    dumpHistogram(lat, RESULTS_DETAILED_FILE_NAME)
-  end
-end
-
--- Measure latency
-function measureLatencyAlone(queuePairs, extraPair, layer)
-  heatUp(queuePairs, layer)
-
-  io.write("[bench] Measuring latency without load...\n")
-
-  local lat = startMeasureLatency(extraPair.tx, extraPair.rx, layer, DURATION * STEPS, extraPair.direction):wait()
-
-  -- We may have been interrupted
-  if not mg.running() then
-    io.write("Interrupted\n")
-    os.exit(0)
-  end
-
-  local outFile = io.open(RESULTS_FILE_NAME, "w")
-  outFile:write(histogramToString(lat) .. "\n")
-  dumpHistogram(lat, RESULTS_DETAILED_FILE_NAME)
-end
-
--- Measure max throughput with less than 0.1% loss
-function measureMaxThroughputWithLowLoss(queuePairs, _, layer)
+-- Measure max throughput with less than 0.1% loss,
+-- and latency at lower rates up to max throughput minus 100Mbps
+function measureStandard(queuePairs, extraPair, layer)
   heatUp(queuePairs, layer)
 
   local upperBound = RATE_MAX
@@ -308,11 +252,11 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer)
   local rate = upperBound
   local bestRate = 0
   local bestTx = 0
-  for i = 1, STEPS do
+  for i = 1, THROUGHPUT_STEPS_COUNT do
     io.write("[bench] Step " .. i .. ": " .. (#queuePairs * rate) .. " Mbps... ")
     local tasks = {}
     for i, pair in ipairs(queuePairs) do
-      tasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, DURATION, pair.direction, 1)
+      tasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, THROUGHPUT_STEPS_DURATION, pair.direction, 1)
     end
 
     local loss = 0
@@ -344,11 +288,76 @@ function measureMaxThroughputWithLowLoss(queuePairs, _, layer)
     if (i == 10) or (loss < 0.001 and bestRate == upperBound) then
       -- Note that we write 'bestRate' here, i.e. the last rate with < 0.001 loss, not the current one
       -- (which may cause > 0.001 loss since our binary search is bounded in steps)
-      local outFile = io.open(RESULTS_FILE_NAME, "w")
-      outFile:write(math.floor(#queuePairs * bestRate) .. "\n")
+      local tputFile = io.open(RESULTS_FOLDER_NAME .. "/" .. RESULTS_THROUGHPUT_FILE_NAME, "w")
+      tputFile:write(math.floor(#queuePairs * bestRate) .. "\n")
+      tputFile:close()
       break
     end
   end
+
+  local latencyRates = {}
+  local currentGuess = LATENCY_LOAD_INCREMENT
+  while currentGuess < bestRate do
+    latencyRates[#latencyRates+1] = currentGuess
+    currentGuess = currentGuess + LATENCY_LOAD_INCREMENT
+  end
+  currentGuess = currentGuess - LATENCY_LOAD_INCREMENT
+  if bestRate - LATENCY_LOAD_PADDING > currentGuess then
+    latencyRates[#latencyRates+1] = bestRate - LATENCY_LOAD_PADDING
+  end
+  -- Finish with 0 because it has no background traffic so the flows will expire
+  latencyRates[#latencyRates+1] = 0
+
+  for r, rate in ipairs(latencyRates) do
+    io.write("[bench] Measuring latency at rate " .. (rate * #queuePairs) .. "...\n")
+
+    local throughputTasks = {}
+    if rate ~= 0 then
+      for i, pair in ipairs(queuePairs) do
+        throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, LATENCY_DURATION, pair.direction, 1)
+      end
+    end
+
+    local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, extraPair.direction)
+
+    local loss = 0
+    for _, task in ipairs(throughputTasks) do
+      loss = loss + task:wait()
+    end
+
+    local lat = latencyTask:wait()
+
+    -- We may have been interrupted
+    if not mg.running() then
+      io.write("Interrupted\n")
+      os.exit(0)
+    end
+
+    if (loss / #queuePairs) > 0.001 then
+      -- this really should not happen! we know the NF can sustain this!
+      io.write("[FATAL] Too much loss! (" .. (loss / #queuePairs) .. ")\n")
+      os.exit(1)
+    else
+      dumpHistogram(lat, RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/" .. rate)
+    end
+  end
+end
+
+-- Measure latency without any load
+function measureLatencyAlone(queuePairs, extraPair, layer)
+  heatUp(queuePairs, layer)
+
+  io.write("[bench] Measuring latency without load...\n")
+
+  local lat = startMeasureLatency(extraPair.tx, extraPair.rx, layer, extraPair.direction):wait()
+
+  -- We may have been interrupted
+  if not mg.running() then
+    io.write("Interrupted\n")
+    os.exit(0)
+  end
+
+  io.write(histogramToString(lat) .. "\n")
 end
 
 function flood(queuePairs, extraPair, layer)
@@ -382,18 +391,20 @@ function master(args)
   local extraPair = { tx = dev0:getTxQueue(1), rx = dev1:getRxQueue(1), direction = 0, description = "0->1 extra" }
 
   measureFunc = nil
-  if args.type == 'latency' then
-    measureFunc = measureLatencyUnderLoad
+  if args.type == 'standard' then
+    measureFunc = measureStandard
   elseif args.type == 'latency-alone' then
     measureFunc = measureLatencyAlone
-  elseif args.type == 'throughput' then
-    measureFunc = measureMaxThroughputWithLowLoss
   elseif args.type == 'flood' then
     measureFunc = flood
   else
     print("Unknown type.")
     os.exit(1)
   end
+
+  -- lua doesn't have a built-in cross-plat way to do folders
+  os.execute("rm -rf '" .. RESULTS_FOLDER_NAME .. "'")
+  os.execute("mkdir -p '" .. RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "'")
 
   measureFunc(queuePairs, extraPair, args.layer)
 end
