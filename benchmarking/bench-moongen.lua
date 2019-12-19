@@ -111,34 +111,38 @@ local packetInits = {
 
 -- Helper function, has to be global because it's started as a task
 -- Note that MoonGen doesn't want us to create more than one timestamper, so we do all iterations inside the task
--- (this also means the io.write calls are buffered until the task has finished...)
-function _latencyTask(txQueue, rxQueue, layer, direction)
-  local hist = hist:new()
+function _latencyTask(txQueue, rxQueue, layer, direction, count)
   local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
   local rateLimiter = timer:new(1 / FLOWS_COUNT)
   local sendTimer = timer:new(LATENCY_DURATION)
-  local counter = 0
 
-  while sendTimer:running() and mg.running() do
-    -- Minimum size for these packets is 84
-    local packetSize = 84
-    hist:update(timestamper:measureLatency(packetSize, function(buf)
-      packetInits[direction](buf, packetSize)
-      packetConfigs[direction][layer](buf:getUdpPacket(), counter)
-      counter = (counter + 1) % FLOWS_COUNT
-    end))
-    rateLimiter:wait()
-    rateLimiter:reset()
+  local results = {}
+  for i = 1, count do
+    local hist = hist:new()
+    local counter = 0
+    while sendTimer:running() and mg.running() do
+      -- Minimum size for these packets is 84
+      local packetSize = 84
+      hist:update(timestamper:measureLatency(packetSize, function(buf)
+        packetInits[direction](buf, packetSize)
+        packetConfigs[direction][layer](buf:getUdpPacket(), counter)
+        counter = (counter + 1) % FLOWS_COUNT
+      end, 2)) -- wait 2ms at most before declaring a packet lost, to avoid confusing old packets for new ones
+      rateLimiter:wait()
+      rateLimiter:reset()
+    end
+    results[#results+1] = hist
+    io.write("[bench] " .. histogramToString(hist) .. "\n")
+    mg.sleepMillis(100)
+    sendTimer:reset()
   end
 
-  io.write("[bench] " .. histogramToString(hist) .. "\n")
-
-  return hist
+  return results
 end
 
--- Starts a latency-measuring task, which returns the histogram
-function startMeasureLatency(txQueue, rxQueue, layer, counterStart)
-  return mg.startTask("_latencyTask", txQueue, rxQueue, layer, counterStart)
+-- Starts a latency-measuring task, which returns $count histograms, sleeping 100ms inbetween measurements
+function startMeasureLatency(txQueue, rxQueue, layer, direction, count)
+  return mg.startTask("_latencyTask", txQueue, rxQueue, layer, direction, count)
 end
 
 -- Helper function, has to be global because it's started as a task
@@ -308,9 +312,9 @@ function measureStandard(queuePairs, extraPair, layer)
   -- Finish with 0 because it has no background traffic so the flows will expire
   latencyRates[#latencyRates+1] = 0
 
+  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, extraPair.direction, #latencyRates)
   for r, rate in ipairs(latencyRates) do
     io.write("[bench] Measuring latency at rate " .. (rate * #queuePairs) .. "...\n")
-
     local throughputTasks = {}
     if rate ~= 0 then
       for i, pair in ipairs(queuePairs) do
@@ -318,14 +322,10 @@ function measureStandard(queuePairs, extraPair, layer)
       end
     end
 
-    local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, extraPair.direction)
-
     local loss = 0
     for _, task in ipairs(throughputTasks) do
       loss = loss + task:wait()
     end
-
-    local lat = latencyTask:wait()
 
     -- We may have been interrupted
     if not mg.running() then
@@ -337,9 +337,15 @@ function measureStandard(queuePairs, extraPair, layer)
       -- this really should not happen! we know the NF can sustain this!
       io.write("[FATAL] Too much loss! (" .. (loss / #queuePairs) .. ")\n")
       os.exit(1)
-    else
-      dumpHistogram(lat, RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/" .. rate)
     end
+
+    -- the latency task sleeps 100ms inbetween runs, we must match it
+    mg.sleepMillis(100)
+  end
+
+  local lats = latencyTask:wait()
+  for r, rate in ipairs(latencyRates) do
+    dumpHistogram(lats[r], RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/" .. (rate * #queuePairs))
   end
 end
 
