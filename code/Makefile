@@ -65,4 +65,8 @@ tn_default:
 	@$(TN_CC) $(subst .c,.o,$(notdir $(TN_FILES))) $(TN_LDFLAGS) -o $(TN_APP)
 	@$(TN_STRIP) $(TN_STRIPFLAGS) $(TN_APP)
 	@rm -f $(subst .c,.o,$(notdir $(TN_FILES)))
+
+# just so it can be run with the benchmark scripts
+run:
+	sudo ./tinynf $(TN_ARGS)
 endif

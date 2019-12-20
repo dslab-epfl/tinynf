@@ -24,6 +24,7 @@ local HEATUP_RATE       = 1000 -- Mbps
 local HEATUP_BATCH_SIZE = 64 -- packets
 
 local LATENCY_DURATION = 60 -- seconds
+local LATENCY_PACKETS_PER_SECOND = 1000 -- packets; not too much or MoonGen gets very confused
 local LATENCY_LOAD_INCREMENT = 500 -- Mbps
 local LATENCY_LOAD_PADDING   = 250 -- Mbps; removed from max load when measuring latency
 
@@ -113,7 +114,7 @@ local packetInits = {
 -- Note that MoonGen doesn't want us to create more than one timestamper, so we do all iterations inside the task
 function _latencyTask(txQueue, rxQueue, layer, direction, count)
   local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
-  local rateLimiter = timer:new(1 / FLOWS_COUNT)
+  local rateLimiter = timer:new(1 / LATENCY_PACKETS_PER_SECOND)
   local sendTimer = timer:new(LATENCY_DURATION)
 
   local results = {}
@@ -351,19 +352,9 @@ end
 
 -- Measure latency without any load
 function measureLatencyAlone(queuePairs, extraPair, layer)
-  heatUp(queuePairs, layer)
-
   io.write("[bench] Measuring latency without load...\n")
-
-  local lat = startMeasureLatency(extraPair.tx, extraPair.rx, layer, extraPair.direction):wait()
-
-  -- We may have been interrupted
-  if not mg.running() then
-    io.write("Interrupted\n")
-    os.exit(0)
-  end
-
-  io.write(histogramToString(lat) .. "\n")
+  local lats = startMeasureLatency(extraPair.tx, extraPair.rx, layer, extraPair.direction, 1):wait()
+  dumpHistogram(lats[1], RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/0")
 end
 
 function flood(queuePairs, extraPair, layer)

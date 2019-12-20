@@ -45,11 +45,11 @@ rm -f bench.result
 # Ignore pointless DPDK output lines
 echo '[bench] Running benchmark...'
 sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE" "$BENCH_LAYER" 2>&1 \
-  | grep -v 'EAL: Detected [0-9]' \
-  | grep -Fv 'EAL: No free hugepages reported in hugepages-1048576kB' \
-  | grep -Fv 'EAL: Probing VFIO support...' \
-  | grep -Fv 'EAL: PCI device' \
-  | grep -Fv 'EAL:   probe driver:' \
-  | grep -v '^   Device' \
-  | grep -Fv 'PMD: ixgbe_dev_link_status_print' \
-  | grep -Fv '[INFO]'
+  | grep  -v --line-buffered 'EAL: Detected [0-9]' \
+  | grep -Fv --line-buffered 'EAL: No free hugepages reported in hugepages-1048576kB' \
+  | grep -Fv --line-buffered 'EAL: Probing VFIO support...' \
+  | grep -Fv --line-buffered 'EAL: PCI device' \
+  | grep -Fv --line-buffered 'EAL:   probe driver:' \
+  | grep  -v --line-buffered '^   Device' \
+  | grep -Fv --line-buffered 'PMD: ixgbe_dev_link_status_print' \
+  | grep -Fv --line-buffered '[INFO]'

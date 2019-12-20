@@ -53,10 +53,6 @@
 #define IXGBE_PIPE_SCHEDULING_PERIOD 32
 #endif
 static_assert((IXGBE_PIPE_SCHEDULING_PERIOD & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == 0, "Scheduling period must be a power of 2");
-// INTERPRETATION: Writing too often to the NIC's registers can confuse the hardware.
-//                 Running with scheduling period == 1 but with debug prints does not reproduce the issue,
-//                 and neither does running with scheduling period == 2, hence the assumption about "too often"
-static_assert(IXGBE_PIPE_SCHEDULING_PERIOD != 1, "Scheduling period cannot be 1, it sometimes confuses the hardware");
 
 // Section 7.1.2.5 L3/L4 5-tuple Filters:
 // 	"There are 128 different 5-tuple filter configuration registers sets"
