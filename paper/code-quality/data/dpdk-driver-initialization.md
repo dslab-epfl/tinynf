@@ -1,4 +1,4 @@
-To save space, we do not indent the first two (probe and init) since there are no other functions at the same level.
+To save space, we do not indent eth_ixgbe_dev_init since there are no other functions at the same level.
 
 ```
 eth_ixgbe_pci_probe
@@ -173,4 +173,7 @@ eth_ixgbe_dev_init
 - ixgbe_l2_tn_filter_init
 - ixgbe_filterlist_init
 - ixgbe_tm_conf_init
+ixgbe_dev_rx_queue_start
+- ixgbe_alloc_rx_queue_mbufs
+ixgbe_dev_tx_queue_start
 ```
