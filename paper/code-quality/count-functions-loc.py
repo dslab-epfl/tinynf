@@ -46,5 +46,6 @@ for function in lines:
       break
 
 print('Total LoC: ' + str(sum(counts)))
-print('Average LoC: ' + str(statistics.mean(counts)))
-print('Median LoC: ' + str(statistics.median(counts)) + ' / stdev: ' + str(statistics.stdev(counts)))
+if len(counts) > 1:
+  print('Average LoC: ' + str(statistics.mean(counts)))
+  print('Median LoC: ' + str(statistics.median(counts)) + ' / stdev: ' + str(statistics.stdev(counts)))
