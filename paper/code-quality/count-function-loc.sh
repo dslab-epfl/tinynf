@@ -3,7 +3,8 @@
 # $2 = function name
 
 # From https://unix.stackexchange.com/a/277390
-indent -st -orig "$1" | awk '
+# -l9999 to avoid breaking any lines
+indent -st -orig -l9999 "$1" | awk '
 BEGIN { state = 0; last = ""; }
 $0 ~ /^'$2'\(/ { print last; state = 1; }
         { if (state == 1) print; }
