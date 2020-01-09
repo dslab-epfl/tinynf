@@ -6,14 +6,17 @@
 #include <stdint.h>
 #include <time.h>
 
+
+#define MAX_SLEEP_ATTEMPTS 1000
+
+
 void tn_sleep_us(uint64_t microseconds)
 {
 	struct timespec request;
 	request.tv_sec = (int64_t)(microseconds / 1000000);
 	request.tv_nsec = (int64_t)(microseconds % 1000000) * 1000;
 
-	// TODO if the kernel misbehaves we'll halt forever, not nice, we should crash instead with some kind of retry limit
-	while (true) {
+	for (uint64_t n = 0; n < MAX_SLEEP_ATTEMPTS; n++) {
 		// Note that usleep was removed in POSIX-2008
 		// Also, we don't care if we end up sleeping more than requested due to interrupts and restarts.
 		// (properly doing it with clock_gettime then clock_nanosleep in absolute time would require handling time overflows; not fun)
@@ -31,4 +34,6 @@ void tn_sleep_us(uint64_t microseconds)
 		// Other codes cannot happen according to the documentation.
 		assert(0);
 	}
+	// Something went terribly wrong
+	assert(0);
 }
