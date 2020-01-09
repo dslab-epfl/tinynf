@@ -966,6 +966,7 @@ bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
 
 	if (!tn_mem_allocate(IXGBE_RING_SIZE * IXGBE_PACKET_SIZE_MAX, &(pipe->buffer))) {
 		TN_DEBUG("Could not allocate buffer for pipe");
+		tn_mem_free((uintptr_t) pipe);
 		return false;
 	}
 
@@ -973,9 +974,14 @@ bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
 		// Rings need to be 128-byte aligned, as seen later
 		static_assert(IXGBE_RING_SIZE * 16 >= 128, "The ring address should be 128-byte aligned");
 
-		uintptr_t ring_addr; // TODO memory leaks... need to free this if subsequent ops fail
+		uintptr_t ring_addr;
 		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring_addr)) { // 16 bytes per descriptor, i.e. 2x64bits
 			TN_DEBUG("Could not allocate ring");
+			for (uint64_t m = 0; m < n; m++) {
+				tn_mem_free((uintptr_t) pipe->rings[m]);
+			}
+			tn_mem_free(pipe->buffer);
+			tn_mem_free((uintptr_t) pipe);
 			return false;
 		}
 
