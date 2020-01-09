@@ -1215,10 +1215,10 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 	pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
 	if((pipe->scheduling_counter & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) {
-		// Race conditions are possible here, but we don't care since all they can do is change the "real" value
-		// of the earliest send head to a later value, which is fine.
-		uint32_t earliest_send_head = 0;
+		// In case there are no send queues, the "earliest" send head is the processed delimiter
+		uint32_t earliest_send_head = pipe->processed_delimiter;
 		uint64_t min_diff = (uint64_t) -1;
+		// Race conditions are possible here, but all they can do is make our "earliest send head" value too low, which is fine
 		for (uint64_t n = 0; n < pipe->send_count; n++) {
 			uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
 			uint64_t diff = head - pipe->processed_delimiter; // TODO it'd be nice if we didn't need it here so we could modulo it only when writing, not at every iter
