@@ -941,7 +941,8 @@ struct tn_net_pipe
 	uintptr_t receive_tail_addr;
 	uint64_t scheduling_counter;
 	uint64_t processed_delimiter;
-	uint8_t _padding[4*8];
+	uint64_t send_count;
+	uint8_t _padding[3*8];
 	// send heads must be 16-byte aligned; see alignment remarks in send queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
 	// plus, we want each head on its own cache line to avoid conflicts
@@ -1205,6 +1206,7 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	// Nothing to transmit yet, so leave TDT alone.
 
 	pipe->send_tail_addrs[send_queues_count] = device->addr + IXGBE_REG_TDT(queue_index);
+	pipe->send_count = pipe->send_count + 1;
 	return true;
 }
 
@@ -1217,18 +1219,15 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 		// of the earliest send head to a later value, which is fine.
 		uint32_t earliest_send_head = 0;
 		uint64_t min_diff = (uint64_t) -1;
-		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-			bool head_is_used = pipe->send_tail_addrs[n] != 0;
-			if (head_is_used) {
-				uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
-				uint64_t diff = head - pipe->processed_delimiter; // TODO it'd be nice if we didn't need it here so we could modulo it only when writing, not at every iter
-				if (diff <= min_diff) {
-					earliest_send_head = head;
-					min_diff = diff;
-				}
-
-				ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
+		for (uint64_t n = 0; n < pipe->send_count; n++) {
+			uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
+			uint64_t diff = head - pipe->processed_delimiter; // TODO it'd be nice if we didn't need it here so we could modulo it only when writing, not at every iter
+			if (diff <= min_diff) {
+				earliest_send_head = head;
+				min_diff = diff;
 			}
+
+			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
 		}
 
 		ixgbe_reg_write_raw(pipe->receive_tail_addr, (earliest_send_head - 1) & (IXGBE_RING_SIZE - 1));
