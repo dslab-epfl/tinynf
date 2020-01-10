@@ -1,34 +1,23 @@
 #include "numa.h"
 
-#include <inttypes.h>
 #include <numaif.h>
-#include <sched.h>
-#include <stdio.h>
+#include <stddef.h>
 #include <unistd.h>
 
-#include <linux/version.h>
+#include <sys/syscall.h>
 
 
 bool tn_numa_is_current_node(uint64_t node)
 {
-	// From http://man7.org/linux/man-pages/man3/sched_getcpu.3.html
-	// "Errors: ENOSYS This kernel does not implement getcpu(2)."
-	// No other errors are listed.
-	// From http://man7.org/linux/man-pages/man2/getcpu.2.html
-	// "getcpu() was added in kernel 2.6.19 for x86-64 and i386"
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19)
-#ifdef __x86_64__
-	int cpu = sched_getcpu();
-#else
-#error This code assumes x86-64
-#endif
-#else
-#error This code assumes Linux >= 2.6.19
-#endif
-
-	char buffer[128];
-	snprintf(buffer, sizeof(buffer)/sizeof(char), "/sys/devices/system/cpu/cpu%d/node%" PRIu64, cpu, node);
-	return access(buffer, F_OK) == 0;
+	// http://man7.org/linux/man-pages/man2/getcpu.2.html mentions only EFAULT, which can't happen here, but let's check the return value just in case.
+	// "The third argument to this system call is nowadays unused, and should be specified as NULL unless portability to Linux 2.6.23 or earlier is required"
+	// "When either cpu or node is NULL nothing is written to the respective pointer."
+	unsigned unused;
+	unsigned this_node = (unsigned) -1; // sentinel value
+	if (syscall(SYS_getcpu, &unused, &this_node, NULL) != 0) {
+		return false;
+	}
+	return this_node == node;
 }
 
 bool tn_numa_get_addr_node(uintptr_t addr, uint64_t* out_node)

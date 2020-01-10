@@ -53,7 +53,6 @@ endif
 
 # Per-environment config
 ifeq ($(TN_ENV),linux-x86)
-TN_CFLAGS += -D_GNU_SOURCE
 TN_LDFLAGS += -lnuma
 endif
 
