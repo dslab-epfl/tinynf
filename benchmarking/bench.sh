@@ -25,6 +25,8 @@ if [ -z "$3" ]; then
 fi
 BENCH_LAYER="$3"
 
+echo '[bench] Setting up the benchmark...'
+
 # Ensure there are no outdated (and thus misleading) results/logs
 rm -rf results *.log
 
@@ -49,7 +51,6 @@ if [ ! -f "$THIS_DIR/config" ]; then
 fi
 . "$THIS_DIR/config"
 
-echo '[bench] Setting up the benchmark...'
 
 git submodule update --init --recursive
 if [ $? -ne 0 ]; then

@@ -42,7 +42,7 @@ end
 
 -- Helper function to print a histogram as a CSV row: min, max, median, stdev, 99th
 function histogramToString(hist)
-  return hist:min() .. ", " .. hist:max() .. ", " .. hist:median() .. ", " .. hist:standardDeviation() .. ", " .. hist:percentile(99)
+  return "min: " .. hist:min() .. ", max: " .. hist:max() .. ", median: " .. hist:median() .. ", stdev: " .. hist:standardDeviation() .. ", 99%: " .. hist:percentile(99)
 end
 
 -- Helper function to write all histogram values to a file
