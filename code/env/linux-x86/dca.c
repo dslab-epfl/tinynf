@@ -19,7 +19,7 @@ bool tn_dca_is_enabled(void)
 	if ((result & (1 << 18)) == 0) {
 		return false;
 	}
-	// Table 3-8 Information Returned by CPUID Instruction: "Initial EAX Value 09H: EAX, Value of bits [31:0] of IA32_üLATFORM_DCA_CAP MSR [...]"
+	// Table 3-8 Information Returned by CPUID Instruction: "Initial EAX Value 09H: EAX, Value of bits [31:0] of IA32_PLATFORM_DCA_CAP MSR [...]"
 	__asm__ (
 		"movl $9, %%eax\n\t"
 		"cpuid"

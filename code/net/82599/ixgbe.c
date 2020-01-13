@@ -54,15 +54,6 @@
 // TRUST: We trust the defaults for low-level hardware details
 // TXPAD: We want all sent frames to be at least 64 bytes
 
-// Maximum number of send queues assigned to a pipe. Not based on any spec, can be redefined at will
-#ifndef IXGBE_PIPE_MAX_SENDS
-#define IXGBE_PIPE_MAX_SENDS 4u
-#endif
-// Scheduling period for bookkeeping and sending. Not based on any spec, can be redefined at will as long as it's a power of 2 for fast modulo
-#ifndef IXGBE_PIPE_SCHEDULING_PERIOD
-#define IXGBE_PIPE_SCHEDULING_PERIOD 32
-#endif
-static_assert((IXGBE_PIPE_SCHEDULING_PERIOD & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == 0, "Scheduling period must be a power of 2");
 
 // Section 7.1.2.5 L3/L4 5-tuple Filters:
 // 	"There are 128 different 5-tuple filter configuration registers sets"
@@ -99,6 +90,23 @@ static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be
 // Section 7.10.3.2 Pool Selection:
 // 	"64 shared VLAN filters"
 #define IXGBE_VLAN_FILTER_COUNT 64u
+// Maximum number of send queues assigned to a pipe. Not based on any spec, can be redefined at will
+#ifndef IXGBE_PIPE_MAX_SENDS
+#define IXGBE_PIPE_MAX_SENDS 4u
+#endif
+// Scheduling period for bookkeeping and sending. Not based on any spec, can be redefined at will as long as it's a positive power of 2 for fast modulo
+#ifndef IXGBE_PIPE_SCHEDULING_PERIOD
+#define IXGBE_PIPE_SCHEDULING_PERIOD 32
+#endif
+static_assert(IXGBE_PIPE_SCHEDULING_PERIOD >= 1, "Scheduling period must be at least 1");
+static_assert((IXGBE_PIPE_SCHEDULING_PERIOD & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == 0, "Scheduling period must be a power of 2");
+// Updating period for receiving transmit head updates from the hardware. Not based on any spec, can be redefined at will as long as it's a positive power of 2 below the ring size.
+#ifndef IXGBE_PIPE_UPDATE_PERIOD
+#define IXGBE_PIPE_UPDATE_PERIOD 512
+#endif
+static_assert(IXGBE_PIPE_UPDATE_PERIOD >= 1, "Update period must be at least 1");
+static_assert(IXGBE_PIPE_UPDATE_PERIOD < IXGBE_RING_SIZE, "Update period must be less than the ring size");
+static_assert((IXGBE_PIPE_UPDATE_PERIOD & (IXGBE_PIPE_UPDATE_PERIOD - 1)) == 0, "Update period must be a power of 2");
 
 
 // ---------
@@ -1223,9 +1231,10 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 {
 	pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
+	// TODO investigate making earliest_send_head an uint64_t... might even make all send heads uint64_t?
 	if((pipe->scheduling_counter & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) {
 		// In case there are no send queues, the "earliest" send head is the processed delimiter
-		uint32_t earliest_send_head = pipe->processed_delimiter;
+		uint32_t earliest_send_head = (uint32_t) pipe->processed_delimiter;
 		uint64_t min_diff = (uint64_t) -1;
 		// Race conditions are possible here, but all they can do is make our "earliest send head" value too low, which is fine
 		for (uint64_t n = 0; n < pipe->send_count; n++) {
@@ -1288,11 +1297,13 @@ void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* se
 		// VLAN, bits 48-63:
 			// All zero
 	// INTERPRETATION-INCORRECT: Despite being marked as "reserved", the buffer address does not get clobbered by write-back, so no need to set it again
-	// This means all we have to do is set the length in the first 16 bits, then bits 0,1,3 of CMD
+	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want to get updated
 	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first send ring, it will clear the Descriptor Done flag of the receive descriptor
 	// If not all send rings are used, we will write into an unused (but allocated!) ring, that's fine
+	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
+	uint64_t rs_bit = (uint64_t) ((pipe->processed_delimiter & (IXGBE_PIPE_UPDATE_PERIOD - 1)) == (IXGBE_PIPE_UPDATE_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-		*(pipe->rings[n] + 2u*pipe->processed_delimiter + 1) = (send_list[n] * (uint64_t) packet_length) | BITL(24+3) | BITL(24+1) | BITL(24);
+		*(pipe->rings[n] + 2u*pipe->processed_delimiter + 1) = (send_list[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24);
 	}
 
 	// Increment the processed delimiter, modulo the ring size

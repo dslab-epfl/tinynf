@@ -38,10 +38,8 @@ else
   NF_NAME="$(make -C "$NF_DIR" -s print-nf-name)" # -s to not print 'Entering directory...'
 fi
 
-if [ ! -z "$(pgrep -x "$NF_NAME")" ]; then
-  echo '[ERROR] The NF is already running'
-  exit 1
-fi
+# Kill the NF in case some old instance is still running
+sudo pkill -9 "$NF_NAME" >/dev/null 2>&1
 
 THIS_DIR="$(dirname "$(readlink -f "$0")")"
 
@@ -86,7 +84,6 @@ if [ -z "$NF_PID" ]; then
   exit 1
 fi
 
-# Ensure we always kill the NF at the end, even in cases of failure
 ssh "$TESTER_HOST" "cd tinynf-benchmarking; ./bench-tester.sh $BENCH_TYPE $BENCH_LAYER"
 if [ $? -eq 0 ]; then
   scp -r "$TESTER_HOST"':tinynf-benchmarking/results' . >/dev/null 2>&1
@@ -102,6 +99,7 @@ else
   RESULT=1
 fi
 
+# Ensure we always kill the NF at the end, even in cases of failure
 sudo kill -9 "$NF_PID" >/dev/null 2>&1
 
 exit $RESULT

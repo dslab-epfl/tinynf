@@ -21,7 +21,6 @@ NF = sys.argv[2]
 
 OUTPUT_DIR = THIS_DIR + '/results/' + NF_DIR_NAME + '/' + NF
 shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
-OUTPUT_LATENCIES_DIR_BASE = OUTPUT_DIR + '/latencies'
 
 if NF == 'bridge':
   LAYER = '2' # MAC
@@ -45,7 +44,7 @@ NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk']
 
 RESULTS = {}
 for NF_KIND in NF_KIND_CHOICES:
-  PARAM_CHOICES = ['2', '4', '8', '16', '32', '64', '128', '256', '512']
+  PARAM_CHOICES = ['1', '2', '4', '8', '16', '32', '64', '128']
   CUSTOM_ENV = {}
   if NF_KIND == 'custom' or NF_KIND == 'dpdk-shim':
     # Necessary if DPDK has been used before and didn't exit cleanly (call sh to have it expand the *)
@@ -59,7 +58,6 @@ for NF_KIND in NF_KIND_CHOICES:
       NF_DIR = NF_DIR_BASE + '/with-dpdk'
       CUSTOM_ENV = { 'RTE_SDK': THIS_DIR + '/../shims/dpdk', 'RTE_TARGET': '.' }
   else:
-    PARAM_CHOICES = ['1'] + PARAM_CHOICES
     LTO_CHOICES = [False]
     ONEWAY_CHOICES = [False]
     NF_DIR = NF_DIR_BASE + '/with-dpdk'
@@ -101,40 +99,21 @@ for NF_KIND in NF_KIND_CHOICES:
         if LTO:
           KEY = KEY + ', LTO'
 
-        # Bench kind is the only thing guaranteed to not need a recompilation (as long as the NF Makefile is smart), so let's do it in the inner loop
-        VALUES = []
-        for BENCH_KIND in ['throughput', 'latency']:
-          ENV = dict(os.environ)
-          ENV['TN_NF'] = NF
-          ENV['TN_LDFLAGS'] = LTO_FLAG
-          ENV['TN_CFLAGS'] = LTO_FLAG + ' ' + ONEWAY_FLAG + ' ' + PARAM_FLAG
-          ENV.update(CUSTOM_ENV)
+        ENV = dict(os.environ)
+        ENV['TN_NF'] = NF
+        ENV['TN_LDFLAGS'] = LTO_FLAG
+        ENV['TN_CFLAGS'] = LTO_FLAG + ' ' + ONEWAY_FLAG + ' ' + PARAM_FLAG
+        ENV.update(CUSTOM_ENV)
 
-          # can fail for spurious reasons, e.g. random DNS failures
-          while True:
-            print('[!!!] Benchmarking "' + KEY + '" for ' + BENCH_KIND + ' (param: ' + str(PARAM) + ') ...')
-            RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR, BENCH_KIND, LAYER], cwd=BENCH_DIR, env=ENV).returncode
-            if RESULT == 0:
-              break
-            else:
-              time.sleep(60)
+        # can fail for spurious reasons, e.g. random DNS failures
+        while True:
+          print('[!!!] Benchmarking "' + KEY + '", param: ' + str(PARAM) + ' ...')
+          RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR, 'standard', LAYER], cwd=BENCH_DIR, env=ENV).returncode
+          if RESULT == 0:
+            break
+          else:
+            time.sleep(60)
 
-          with open(BENCH_DIR + '/bench.result', mode='r') as FILE:
-            VALUES.append(FILE.read().strip())
-
-          if BENCH_KIND == 'latency':
-            DIR = OUTPUT_LATENCIES_DIR_BASE + '/' + KEY
-            os.makedirs(DIR, exist_ok=True)
-            os.rename(BENCH_DIR + '/bench-detailed.result', DIR + '/' + PARAM)
-
-        if KEY not in RESULTS:
-          RESULTS[KEY] = {}
-
-        RESULTS[KEY][PARAM] = VALUES
-
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-with open(OUTPUT_DIR + '/data.csv', 'w') as FILE:
-  FILE.write('Key, Param, Throughput, Latency-Min, Latency-Max, Latency-Median, Latency-Stdev, Latency-99th\n')
-  for (KEY, ITEMS) in RESULTS.items():
-    for (PARAM, VALUES) in ITEMS.items():
-      FILE.write('"' + KEY + '", ' + PARAM + ', ' + ', '.join(VALUES) + '\n')
+        DIR = OUTPUT_DIR + '/' + KEY + '/' + str(PARAM)
+        os.makedirs(DIR, exist_ok=True)
+        os.rename(BENCH_DIR + '/results', DIR)

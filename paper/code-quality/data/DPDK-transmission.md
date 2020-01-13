@@ -5,4 +5,5 @@ ixgbe_xmit_pkts_simple
 - tx_xmit_pkts
   - ixgbe_tx_free_bufs
   - ixgbe_tx_fill_hw_ring
+    - tx1
 ```
