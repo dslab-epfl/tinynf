@@ -213,7 +213,7 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 // Section 8.2.3.1.1 Device Control Register
 #define IXGBE_REG_CTRL(_) 0x00000u
 #define IXGBE_REG_CTRL_MASTER_DISABLE BIT(2)
-#define IXGBE_REG_CTRL_LRST BIT(3)
+#define IXGBE_REG_CTRL_RST BIT(26)
 
 // Section 8.2.3.1.3 Extended Device Control Register
 #define IXGBE_REG_CTRLEXT(_) 0x00018u
@@ -395,12 +395,13 @@ struct tn_net_device
 };
 
 // --------------------------------
-// Section 5.2.5.3.2 Master Disable
+// Section 4.2.1.6.1 Software Reset
 // --------------------------------
 
-// See quotes inside to understand the meaning of the return value
-static bool ixgbe_device_master_disable(const struct tn_net_device* const device)
+static bool ixgbe_device_reset(const struct tn_net_device* const device)
 {
+	// "Prior to issuing software reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
+	// Section 5.2.5.3.2 Master Disable:
 	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
 	for (uint8_t queue = 0; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
 		// Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
@@ -430,6 +431,7 @@ static bool ixgbe_device_master_disable(const struct tn_net_device* const device
 	IF_AFTER_TIMEOUT(1000 * 1000, !IXGBE_REG_CLEARED(device->addr, STATUS, _, PCIE_MASTER_ENABLE_STATUS)) {
 		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
 		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
+		// INTERPRETATION-MISSING: Might? Let's say this is a must, and that we assume the software resets work...
 		if (!IXGBE_PCIREG_CLEARED(device->pci, DEVICESTATUS, TRANSACTIONPENDING)) {
 			TN_DEBUG("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable");
 			return false;
@@ -451,38 +453,20 @@ static bool ixgbe_device_master_disable(const struct tn_net_device* const device
 		IXGBE_REG_CLEAR(device->addr, GCREXT, _, BUFFERS_CLEAR_FUNC);
 
 		// "- It is now safe to issue a software reset."
-	}
-
-	return true;
-}
-
-// --------------------------
-// Section 4.2.1.7 Link Reset
-// --------------------------
-
-// INTERPRETATION-CONTRADICTION: The spec has a circular dependency here - resets need master disable, but master disable asks for two resets if it fails!
-//                               Assume that if the master disable fails, the resets do not need to go through the master disable step.
-
-static void ixgbe_device_reset(const struct tn_net_device* const device)
-{
-	// "Prior to issuing link reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
-	bool master_disabled = ixgbe_device_master_disable(device);
-
-	// "Initiated by writing the Link Reset bit of the Device Control register (CTRL.LRST)."
-	IXGBE_REG_SET(device->addr, CTRL, _, LRST);
-
-	// See quotes in ixgbe_device_master_disable
-	if (master_disabled) {
+		// see just below for an explanation of this line
+		IXGBE_REG_SET(device->addr, CTRL, _, RST);
 		tn_sleep_us(2);
-		IXGBE_REG_SET(device->addr, CTRL, _, LRST);
 	}
+
+	// happy path, back to Section 4.2.1.6.1:
+	// "Software reset is done by writing to the Device Reset bit of the Device Control register (CTRL.RST)."
+	IXGBE_REG_SET(device->addr, CTRL, _, RST);
 
 	// Section 8.2.3.1.1 Device Control Register
 	// "To ensure that a global device reset has fully completed and that the 82599 responds to subsequent accesses,
 	//  programmers must wait approximately 1 ms after setting before attempting to check if the bit has cleared or to access (read or write) any other device register."
-	// INTERPRETATION-CONTRADICTION: It's OK to access the CTRL register itself to double-reset it as above without waiting a full second,
-	//                               and thus this does not contradict the "at least 1 us" rule of the double-reset.
 	tn_sleep_us(1000);
+	return true;
 }
 
 // -------------------------------------
@@ -565,7 +549,10 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//	"Device initialization typically starts with a software reset that puts the device into a known state and enables the device driver to continue the initialization sequence.
 	//	 Following a Global Reset the Software driver should wait at least 10msec to enable smooth initialization flow."
 	ixgbe_device_disable_interrupts(&device);
-	ixgbe_device_reset(&device);
+	if (!ixgbe_device_reset(&device)) {
+		TN_DEBUG("Could not reset.");
+		return false;
+	}
 	tn_sleep_us(10 * 1000);
 	ixgbe_device_disable_interrupts(&device);
 	//	"To enable flow control, program the FCTTV, FCRTL, FCRTH, FCRTV and FCCFG registers.
