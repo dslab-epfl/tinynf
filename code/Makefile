@@ -52,7 +52,6 @@ TN_CFLAGS += -O3
 endif
 
 ifndef TN_NO_DEFAULT_TARGET
-# TODO proper dependency tracking...
 .PHONY: tn_default
 tn_default:
 	@$(TN_CC) $(TN_CFLAGS) $(TN_FILES) -c
