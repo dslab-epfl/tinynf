@@ -35,7 +35,7 @@ ifeq (,$(TN_FILES))
 TN_FILES := $(TN_DIR)/tinynf.c
 TN_CFLAGS += -Weverything
 endif
-TN_FILES += $(shell echo $(TN_DIR)/env/$(TN_ENV)/*.c $(TN_DIR)/net/$(TN_NET)/*.c $(TN_DIR)/util/*.c)
+TN_FILES += $(shell echo $(TN_DIR)/env/$(TN_ENV)/*.c $(TN_DIR)/net/$(TN_NET)/*.c)
 
 # Compiler and stripping args
 TN_CFLAGS += -march=native
