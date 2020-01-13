@@ -2,11 +2,7 @@
 #include "net/network.h"
 #include "util/log.h"
 #include "util/parse.h"
-
-#ifdef TN_DEBUG_PERF
-#include <stdio.h>
-#include "papi.h"
-#endif
+#include "util/perf.h"
 
 // This NF does as little as possible, it's only intended for benchmarking/profiling the driver
 
@@ -57,40 +53,13 @@ int main(int argc, char** argv)
 
 	TN_INFO("TinyNF initialized successfully!");
 
-#ifdef TN_DEBUG_PERF
-	TN_INFO("Counters: instructions, L1d, L1i, L2, L3");
-	int papi_events[] = {PAPI_TOT_INS, PAPI_L1_DCM, PAPI_L1_ICM, PAPI_L2_TCM, PAPI_L3_TCM};
-	#define papi_events_count sizeof(papi_events)/sizeof(papi_events[0])
-	#define papi_batch_size 10000
-	long long papi_values[papi_batch_size][papi_events_count];
-	if (PAPI_start_counters(papi_events, papi_events_count) != PAPI_OK) {
-		TN_INFO("Couldn't start PAPI counters.");
-		return 7;
-	}
-	uint64_t papi_counter = 0;
-#endif
+	TN_PERF_PAPI_START();
 
 	while(true) {
 		for (uint64_t p = 0; p < 2; p++) {
-#ifdef TN_DEBUG_PERF
-			PAPI_read_counters(papi_values[papi_counter], papi_events_count);
-#endif
+			TN_PERF_PAPI_RESET();
 			tn_net_pipe_process(pipes[p], tinynf_packet_handler);
-
-#ifdef TN_DEBUG_PERF
-			PAPI_read_counters(papi_values[papi_counter], papi_events_count);
-
-			papi_counter++;
-			if (papi_counter == papi_batch_size) {
-				papi_counter = 0;
-				for (uint64_t n = 0; n < papi_batch_size; n++) {
-					for (uint64_t e = 0; e < papi_events_count; e++) {
-						printf("%lld ", papi_values[n][e]);
-					}
-					printf("\n");
-				}
-			}
-#endif
+			TN_PERF_PAPI_RECORD();
 		}
 	}
 }
