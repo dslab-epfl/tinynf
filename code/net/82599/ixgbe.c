@@ -394,29 +394,6 @@ struct tn_net_device
 	struct tn_pci_device pci;
 };
 
-// ---------------------------------------------------------
-// Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
-// ---------------------------------------------------------
-
-static bool ixgbe_recv_disable(const struct tn_net_device* const device, const uint8_t queue)
-{
-	// "Disable the queue by clearing the RXDCTL.ENABLE bit."
-	IXGBE_REG_CLEAR(device->addr, RXDCTL, queue, ENABLE);
-
-	// "The 82599 clears the RXDCTL.ENABLE bit only after all pending memory accesses to the descriptor ring are done.
-	//  The driver should poll this bit before releasing the memory allocated to this queue."
-	// INTERPRETATION-MISSING: There is no mention of what to do if the 82599 never clears the bit; 1s seems like a decent timeout
-	IF_AFTER_TIMEOUT(1000 * 1000, !IXGBE_REG_CLEARED(device->addr, RXDCTL, queue, ENABLE)) {
-		TN_DEBUG("RXDCTL.ENABLE did not clear, cannot disable receive");
-		return false;
-	}
-
-	// "Once the RXDCTL.ENABLE bit is cleared the driver should wait additional amount of time (~100 us) before releasing the memory allocated to this queue."
-	tn_sleep_us(100);
-
-	return true;
-}
-
 // --------------------------------
 // Section 5.2.5.3.2 Master Disable
 // --------------------------------
@@ -426,9 +403,20 @@ static bool ixgbe_device_master_disable(const struct tn_net_device* const device
 {
 	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
 	for (uint8_t queue = 0; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
-		if (!ixgbe_recv_disable(device, queue)) {
+		// Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
+		// "Disable the queue by clearing the RXDCTL.ENABLE bit."
+		IXGBE_REG_CLEAR(device->addr, RXDCTL, queue, ENABLE);
+
+		// "The 82599 clears the RXDCTL.ENABLE bit only after all pending memory accesses to the descriptor ring are done.
+		//  The driver should poll this bit before releasing the memory allocated to this queue."
+		// INTERPRETATION-MISSING: There is no mention of what to do if the 82599 never clears the bit; 1s seems like a decent timeout
+		IF_AFTER_TIMEOUT(1000 * 1000, !IXGBE_REG_CLEARED(device->addr, RXDCTL, queue, ENABLE)) {
+			TN_DEBUG("RXDCTL.ENABLE did not clear, cannot disable receive");
 			return false;
 		}
+
+		// "Once the RXDCTL.ENABLE bit is cleared the driver should wait additional amount of time (~100 us) before releasing the memory allocated to this queue."
+		tn_sleep_us(100);
 	}
 
 	// "Then the device driver sets the PCIe Master Disable bit [in the Device Status register] when notified of a pending master disable (or D3 entry)."
