@@ -51,11 +51,6 @@ else
 TN_CFLAGS += -O3
 endif
 
-# Per-environment config
-ifeq ($(TN_ENV),linux-x86)
-TN_LDFLAGS += -lnuma
-endif
-
 ifndef TN_NO_DEFAULT_TARGET
 # TODO proper dependency tracking...
 .PHONY: tn_default

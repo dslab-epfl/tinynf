@@ -1,6 +1,5 @@
 #include "numa.h"
 
-#include <numaif.h>
 #include <stddef.h>
 #include <unistd.h>
 
@@ -22,11 +21,12 @@ bool tn_numa_is_current_node(uint64_t node)
 
 bool tn_numa_get_addr_node(uintptr_t addr, uint64_t* out_node)
 {
-	// NOTE: To not depend on libnuma, the call can be replaced by `syscall(239, &node, NULL, 0, (void*) addr, 3)`
 	// "If flags specifies both MPOL_F_NODE and MPOL_F_ADDR, get_mempolicy() will return the node ID of the node on which the address addr is allocated into the location pointed to by mode."
+	// MPOL_F_NODE is 1, MPOL_F_ADDR is 2
+	// (we avoid a dependency on libnuma by syscalling directly)
 	// http://man7.org/linux/man-pages/man2/get_mempolicy.2.html
 	int node = -1;
-	if (get_mempolicy(&node, NULL, 0, (void*) addr, MPOL_F_NODE | MPOL_F_ADDR) == 0) {
+	if (syscall(SYS_get_mempolicy, &node, NULL, 0, (void*) addr, 1 | 2) == 0) {
 		*out_node = (uint64_t) node;
 		return true;
 	}
