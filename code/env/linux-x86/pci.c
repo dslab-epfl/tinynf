@@ -10,9 +10,11 @@
 
 #include <sys/io.h>
 
+
 // Physical addresses at which we can talk to PCI via geographical addressing
 #define PCI_CONFIG_ADDR 0xCF8
 #define PCI_CONFIG_DATA 0xCFC
+
 
 static bool get_ioport_access(void)
 {

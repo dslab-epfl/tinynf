@@ -2,14 +2,9 @@
 
 #include "util/log.h"
 
-#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-
-#include <sys/mman.h>
-#include <sys/stat.h>
 
 
 // Should be big enough
