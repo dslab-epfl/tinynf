@@ -473,15 +473,6 @@ static bool ixgbe_device_reset(const struct tn_net_device* const device)
 // Section 4.6.3 Initialization Sequence
 // -------------------------------------
 
-static void ixgbe_device_disable_interrupts(const struct tn_net_device* const device)
-{
-	for (uint8_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
-		// Section 8.2.3.5.4 Extended Interrupt Mask Clear Register (EIMC):
-		// "Writing a 1b to any bit clears its corresponding bit in the EIMS register disabling the corresponding interrupt in the EICR register. Writing 0b has no impact"
-		IXGBE_REG_SET(device->addr, EIMC, n, MASK);
-	}
-}
-
 bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_device** out_device)
 {
 	// The NIC supports 64-bit addresses, so pointers can't be larger
@@ -545,16 +536,20 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//	 1. Disable interrupts.
 	//	 2. Issue a global reset.
 	//	 3. Disable interrupts (again)."
+	// INTERPRETATION-POINTLESS: We do not support interrupts, there is no way we can have re-entrancy here, so we don't need step 1
 	// 	Section 4.6.3.2 Global Reset and General Configuration:
-	//	"Device initialization typically starts with a software reset that puts the device into a known state and enables the device driver to continue the initialization sequence.
-	//	 Following a Global Reset the Software driver should wait at least 10msec to enable smooth initialization flow."
-	ixgbe_device_disable_interrupts(&device);
+	//	"Device initialization typically starts with a software reset that puts the device into a known state and enables the device driver to continue the initialization sequence."
 	if (!ixgbe_device_reset(&device)) {
 		TN_DEBUG("Could not reset.");
 		return false;
 	}
+	//	"Following a Global Reset the Software driver should wait at least 10msec to enable smooth initialization flow."
 	tn_sleep_us(10 * 1000);
-	ixgbe_device_disable_interrupts(&device);
+	//	Section 8.2.3.5.4 Extended Interrupt Mask Clear Register (EIMC):
+	//	"Writing a 1b to any bit clears its corresponding bit in the EIMS register disabling the corresponding interrupt in the EICR register. Writing 0b has no impact"
+	for (uint8_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
+		IXGBE_REG_SET(device.addr, EIMC, n, MASK);
+	}
 	//	"To enable flow control, program the FCTTV, FCRTL, FCRTH, FCRTV and FCCFG registers.
 	//	 If flow control is not enabled, these registers should be written with 0x0.
 	//	 If Tx flow control is enabled then Tx CRC by hardware should be enabled as well (HLREG0.TXCRCEN = 1b).
