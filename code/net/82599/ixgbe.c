@@ -1,6 +1,5 @@
 #include "net/network.h"
 
-#include "env/dca.h"
 #include "env/endian.h"
 #include "env/memory.h"
 #include "env/time.h"
@@ -26,7 +25,6 @@
 // We make the following assumptions, which we later refer to by name:
 // CACHE: The cache line size is 64 bytes
 // CRC: We want CRC stripped when receiving and generated on the entire packet when sending
-// DCA: We want Direct Cache Access (DCA), for performance
 // DROP: We want to drop packets if we can't process them fast enough, for predictable behavior
 // NOCARE: We do not care about the following:
 //         - Statistics
@@ -48,6 +46,7 @@
 //         - Global double VLAN mode
 //         - Interrupts
 //         - Debugging features
+//         - Direct Cache Access (DCA), supposedly improves perf but no apparent effect
 // PCIBARS: The PCI BARs have been pre-configured to valid values, and will not collide with any other memory we may handle
 // PCIBRIDGES: All PCI bridges can be ignored, i.e. they do not enforce power savings modes or any other limitations
 // REPORT: We prefer more error reporting when faced with an explicit choice, but do not attempt to do extra configuration for this
@@ -219,24 +218,14 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_CTRLEXT(_) 0x00018u
 #define IXGBE_REG_CTRLEXT_NSDIS BIT(16)
 
-// Section 8.2.3.11.3 DCA Control Register
-#define IXGBE_REG_DCACTRL(_) 0x11074u
-#define IXGBE_REG_DCACTRL_DCA_DIS BIT(0)
-#define IXGBE_REG_DCACTRL_DCA_MODE BITS(1,4)
-
 // Section 8.2.3.11.1 Rx DCA Control Register
 #define IXGBE_REG_DCARXCTRL(n) ((n) <= 63u ? (0x0100Cu + 0x40u*(n)) : (0x0D00Cu + 0x40u*((n)-64u)))
-#define IXGBE_REG_DCARXCTRL_RX_DESCRIPTOR_DCA_EN BIT(5)
-#define IXGBE_REG_DCARXCTRL_RX_PAYLOAD_DCA_EN BIT(7)
 // This bit is reserved, has no name, but must be used anyway
 #define IXGBE_REG_DCARXCTRL_UNKNOWN BIT(12)
-#define IXGBE_REG_DCARXCTRL_CPUID BITS(24,31)
 
 // Section 8.2.3.11.2 Tx DCA Control Registers
 #define IXGBE_REG_DCATXCTRL(n) (0x0600Cu + 0x40u*(n))
-#define IXGBE_REG_DCATXCTRL_TX_DESCRIPTOR_DCA_EN BIT(5)
 #define IXGBE_REG_DCATXCTRL_TX_DESC_WB_RO_EN BIT(11)
-#define IXGBE_REG_DCATXCTRL_CPUID BITS(24,31)
 
 // Section 8.2.3.9.2 DMA Tx Control
 #define IXGBE_REG_DMATXCTL(_) 0x04A80u
@@ -806,38 +795,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//			Section 8.2.3.9.4 DMA Tx TCP Flags Control High (DTXTCPFLGH):
 	//				"This register holds the mask bits for the TCP flags in Tx segmentation."
 	// We do not need to modify DTXTCPFLGL/H by assumption TRUST.
-	// Now for DCA_TXCTRL...
-	// First, let's make sure we actually can use DCA
-	// TODO bench with/without DCA/DCA_with_payload
-	if (!tn_dca_is_enabled()) {
-		TN_DEBUG("DCA is disabled");
-		return false;
-	}
-	// INTERPRETATION-MISSING: Since register DCA_CTRL exists and disables DCA by default, we need to change it as well.
-	// "DCA Disable. Init val 1b. [...] 0b = DCA tagging is enabled for this device."
-	IXGBE_REG_CLEAR(device.addr, DCACTRL, _, DCA_DIS);
-	// "DCA Mode. Init val 0x0. [...] 0001b = DCA 1.0 is supported"
-	IXGBE_REG_WRITE(device.addr, DCACTRL, _, DCA_MODE, 1);
-	uint8_t dca_id = tn_dca_get_id();
-	for (uint8_t n = 0; n < IXGBE_SEND_QUEUES_COUNT; n++) {
-		//		Section 8.2.3.11.2 Tx DCA Control Registers (DCA_TXCTRL[n]):
-		//			"Tx Descriptor DCA EN, Init val 0b; Descriptor DCA Enable. When set, hardware enables DCA for all Tx descriptors written back into memory.
-		//			 When cleared, hardware does not enable DCA for descriptor write-backs. This bit is cleared as a default and also applies to head write back when enabled."
-		IXGBE_REG_SET(device.addr, DCATXCTRL, n, TX_DESCRIPTOR_DCA_EN);
-		//			"CPUID [...] DCA 1.0 capable platforms — the device driver programs a value, based on the relevant APIC ID, associated with this Tx queue."
-		IXGBE_REG_WRITE(device.addr, DCATXCTRL, n, CPUID, (uint32_t) dca_id);
-	}
-	// INTERPRETATION-MISSING: We should set DCA_RXCTRL as well (it's not mentioned anywhere to be part of the setup, but since we just did DCA_TXCTRL...)
-	for (uint8_t n = 0; n < IXGBE_RECEIVE_QUEUES_COUNT; n++) {
-		//		Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]):
-		//			"Descriptor DCA EN. When set, hardware enables DCA for all Rx descriptors written back into memory. [...]"
-		IXGBE_REG_SET(device.addr, DCARXCTRL, n, RX_DESCRIPTOR_DCA_EN);
-		IXGBE_REG_SET(device.addr, DCARXCTRL, n, RX_PAYLOAD_DCA_EN);
-		//			"CPUID [...] DCA 1.0 capable platforms — The device driver programs a value, based on the relevant APIC ID, associated with this Rx queue."
-		IXGBE_REG_WRITE(device.addr, DCARXCTRL, n, CPUID, (uint32_t) dca_id);
-	}
-	//				There are fields dealing with relaxed ordering; Section 3.1.4.5.3 Relaxed Ordering states that it "enables the system to optimize performance", with no apparent correctness impact.
-	// INTERPRETATION-MISSING: Relaxed ordering has no correctness issues, and thus should be enabled.
+	// We do not need to modify DCA parameters by assumption NOWANT.
 	//		"- Set RTTDCS.ARBDIS to 1b."
 	IXGBE_REG_SET(device.addr, RTTDCS, _, ARBDIS);
 	//		"- Program DTXMXSZRQ, TXPBSIZE, TXPBTHRESH, MTQC, and MNGTXMAP, according to the DCB and virtualization modes (see Section 4.6.11.3)."
