@@ -1,4 +1,6 @@
-#!/bin/sh
+#!/bin/bash
+# Bash-only feature; doing it the POSIX-compliant way requires a FIFO, which complicates lifetime tracking enormously
+set -xo pipefail
 
 if [ -z "$1" ]; then
   echo "[ERROR] Please provide the type of benchmark as the first argument to $0"
@@ -25,7 +27,7 @@ fi
 
 echo '[bench] Setting up tester...'
 
-sudo pkill -9 moongen >/dev/null 2>&1 # in case it crashed previously
+sudo pkill -x -9 MoonGen >/dev/null 2>&1 # in case it crashed previously
 sudo rm -rf /dev/hugepages/* # make sure there are no leftovers from a previous run
 
 # code taken from libmoon's bind-interfaces-sh
@@ -43,18 +45,13 @@ done
 rm -f bench.result
 
 echo '[bench] Running benchmark...'
-# Ignore pointless DPDK output lines but keep track of the exit code
-rm -f benchpipe
-mkfifo benchpipe
-grep -v --line-buffered 'EAL: Detected [0-9]' < benchpipe \
+# Ignore pointless output (this is why this script needs -o pipefail)
+sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE" "$BENCH_LAYER" \
+  | grep -v --line-buffered 'EAL: Detected [0-9]' \
   | grep -Fv --line-buffered 'EAL: No free hugepages reported in hugepages-1048576kB' \
   | grep -Fv --line-buffered 'EAL: Probing VFIO support...' \
   | grep -Fv --line-buffered 'EAL: PCI device' \
   | grep -Fv --line-buffered 'EAL:   probe driver:' \
   | grep  -v --line-buffered '^   Device' \
   | grep -Fv --line-buffered 'PMD: ixgbe_dev_link_status_print' \
-  | grep -Fv --line-buffered '[INFO]' &
-sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE" "$BENCH_LAYER" > benchpipe 2>&1
-result=$?
-rm -f benchpipe
-exit $?
+  | grep -Fv --line-buffered '[INFO]'

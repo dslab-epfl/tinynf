@@ -39,7 +39,7 @@ else
 fi
 
 # Kill the NF in case some old instance is still running
-sudo pkill -9 "$NF_NAME" >/dev/null 2>&1
+sudo pkill -x -9 "$NF_NAME" >/dev/null 2>&1
 
 THIS_DIR="$(dirname "$(readlink -f "$0")")"
 
