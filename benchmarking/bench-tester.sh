@@ -1,6 +1,6 @@
 #!/bin/bash
 # Bash-only feature; doing it the POSIX-compliant way requires a FIFO, which complicates lifetime tracking enormously
-set -xo pipefail
+set -o pipefail
 
 if [ -z "$1" ]; then
   echo "[ERROR] Please provide the type of benchmark as the first argument to $0"
@@ -46,8 +46,8 @@ rm -f bench.result
 
 echo '[bench] Running benchmark...'
 # Ignore pointless output (this is why this script needs -o pipefail)
-sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE" "$BENCH_LAYER" \
-  | grep -v --line-buffered 'EAL: Detected [0-9]' \
+sudo ./moongen/build/MoonGen bench-moongen.lua "$BENCH_TYPE" "$BENCH_LAYER" 2>&1 \
+  | grep -Fv --line-buffered 'EAL: Detected' \
   | grep -Fv --line-buffered 'EAL: No free hugepages reported in hugepages-1048576kB' \
   | grep -Fv --line-buffered 'EAL: Probing VFIO support...' \
   | grep -Fv --line-buffered 'EAL: PCI device' \
