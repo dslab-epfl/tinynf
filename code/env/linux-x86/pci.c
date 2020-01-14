@@ -63,8 +63,9 @@ static uint32_t get_pci_reg_addr(const struct tn_pci_device device, const uint8_
 	return 0x80000000u | ((uint32_t)device.bus << 16) | ((uint32_t)device.device << 11) | ((uint32_t)device.function << 8) | reg;
 }
 
-static void pci_address(const uint32_t addr)
+static void pci_address(const struct tn_pci_device device, const uint8_t reg)
 {
+	const uint32_t addr = get_pci_reg_addr(device, reg);
 	outl(addr, PCI_CONFIG_ADDR);
 	// Wait til the outl is done
 	outb(0, 0x80);
@@ -77,10 +78,9 @@ uint32_t tn_pci_read(const struct tn_pci_device device, const uint8_t reg)
 		return 0xFFFFFFFFu; // same as reading unknown reg
 	}
 
-	const uint32_t addr = get_pci_reg_addr(device, reg);
-	pci_address(addr);
+	pci_address(device, reg);
 	const uint32_t result = inl(PCI_CONFIG_DATA);
-	TN_VERBOSE("PCI read: 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, result);
+	TN_VERBOSE("PCI read: 0x%02" PRIx8 " -> 0x%08" PRIx32, reg, result);
 	return result;
 }
 
@@ -91,8 +91,7 @@ void tn_pci_write(const struct tn_pci_device device, const uint8_t reg, const ui
 		return;
 	}
 
-	const uint32_t addr = get_pci_reg_addr(device, reg);
-	pci_address(addr);
+	pci_address(device, reg);
 	outl(value, PCI_CONFIG_DATA);
-	TN_VERBOSE("PCI write: 0x%08" PRIx32 " := 0x%08" PRIx32, addr, value);
+	TN_VERBOSE("PCI write: 0x%02" PRIx8 " := 0x%08" PRIx32, reg, value);
 }

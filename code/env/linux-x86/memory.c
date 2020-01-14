@@ -65,7 +65,7 @@ bool tn_mem_allocate(const uint64_t size, uintptr_t* out_addr)
 
 	uintptr_t addr = (uintptr_t) page;
 
-	// HACK: We're hoping that the Linux kernel will allocate memory on our node - in practice this seems to work
+	// Default kernel policy is to allocate on-node, so this should work fine
 	uint64_t node;
 	if (!tn_numa_get_addr_node(addr, &node)) {
 		TN_DEBUG("Could not get memory's NUMA node");

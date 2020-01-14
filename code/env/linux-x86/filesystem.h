@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stdint.h>
 
 
 // Reads a single line from the file at the given path, or returns false.
