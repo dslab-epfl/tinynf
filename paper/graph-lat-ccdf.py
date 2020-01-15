@@ -2,10 +2,11 @@
 
 from common import *
 import itertools
+import pathlib
 import sys
 
 if len(sys.argv) < 4: # script itself + args
-  print('[ERROR] Please provide the kind, NF, then at least one "key/period" to graph')
+  print('[ERROR] Please provide the kind, NF, then at least one "key/param" to graph')
   sys.exit(1)
 
 kind = sys.argv[1]
@@ -13,7 +14,7 @@ nf = sys.argv[2]
 args = [arg.split('/') for arg in sys.argv[3:]]
 
 keys = [arg[0] for arg in args]
-values = [[float(l.strip())/1000.0 for l in open(get_lat_dir(kind, nf, arg[0], arg[1]), 'r')] for arg in args]
+values = [[float(l.strip())/1000.0 for l in pathlib.Path(get_output_folder(kind, nf), arg[0], arg[1], 'latencies', '0').read_text().splitlines()] for arg in args]
 
 # Find outlier limit, i.e., first one very far from previous
 limit = 0
@@ -84,4 +85,4 @@ fig.suptitle(get_title(kind, nf), y=0.92)
 fig.text(0.5, 0.02, 'Latency (us)', ha='center')
 fig.text(0.02, 0.5, 'Cumulative probability', va='center', rotation='vertical')
 plt.legend(loc='center right', handletextpad=0.3, borderaxespad=0)
-plt.savefig(get_output_filename(kind, nf, 'latencies.pdf'), bbox_inches='tight')
+plt.savefig(get_output_folder(kind, nf) + '/latencies-ccdf.svg', bbox_inches='tight')

@@ -1,8 +1,13 @@
 #!/usr/bin/python3
 
+import math
 import os
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
+
+def percentile(list, n):
+  size = len(list)
+  return sorted(list)[int(math.ceil((size * n) / 100)) - 1]
 
 def get_pyplot_ax(title):
   import matplotlib as mpl
@@ -16,11 +21,8 @@ def get_pyplot_ax(title):
   ax.spines['right'].set_visible(False)
   return (plt, ax)
 
-def get_output_filename(kind, nf, name):
-  return this_dir + '/results/' + kind + '/' + nf + '/' + name
-
-def get_lat_dir(kind, nf, key, period):
-  return this_dir + '/results/' + kind + '/' + nf + '/latencies/' + key + '/' + period
+def get_output_folder(kind, nf):
+  return this_dir + '/results/' + kind + '/' + nf
 
 def get_color(key):
   color = ''
@@ -31,14 +33,11 @@ def get_color(key):
   elif 'shim' in key:
     color = 'blue'
     if 'simple' in key:
-      color = 'turquoise'
+      color = 'indigo'
   elif 'custom' in key:
     color = 'red'
     if 'simple' in key:
-      color = 'magenta'
-
-  if 'LTO' not in key:
-    color = 'light ' + color
+      color = 'brick red'
 
   return 'xkcd:' + color
 

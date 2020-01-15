@@ -1,6 +1,6 @@
 #!/bin/sh
 
-for nf in nop nat fw bridge pol; do
+for nf in nat fw bridge pol; do # nop
   ./bench-nf.py ../baselines/vigor $nf
 done
 

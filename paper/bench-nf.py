@@ -1,9 +1,10 @@
 #!/usr/bin/python3
 # I rewrote this in Python from a Bash script. So I kept the naming convention of ALL_CAPS even though it's ugly. Oh well.
 
+from common import *
+from distutils.dir_util import copy_tree
 import glob
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -19,8 +20,7 @@ NF_DIR_BASE = os.path.realpath(sys.argv[1])
 NF_DIR_NAME = os.path.basename(NF_DIR_BASE)
 NF = sys.argv[2]
 
-OUTPUT_DIR = THIS_DIR + '/results/' + NF_DIR_NAME + '/' + NF
-shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
+OUTPUT_DIR = get_output_folder(NF_DIR_NAME, NF)
 
 if NF == 'bridge':
   LAYER = '2' # MAC
@@ -50,7 +50,7 @@ for NF_KIND in NF_KIND_CHOICES:
     # Necessary if DPDK has been used before and didn't exit cleanly (call sh to have it expand the *)
     subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
 
-    LTO_CHOICES = [True, False]
+    LTO = True
     ONEWAY_CHOICES = [True, False]
     if NF_KIND == 'custom':
       NF_DIR = NF_DIR_BASE
@@ -58,7 +58,7 @@ for NF_KIND in NF_KIND_CHOICES:
       NF_DIR = NF_DIR_BASE + '/with-dpdk'
       CUSTOM_ENV = { 'RTE_SDK': THIS_DIR + '/../shims/dpdk', 'RTE_TARGET': '.' }
   else:
-    LTO_CHOICES = [False]
+    LTO = False
     ONEWAY_CHOICES = [False]
     NF_DIR = NF_DIR_BASE + '/with-dpdk'
 
@@ -67,53 +67,50 @@ for NF_KIND in NF_KIND_CHOICES:
   if NF == 'bridge':
     ONEWAY_CHOICES = [False]
 
+  if LTO:
+    LTO_FLAG = '-flto'
+  else:
+    LTO_FLAG = ''
+
   for ONEWAY in ONEWAY_CHOICES:
     if ONEWAY:
       ONEWAY_FLAG = '-DASSUME_ONE_WAY -DIXGBE_PIPE_MAX_SENDS=1'
     else:
       ONEWAY_FLAG = '-DIXGBE_PIPE_MAX_SENDS=2'
 
-    for LTO in LTO_CHOICES:
-      if LTO:
-        LTO_FLAG = '-flto'
+    for PARAM in PARAM_CHOICES:
+      if NF_KIND == 'dpdk':
+        PARAM_FLAG = ''
+        CUSTOM_ENV['TN_BATCH_SIZE'] = PARAM
       else:
-        LTO_FLAG = ''
+        PARAM_FLAG = '-DIXGBE_PIPE_SCHEDULING_PERIOD=' + PARAM
 
-      for PARAM in PARAM_CHOICES:
-        if NF_KIND == 'dpdk':
-          PARAM_FLAG = ''
-          CUSTOM_ENV['TN_BATCH_SIZE'] = PARAM
+      if NF_KIND == 'dpdk':
+        KEY = 'original'
+      elif NF_KIND == 'dpdk-shim':
+        KEY = 'shim'
+        if ONEWAY:
+          KEY += ', simple'
+      else:
+        KEY = 'custom'
+        if ONEWAY:
+          KEY += ', simple'
+
+      ENV = dict(os.environ)
+      ENV['TN_NF'] = NF
+      ENV['TN_LDFLAGS'] = LTO_FLAG
+      ENV['TN_CFLAGS'] = LTO_FLAG + ' ' + ONEWAY_FLAG + ' ' + PARAM_FLAG
+      ENV.update(CUSTOM_ENV)
+
+      # can fail for spurious reasons, e.g. random DNS failures
+      while True:
+        print('[!!!] Benchmarking "' + KEY + '", param: ' + str(PARAM) + ' ...')
+        RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR, 'standard', LAYER], cwd=BENCH_DIR, env=ENV).returncode
+        if RESULT == 0:
+          break
         else:
-          PARAM_FLAG = '-DIXGBE_PIPE_SCHEDULING_PERIOD=' + PARAM
+          time.sleep(60)
 
-        if NF_KIND == 'dpdk':
-          KEY = 'original'
-        elif NF_KIND == 'dpdk-shim':
-          KEY = 'shim'
-          if ONEWAY:
-            KEY += ', simple'
-        else:
-          KEY = 'custom'
-          if ONEWAY:
-            KEY += ', simple'
-        if LTO:
-          KEY = KEY + ', LTO'
-
-        ENV = dict(os.environ)
-        ENV['TN_NF'] = NF
-        ENV['TN_LDFLAGS'] = LTO_FLAG
-        ENV['TN_CFLAGS'] = LTO_FLAG + ' ' + ONEWAY_FLAG + ' ' + PARAM_FLAG
-        ENV.update(CUSTOM_ENV)
-
-        # can fail for spurious reasons, e.g. random DNS failures
-        while True:
-          print('[!!!] Benchmarking "' + KEY + '", param: ' + str(PARAM) + ' ...')
-          RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR, 'standard', LAYER], cwd=BENCH_DIR, env=ENV).returncode
-          if RESULT == 0:
-            break
-          else:
-            time.sleep(60)
-
-        DIR = OUTPUT_DIR + '/' + KEY + '/' + str(PARAM)
-        os.makedirs(DIR, exist_ok=True)
-        os.rename(BENCH_DIR + '/results', DIR)
+      DIR = OUTPUT_DIR + '/' + KEY + '/' + str(PARAM)
+      os.makedirs(DIR, exist_ok=True)
+      copy_tree(BENCH_DIR + '/results', DIR)

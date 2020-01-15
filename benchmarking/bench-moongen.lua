@@ -15,20 +15,19 @@ local FLOWS_COUNT = 60000 -- flows
 local THROUGHPUT_STEPS_DURATION = 30 -- seconds
 local THROUGHPUT_STEPS_COUNT = 10 -- number of trials
 
-local RATE_MIN   = 0 -- Mbps
-local RATE_MAX   = 10000 -- Mbps
+local RATE_MIN = 0 -- Mbps
+local RATE_MAX = 10000 -- Mbps
 
 -- heatup needs to open all ports consecutively on a NAT so that reverse packets can go through
 local HEATUP_DURATION   = 5 -- seconds
-local HEATUP_RATE       = 1000 -- Mbps
+local HEATUP_RATE = 1000 -- Mbps
 local HEATUP_BATCH_SIZE = 64 -- packets
 
-local LATENCY_DURATION = 60 -- seconds
+local LATENCY_DURATION = 30 -- seconds
 local LATENCY_PACKETS_PER_SECOND = 1000 -- packets; not too much or MoonGen gets very confused
+local LATENCY_MEASURE_INCREMENTS = false -- whether to measure latencies at increments or just at max
 local LATENCY_LOAD_INCREMENT = 500 -- Mbps
-local LATENCY_LOAD_PADDING   = 250 -- Mbps; removed from max load when measuring latency
-
-local FLOOD_RATE = 10000 -- Mbps
+local LATENCY_LOAD_PADDING   = 100 -- Mbps; removed from max load when measuring latency
 
 local RESULTS_FOLDER_NAME = 'results'
 local RESULTS_THROUGHPUT_FILE_NAME = 'throughput'
@@ -310,8 +309,12 @@ function measureStandard(queuePairs, extraPair, layer)
   if bestRate - LATENCY_LOAD_PADDING > currentGuess then
     latencyRates[#latencyRates+1] = bestRate - LATENCY_LOAD_PADDING
   end
-  -- Finish with 0 because it has no background traffic so the flows will expire
-  latencyRates[#latencyRates+1] = 0
+  latencyRates[#latencyRates+1] = 0  -- Finish with 0 because it has no background traffic so the flows will expire
+
+  if LATENCY_MEASURE_INCREMENTS == false then
+    table.sort(latencyRates)
+    latencyRates = {latencyRates[#latencyRates]}
+  end
 
   local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, extraPair.direction, #latencyRates)
   for r, rate in ipairs(latencyRates) do
@@ -350,6 +353,15 @@ function measureStandard(queuePairs, extraPair, layer)
   end
 end
 
+-- Measure throughput on a single queue pair, only at 10G
+function measureThroughputSingle(queuePairs, _, layer)
+  io.write("[bench] Measuring loss at 10G single direction...")
+
+  local loss = startMeasureThroughput(queuePairs[1].tx, queuePairs[1].rx, 10 * 1000, layer, THROUGHPUT_STEPS_DURATION, queuePairs[1].direction, 1):wait()
+
+  io.write(" loss: " .. (loss * 100) .. "%\n")
+end
+
 -- Measure latency without any load
 function measureLatencyAlone(queuePairs, extraPair, layer)
   io.write("[bench] Measuring latency without load...\n")
@@ -362,7 +374,7 @@ function flood(queuePairs, extraPair, layer)
 
   local tasks = {}
   for i, pair in ipairs(queuePairs) do
-    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, FLOOD_RATE, layer, 10 * 1000 * 1000, pair.direction, 1) -- 10M seconds counts as forever in my book
+    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, 10 * 1000, layer, 10 * 1000 * 1000, pair.direction, 1) -- 10M seconds counts as forever in my book
   end
 
   for _, task in ipairs(tasks) do
@@ -390,6 +402,8 @@ function master(args)
   measureFunc = nil
   if args.type == 'standard' then
     measureFunc = measureStandard
+  elseif args.type == 'throughput-single' then
+    measureFunc = measureThroughputSingle
   elseif args.type == 'latency-alone' then
     measureFunc = measureLatencyAlone
   elseif args.type == 'flood' then

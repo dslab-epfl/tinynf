@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 from common import *
+import pathlib
 import sys
 
 if len(sys.argv) < 4: # script itself + args
@@ -12,7 +13,7 @@ nf = sys.argv[2]
 args = [arg.split('/') for arg in sys.argv[3:]]
 
 keys = [arg[0] for arg in args]
-values = [[float(l.strip()) / 1000 for l in open(get_lat_dir(kind, nf, arg[0], arg[1]), 'r')] for arg in args]
+values = [[float(l.strip())/1000.0 for l in pathlib.Path(get_output_folder(kind, nf), arg[0], arg[1], 'latencies', '0').read_text().splitlines()] for arg in args]
 
 import matplotlib as mpl
 mpl.use('Agg') # avoid the need for an X server
@@ -67,4 +68,4 @@ for ax in axes:
 
 fig.suptitle(get_title(kind, nf), y=0.85) # put the title inside the plot to save space
 plt.ylabel('Latency (us)')
-plt.savefig(get_output_filename(kind, nf, 'latencies.pdf'), bbox_inches='tight')
+plt.savefig(get_output_folder(kind, nf) + '/latencies.svg', bbox_inches='tight')

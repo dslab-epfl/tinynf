@@ -1106,7 +1106,8 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	//	"HTHRESH should be given a non-zero value each time PTHRESH is used."
 	//	"For PTHRESH and HTHRESH recommended setting please refer to Section 7.2.3.4."
 	// INTERPRETATION-MISSING: The "recommended values" are in 7.2.3.4.1 very vague; we use (cache line size)/(descriptor size) for HTHRESH (i.e. 64/16 by assumption CACHE),
-	//                         and a completely arbitrary value for PTHRESH (TODO bench with many, many, many different values)
+	//                         and a completely arbitrary value for PTHRESH
+	// PERFORMANCE: This is required to forward 10G traffic on a single NIC.
 	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, PTHRESH, 60);
 	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
