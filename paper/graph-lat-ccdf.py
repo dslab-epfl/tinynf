@@ -68,6 +68,10 @@ for ax in axes:
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
+# Ensure the top lines are visible
+for ax in axes:
+  ax.set_ylim(0, 1.02)
+
 # Plot the data
 for ax in axes:
   for array, key in zip(values, keys):

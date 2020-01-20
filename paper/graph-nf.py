@@ -44,7 +44,7 @@ for key, params in numbers.items():
   ax.scatter(x, y, color=color, label=key)
 
 ax.set_xlim(left=0)
-ax.set_ylim(0, max_99th + 500) # ensure uniform scale for median, 99th, etc
+ax.set_ylim(bottom=0)
 plt.xlabel('Max throughput with <0.1% loss (Mbps)')
 plt.ylabel(perc_str + ' latency (ns)')
 plt.legend(loc='upper left', handletextpad=0.3)

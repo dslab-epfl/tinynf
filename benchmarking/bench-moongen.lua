@@ -309,7 +309,7 @@ function measureStandard(queuePairs, extraPair, layer)
   if bestRate - LATENCY_LOAD_PADDING > currentGuess then
     latencyRates[#latencyRates+1] = bestRate - LATENCY_LOAD_PADDING
   end
-  latencyRates[#latencyRates+1] = 0  -- Finish with 0 because it has no background traffic so the flows will expire
+  -- we don't do rate 0, too much of a pain to isolate it from the rest; run the "latency alone" benchmark instead if you want it
 
   if LATENCY_MEASURE_INCREMENTS == false then
     table.sort(latencyRates)
