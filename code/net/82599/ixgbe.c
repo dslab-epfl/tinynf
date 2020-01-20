@@ -1159,7 +1159,6 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 {
 	pipe->scheduling_counter = pipe->scheduling_counter + 1u;
 
-	// TODO investigate making earliest_send_head an uint64_t... might even make all send heads uint64_t?
 	if((pipe->scheduling_counter & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) {
 		// In case there are no send queues, the "earliest" send head is the processed delimiter
 		uint32_t earliest_send_head = (uint32_t) pipe->processed_delimiter;
