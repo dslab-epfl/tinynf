@@ -26,14 +26,19 @@ TN_NET ?= 82599
 TN_APP ?= tinynf
 
 # Toolchain
-TN_CC ?= clang-9 # clang has -Weverything, no need to manually list warnings we want; hardcode version for reproducibility
+TN_CC ?= gcc-9 # hardcode version for reproducibility
 TN_STRIP ?= strip
 
 # Files
 TN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ifeq (,$(TN_FILES))
 TN_FILES := $(TN_DIR)/tinynf.c
+ifneq (,$(findstring clang,$(TN_CC)))
 TN_CFLAGS += -Weverything
+endif
+ifneq (,$(findstring gcc,$(TN_CC)))
+TN_CFLAGS += -Wall -Wextra -Wshadow -Wstrict-aliasing -pedantic
+endif
 endif
 TN_FILES += $(shell echo $(TN_DIR)/env/$(TN_ENV)/*.c $(TN_DIR)/net/$(TN_NET)/*.c)
 
