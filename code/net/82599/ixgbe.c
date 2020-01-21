@@ -1166,7 +1166,7 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 		// Race conditions are possible here, but all they can do is make our "earliest send head" value too low, which is fine
 		for (uint64_t n = 0; n < pipe->send_count; n++) {
 			uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
-			uint64_t diff = head - pipe->processed_delimiter; // TODO it'd be nice if we didn't need it here so we could modulo it only when writing, not at every iter
+			uint64_t diff = head - pipe->processed_delimiter;
 			if (diff <= min_diff) {
 				earliest_send_head = head;
 				min_diff = diff;
