@@ -895,7 +895,7 @@ struct tn_net_pipe
 	// thus, using assumption CACHE, we multiply indices by 16
 	#define SEND_HEAD_MULTIPLIER 16
 	volatile uint32_t send_heads[IXGBE_PIPE_MAX_SENDS * SEND_HEAD_MULTIPLIER];
-	volatile uint64_t* rings[IXGBE_PIPE_MAX_SENDS]; // 0 == shared receive/send, rest are exclusive send // TODO if we use 1gb hugepages we can alloc many rings, make this "base", and use base+n instead of storing separately
+	volatile uint64_t* rings[IXGBE_PIPE_MAX_SENDS]; // 0 == shared receive/send, rest are exclusive send
 	uintptr_t send_tail_addrs[IXGBE_PIPE_MAX_SENDS];
 };
 
