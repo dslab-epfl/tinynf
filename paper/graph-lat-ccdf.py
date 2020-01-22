@@ -36,7 +36,7 @@ plt.rcParams['axes.xmargin'] = 0
 
 axes = []
 if limit == 0:
-  fig, ax = plt.subplots(1, 1)
+  fig, ax = plt.subplots(1, 1, figsize=[6.4, 2.4]) # half the usual height
   axes = [ax]
   ax.set_xlim(0, max([max(arr) for arr in values]))
 else:
@@ -75,7 +75,7 @@ for ax in axes:
 # Plot the data
 for ax in axes:
   for array, key in zip(values, keys):
-    ax.hist(array, 10*len(array), density=True, histtype='step', cumulative=True, label=key, color=get_color(key))
+    ax.hist(array, 10*len(array), density=True, histtype='step', cumulative=True, color=get_color(key), linewidth=1.8)
     # Remove the pointless horizontal line at the end, see https://stackoverflow.com/a/52921726/3311770
     for poly in ax.get_children():
       if isinstance(poly, mpl.patches.Polygon):
@@ -85,8 +85,12 @@ for ax in axes:
   ax.grid(True, color='xkcd:light grey')
   ax.set_axisbelow(True) # ensure the grid ends up below the data
 
-fig.suptitle(get_title(kind, nf), y=0.92)
-fig.text(0.5, 0.02, 'Latency (us)', ha='center')
+# Custom legend so we get lines and not rectangles
+import matplotlib.lines as mlines
+lines = [mlines.Line2D([], [], color=get_color(key), label=key) for key in keys]
+plt.legend(handles=lines, loc='center right', handletextpad=0.3, borderaxespad=0)
+
+fig.suptitle(get_title(kind, nf), y=0.96)
+fig.text(0.5, -0.04, 'Latency (us)', ha='center')
 fig.text(0.02, 0.5, 'Cumulative probability', va='center', rotation='vertical')
-plt.legend(loc='center right', handletextpad=0.3, borderaxespad=0)
 plt.savefig(get_output_folder(kind, nf) + '/latencies-ccdf.svg', bbox_inches='tight')
