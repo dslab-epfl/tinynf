@@ -4,6 +4,7 @@
 # Exits with a non-zero code if the benchmark fails for any reason.
 # Overrideable behavior:
 # - The NF process name defaults to 'tinynf', but will be the value printed out by 'make print-nf-name' if this task exists
+# - If the Make target 'is-dpdk' exists, DPDK will be initialized
 
 LOG_FILE='bench.log'
 
@@ -49,6 +50,11 @@ if [ ! -f "$THIS_DIR/config" ]; then
 fi
 . "$THIS_DIR/config"
 
+# Initialize DPDK if needed, as explained in the script header
+make -C "$NF_DIR" -q is-dpdk >/dev/null 2>&1
+if [ $? -ne 2 ]; then
+  ./setup-dpdk.sh "$DUT_DEV_0" "$DUT_DEV_1"
+fi
 
 git submodule update --init --recursive
 if [ $? -ne 0 ]; then
@@ -64,13 +70,13 @@ fi
 
 echo '[bench] Building and running the NF...'
 
-TN_ARGS="$MB_DEV_0 $MB_DEV_1" make -C "$NF_DIR" >"$LOG_FILE" 2>&1
+TN_ARGS="$DUT_DEV_0 $DUT_DEV_1" make -C "$NF_DIR" >"$LOG_FILE" 2>&1
 if [ $? -ne 0 ]; then
   echo "[FATAL] Could not build; the $LOG_FILE file in the same directory as $0 may be useful"
   exit 1
 fi
 
-TN_ARGS="$MB_DEV_0 $MB_DEV_1" taskset -c "$MB_CPU" make -C "$NF_DIR" run >>"$LOG_FILE" 2>&1 &
+TN_ARGS="$DUT_DEV_0 $DUT_DEV_1" taskset -c "$DUT_CPU" make -C "$NF_DIR" run >>"$LOG_FILE" 2>&1 &
 # Sleep (as little as possible) if the NF needs a while to start
 for i in $(seq 1 30); do
   sleep 1

@@ -15,12 +15,14 @@ run:
 else
 # these extra cflags are a workaround for Click not compiling with DPDK 17.11
 compile:
-	@$(THIS_DIR)/../../reset-dpdk.sh $(TN_ARGS)
 	@EXTRA_CFLAGS='-I "$(RTE_SDK)/$(RTE_TARGET)/include" --include=rte_bus_pci.h' $(THIS_DIR)/../setup.sh >/dev/null 2>&1
 
 # the --dpdk appears necessary even if we give no args, in order to actually use DPDK
 run:
 	@sudo $(THIS_DIR)/../click/bin/click burst=$(TN_BATCH_SIZE) --dpdk -- $(THIS_DIR)/$(TN_NF).click
+
+is-dpdk:
+	@# yes
 endif
 
 print-nf-name:

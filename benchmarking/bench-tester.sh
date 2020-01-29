@@ -23,6 +23,7 @@ fi
 if [ ! -f moongen/build/MoonGen ]; then
   echo '[bench] Building MoonGen...'
   ./moongen/build.sh
+  echo '[bench] Ignore errors after "Trying to bind interfaces" above, the binding is not supposed to work at that point'
 fi
 
 echo '[bench] Setting up tester...'
@@ -30,16 +31,7 @@ echo '[bench] Setting up tester...'
 sudo pkill -x -9 MoonGen >/dev/null 2>&1 # in case it crashed previously
 sudo rm -rf /dev/hugepages/* # make sure there are no leftovers from a previous run
 
-# code taken from libmoon's bind-interfaces-sh
-sudo modprobe uio
-(lsmod | grep igb_uio > /dev/null) || sudo insmod 'moongen/libmoon/deps/dpdk/x86_64-native-linuxapp-gcc/kmod/igb_uio.ko'
-
-DPDK_DIR='moongen/libmoon/deps/dpdk'
-for pci in "$TESTER_DEV_0" "$TESTER_DEV_1"; do
-  if ! sudo "$DPDK_DIR/usertools/dpdk-devbind.py" --status | grep -F "$pci" | grep -q 'drv=igb_uio'; then
-    sudo "$DPDK_DIR/usertools/dpdk-devbind.py" --force --bind igb_uio "$pci"
-  fi
-done
+RTE_SDK='moongen/libmoon/deps/dpdk' RTE_TARGET='x86_64-native-linuxapp-gcc' ./setup-dpdk.sh "$TESTER_DEV_0" "$TESTER_DEV_1"
 
 # Remove the output to avoid a stale one if the script fails
 rm -f bench.result

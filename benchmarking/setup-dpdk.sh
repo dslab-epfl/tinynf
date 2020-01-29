@@ -17,7 +17,7 @@ if [ "$needs_reset" = 'true' ]; then
   for pci in $(sudo "$RTE_SDK/usertools/dpdk-devbind.py" --status | grep drv=igb_uio | awk '{ print $1 }'); do
     sudo "$RTE_SDK/usertools/dpdk-devbind.py" -u $pci
   done
-  sudo rmmod igb_uio || true
+  sudo rmmod igb_uio >/dev/null 2>&1 || true
   make -C "$RTE_SDK" install -j$(nproc) T=x86_64-native-linuxapp-gcc DESTDIR=. >/dev/null 2>&1
   sudo modprobe uio
   sudo insmod "$RTE_SDK/$RTE_TARGET/kmod/igb_uio.ko"
