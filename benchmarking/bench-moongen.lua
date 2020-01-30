@@ -20,8 +20,8 @@ local RATE_MAX = 10000 -- Mbps
 
 -- heatup needs to open all ports consecutively on a NAT so that reverse packets can go through
 local HEATUP_DURATION   = 5 -- seconds
-local HEATUP_RATE = 1000 -- Mbps
-local HEATUP_BATCH_SIZE = 64 -- packets
+local HEATUP_RATE = 100 -- Mbps
+local HEATUP_BATCH_SIZE = 8 -- packets
 
 local LATENCY_DURATION = 30 -- seconds
 local LATENCY_PACKETS_PER_SECOND = 1000 -- packets; not too much or MoonGen gets very confused
@@ -236,19 +236,11 @@ end
 -- Heats up at the given layer
 function heatUp(queuePairs, layer)
   io.write("[bench] Heating up...\n")
-  local tasks = {}
-  for i, pair in ipairs(queuePairs) do
-    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, HEATUP_RATE, layer, HEATUP_DURATION, pair.direction, HEATUP_BATCH_SIZE)
-    -- ensure the flows are "opened" before their counterparts come from the other direction, for NFs like NATs
-    mg.sleepMillis(100)
-  end
-
-  for i, task in ipairs(tasks) do
-    local loss = tasks[i]:wait()
-    if loss > 0.01 then
-      io.write("[FATAL] Heatup " .. queuePairs[i].description .. " lost " .. (loss * 100) .. "% of packets!\n")
-      os.exit(1)
-    end
+  local task = startMeasureThroughput(queuePairs[1].tx, queuePairs[1].rx, HEATUP_RATE, layer, HEATUP_DURATION, queuePairs[1].direction, HEATUP_BATCH_SIZE)
+  local loss = task:wait()
+  if loss > 0.01 then
+    io.write("[FATAL] Heatup lost " .. (loss * 100) .. "% of packets!\n")
+    os.exit(1)
   end
 end
 
@@ -403,10 +395,10 @@ function master(args)
   device.waitForLinks()
 
   local queuePairs = {
-    [1] = { tx = dev0:getTxQueue(0), rx = dev1:getRxQueue(0), direction = 0, description = "0->1" },
-    [2] = { tx = dev1:getTxQueue(0), rx = dev0:getRxQueue(0), direction = 1, description = "1->0" }
+    [1] = { tx = dev0:getTxQueue(0), rx = dev1:getRxQueue(0), direction = 0 },
+    [2] = { tx = dev1:getTxQueue(0), rx = dev0:getRxQueue(0), direction = 1 }
   }
-  local extraPair = { tx = dev0:getTxQueue(1), rx = dev1:getRxQueue(1), direction = 0, description = "0->1 extra" }
+  local extraPair = { tx = dev0:getTxQueue(1), rx = dev1:getRxQueue(1), direction = 0 }
 
   measureFunc = nil
   -- Standard benchmark: tput + lats

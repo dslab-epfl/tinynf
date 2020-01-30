@@ -19,7 +19,7 @@ run:
 	@NF_DPDK_ARGS="$(TN_ARGS)" make -C $(VIGOR_DIR)/vig$(TN_NF) run
 else
 run:
-	@EXTRA_CFLAGS="-DVIGOR_BATCH_SIZE=$(TN_BATCH_SIZE)" make -C $(VIGOR_DIR)/vig$(TN_NF) run
+	@EXTRA_CFLAGS="-DVIGOR_BATCH_SIZE=$(TN_BATCH_SIZE) -DVIGOR_ALLOW_DROPS" make -C $(VIGOR_DIR)/vig$(TN_NF) run
 
 is-dpdk:
 	@# yes
