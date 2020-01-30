@@ -128,7 +128,7 @@ function _latencyTask(txQueue, rxQueue, layer, direction, count)
         packetInits[direction](buf, LATENCY_PACKETS_SIZE)
         packetConfigs[direction][layer](buf:getUdpPacket(), counter)
         counter = (counter + 1) % FLOWS_COUNT
-      end, 2) -- wait 2ms at most before declaring a packet lost, to avoid confusing old packets for new ones
+      end, 1) -- wait 1ms at most before declaring a packet lost, to avoid confusing old packets for new ones
     end
 
     measureFunc() -- expire flows if needed, without counting the latency
@@ -346,8 +346,8 @@ function measureStandard(queuePairs, extraPair, args)
       os.exit(0)
     end
 
-    if (loss / #queuePairs) > 0.001 then
-      -- this really should not happen! we know the NF can sustain this!
+    -- for some reason even the DPDK no-op gets ~0.1% loss sometimes at low rates...
+    if (loss / #queuePairs) > 0.002 then
       io.write("[FATAL] Too much loss! (" .. (loss / #queuePairs) .. ")\n")
       os.exit(1)
     end
