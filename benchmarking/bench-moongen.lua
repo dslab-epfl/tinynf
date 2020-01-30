@@ -25,9 +25,9 @@ local HEATUP_BATCH_SIZE = 64 -- packets
 
 local LATENCY_DURATION = 30 -- seconds
 local LATENCY_PACKETS_PER_SECOND = 1000 -- packets; not too much or MoonGen gets very confused
-local LATENCY_MEASURE_INCREMENTS = false -- whether to measure latencies at increments or just at max
+local LATENCY_PACKETS_SIZE = 84 -- bytes, minimum 84
 local LATENCY_LOAD_INCREMENT = 500 -- Mbps
-local LATENCY_LOAD_PADDING   = 100 -- Mbps; removed from max load when measuring latency
+local LATENCY_LOAD_PADDING   = 50 -- Mbps; removed from max load when measuring latency
 
 local RESULTS_FOLDER_NAME = 'results'
 local RESULTS_THROUGHPUT_FILE_NAME = 'throughput'
@@ -37,6 +37,7 @@ local RESULTS_LATENCIES_FOLDER_NAME = 'latencies'
 function configure(parser)
   parser:argument("type", "'latency' or 'throughput'.")
   parser:argument("layer", "Layer at which the flows are meaningful."):convert(tonumber)
+  parser:option("-l --latencyload", "Specific total background load for standard latency; if not set, script does from 0 to max tput"):default(-1):convert(tonumber)
 end
 
 -- Helper function to print a histogram as a CSV row: min, max, median, stdev, 99th
@@ -120,14 +121,18 @@ function _latencyTask(txQueue, rxQueue, layer, direction, count)
   for i = 1, count do
     local hist = hist:new()
     local counter = 0
-    while sendTimer:running() and mg.running() do
-      -- Minimum size for these packets is 84
-      local packetSize = 84
-      hist:update(timestamper:measureLatency(packetSize, function(buf)
-        packetInits[direction](buf, packetSize)
+    local measureFunc = function()
+      return timestamper:measureLatency(LATENCY_PACKETS_SIZE, function(buf)
+        packetInits[direction](buf, LATENCY_PACKETS_SIZE)
         packetConfigs[direction][layer](buf:getUdpPacket(), counter)
         counter = (counter + 1) % FLOWS_COUNT
-      end, 2)) -- wait 2ms at most before declaring a packet lost, to avoid confusing old packets for new ones
+      end, 2) -- wait 2ms at most before declaring a packet lost, to avoid confusing old packets for new ones
+    end
+
+    measureFunc() -- expire flows if needed, without counting the latency
+
+    while sendTimer:running() and mg.running() do
+      hist:update(measureFunc())
       rateLimiter:wait()
       rateLimiter:reset()
     end
@@ -248,8 +253,8 @@ end
 
 -- Measure max throughput with less than 0.1% loss,
 -- and latency at lower rates up to max throughput minus 100Mbps
-function measureStandard(queuePairs, extraPair, layer)
-  heatUp(queuePairs, layer)
+function measureStandard(queuePairs, extraPair, args)
+  heatUp(queuePairs, args.layer)
 
   local upperBound = RATE_MAX
   local lowerBound = RATE_MIN
@@ -260,7 +265,7 @@ function measureStandard(queuePairs, extraPair, layer)
     io.write("[bench] Step " .. i .. ": " .. (#queuePairs * rate) .. " Mbps... ")
     local tasks = {}
     for i, pair in ipairs(queuePairs) do
-      tasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, THROUGHPUT_STEPS_DURATION, pair.direction, 1)
+      tasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, args.layer, THROUGHPUT_STEPS_DURATION, pair.direction, 1)
     end
 
     local loss = 0
@@ -300,35 +305,37 @@ function measureStandard(queuePairs, extraPair, layer)
   end
 
   local latencyRates = {}
-  local currentGuess = LATENCY_LOAD_INCREMENT
+  local currentGuess = 0
   while currentGuess < bestRate do
     latencyRates[#latencyRates+1] = currentGuess
     currentGuess = currentGuess + LATENCY_LOAD_INCREMENT
   end
   currentGuess = currentGuess - LATENCY_LOAD_INCREMENT
+  local lastGuess = bestRate - LATENCY_LOAD_PADDING - (LATENCY_PACKETS_SIZE * LATENCY_PACKETS_PER_SECOND / (1000 * 1000)) -- divide to put it in Mbps
   if bestRate - LATENCY_LOAD_PADDING > currentGuess then
     latencyRates[#latencyRates+1] = bestRate - LATENCY_LOAD_PADDING
   end
-  -- we don't do rate 0, too much of a pain to isolate it from the rest; run the "latency alone" benchmark instead if you want it
 
-  if LATENCY_MEASURE_INCREMENTS == false then
-    table.sort(latencyRates)
-    latencyRates = {latencyRates[#latencyRates]}
+  -- override if necessary, see description of the parser option
+  if args.latencyload ~= -1 then
+    latencyRates = {args.latencyload / #queuePairs}
   end
 
-  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, layer, extraPair.direction, #latencyRates)
+  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, #latencyRates)
   for r, rate in ipairs(latencyRates) do
     io.write("[bench] Measuring latency at rate " .. (rate * #queuePairs) .. "...\n")
     local throughputTasks = {}
-    if rate ~= 0 then
-      for i, pair in ipairs(queuePairs) do
-        throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, layer, LATENCY_DURATION, pair.direction, 1)
-      end
-    end
-
     local loss = 0
-    for _, task in ipairs(throughputTasks) do
-      loss = loss + task:wait()
+
+    if rate == 0 then
+      mg.sleepMillis(LATENCY_DURATION)
+    else
+      for i, pair in ipairs(queuePairs) do
+        throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, args.layer, LATENCY_DURATION, pair.direction, 1)
+      end
+      for _, task in ipairs(throughputTasks) do
+        loss = loss + task:wait()
+      end
     end
 
     -- We may have been interrupted
@@ -354,27 +361,27 @@ function measureStandard(queuePairs, extraPair, layer)
 end
 
 -- Measure throughput on a single queue pair, only at 10G
-function measureThroughputSingle(queuePairs, _, layer)
+function measureThroughputSingle(queuePairs, _, args)
   io.write("[bench] Measuring loss at 10G single direction...")
 
-  local loss = startMeasureThroughput(queuePairs[1].tx, queuePairs[1].rx, 10 * 1000, layer, THROUGHPUT_STEPS_DURATION, queuePairs[1].direction, 1):wait()
+  local loss = startMeasureThroughput(queuePairs[1].tx, queuePairs[1].rx, 10 * 1000, args.layer, THROUGHPUT_STEPS_DURATION, queuePairs[1].direction, 1):wait()
 
   io.write(" loss: " .. (loss * 100) .. "%\n")
 end
 
 -- Measure latency without any load
-function measureLatencyAlone(queuePairs, extraPair, layer)
+function measureLatencyAlone(queuePairs, extraPair, args)
   io.write("[bench] Measuring latency without load...\n")
-  local lats = startMeasureLatency(extraPair.tx, extraPair.rx, layer, extraPair.direction, 1):wait()
+  local lats = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, 1):wait()
   dumpHistogram(lats[1], RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/0")
 end
 
-function flood(queuePairs, extraPair, layer)
+function flood(queuePairs, extraPair, args)
   io.write("[bench] Flooding. Stop with Ctrl+C.\n")
 
   local tasks = {}
   for i, pair in ipairs(queuePairs) do
-    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, 10 * 1000, layer, 10 * 1000 * 1000, pair.direction, 1) -- 10M seconds counts as forever in my book
+    tasks[i] = startMeasureThroughput(pair.tx, pair.rx, 10 * 1000, args.layer, 10 * 1000 * 1000, pair.direction, 1) -- 10M seconds counts as forever in my book
   end
 
   for _, task in ipairs(tasks) do
@@ -400,14 +407,22 @@ function master(args)
   local extraPair = { tx = dev0:getTxQueue(1), rx = dev1:getRxQueue(1), direction = 0, description = "0->1 extra" }
 
   measureFunc = nil
+  -- Standard benchmark: tput + lats
   if args.type == 'standard' then
     measureFunc = measureStandard
-  elseif args.type == 'throughput-single' then
-    measureFunc = measureThroughputSingle
-  elseif args.type == 'latency-alone' then
-    measureFunc = measureLatencyAlone
+  -- Same, but on 1 link
+  elseif args.type == 'standard-single' then
+    queuePairs[2] = nil
+    measureFunc = measureStandard
+  -- Flood forever, useful to inspect client behavior
   elseif args.type == 'flood' then
     measureFunc = flood
+  -- Just check loss rate at 10G one-way
+  elseif args.type == 'debug-throughput-single' then
+    measureFunc = measureThroughputSingle
+  -- Just check latency without background load
+  elseif args.type == 'debug-latency-alone' then
+    measureFunc = measureLatencyAlone
   else
     print("Unknown type.")
     os.exit(1)
@@ -417,5 +432,5 @@ function master(args)
   os.execute("rm -rf '" .. RESULTS_FOLDER_NAME .. "'")
   os.execute("mkdir -p '" .. RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "'")
 
-  measureFunc(queuePairs, extraPair, args.layer)
+  measureFunc(queuePairs, extraPair, args)
 end

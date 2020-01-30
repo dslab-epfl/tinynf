@@ -14,17 +14,11 @@ if [ -z "$1" ]; then
 fi
 NF_DIR="$1"
 
-if [ -z "$2" ]; then
-  echo "[ERROR] Please provide the type of benchmark as the second argument to $0"
+shift
+if [ $# -lt 2 ]; then
+  echo "[ERROR] Please provide at least the type of benchmark and layer as arguments to $0"
   exit 1
 fi
-BENCH_TYPE="$2"
-
-if [ -z "$3" ]; then
-  echo "[ERROR] Please provide the layer of the benchmark as the third argument to $0"
-  exit 1
-fi
-BENCH_LAYER="$3"
 
 echo '[bench] Setting up the benchmark...'
 
@@ -90,7 +84,7 @@ if [ -z "$NF_PID" ]; then
   exit 1
 fi
 
-ssh "$TESTER_HOST" "cd tinynf-benchmarking; ./bench-tester.sh $BENCH_TYPE $BENCH_LAYER"
+ssh "$TESTER_HOST" "cd tinynf-benchmarking; ./bench-tester.sh $@"
 if [ $? -eq 0 ]; then
   scp -r "$TESTER_HOST"':tinynf-benchmarking/results' . >/dev/null 2>&1
   if [ $? -eq 0 ]; then
