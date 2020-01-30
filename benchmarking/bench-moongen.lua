@@ -1,6 +1,6 @@
 local ffi     = require "ffi"
 local device  = require "device"
-local hist    = require "histogram"
+local histo   = require "histogram"
 local memory  = require "memory"
 local mg      = require "moongen"
 local stats   = require "stats"
@@ -40,18 +40,20 @@ function configure(parser)
   parser:option("-l --latencyload", "Specific total background load for standard latency; if not set, script does from 0 to max tput"):default(-1):convert(tonumber)
 end
 
--- Helper function to print a histogram as a CSV row: min, max, median, stdev, 99th
-function histogramToString(hist)
+-- Helper function to summarize latencies: min, max, median, stdev, 99th
+function summarizeLatencies(lats)
+  local hist = histo:new()
+  for _, val in ipairs(lats) do
+    hist:update(val)
+  end
   return "min: " .. hist:min() .. ", max: " .. hist:max() .. ", median: " .. hist:median() .. ", stdev: " .. hist:standardDeviation() .. ", 99%: " .. hist:percentile(99)
 end
 
--- Helper function to write all histogram values to a file
-function dumpHistogram(hist, filename)
+-- Helper function to write latencies to a file
+function dumpLatencies(lats, filename)
   file = io.open(filename, "w")
-  for v in hist:samples() do
-    for i = 1, v.v do
-      file:write(v.k .. "\n")
-    end
+  for _, val in ipairs(lats) do
+    file:write(val .. "\n")
   end
   file:close()
 end
@@ -119,7 +121,7 @@ function _latencyTask(txQueue, rxQueue, layer, direction, count)
 
   local results = {}
   for i = 1, count do
-    local hist = hist:new()
+    local lats = {}
     local counter = 0
     local measureFunc = function()
       return timestamper:measureLatency(LATENCY_PACKETS_SIZE, function(buf)
@@ -132,12 +134,12 @@ function _latencyTask(txQueue, rxQueue, layer, direction, count)
     measureFunc() -- expire flows if needed, without counting the latency
 
     while sendTimer:running() and mg.running() do
-      hist:update(measureFunc())
+      lats[#lats+1] = measureFunc()
       rateLimiter:wait()
       rateLimiter:reset()
     end
-    results[#results+1] = hist
-    io.write("[bench] " .. histogramToString(hist) .. "\n")
+    results[#results+1] = lats
+    io.write("[bench] " .. summarizeLatencies(lats) .. "\n")
     mg.sleepMillis(100)
     sendTimer:reset()
   end
@@ -328,7 +330,7 @@ function measureStandard(queuePairs, extraPair, args)
     local loss = 0
 
     if rate == 0 then
-      mg.sleepMillis(LATENCY_DURATION)
+      mg.sleepMillis(LATENCY_DURATION * 1000)
     else
       for i, pair in ipairs(queuePairs) do
         throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, args.layer, LATENCY_DURATION, pair.direction, 1)
@@ -354,9 +356,9 @@ function measureStandard(queuePairs, extraPair, args)
     mg.sleepMillis(100)
   end
 
-  local lats = latencyTask:wait()
+  local latss = latencyTask:wait()
   for r, rate in ipairs(latencyRates) do
-    dumpHistogram(lats[r], RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/" .. (rate * #queuePairs))
+    dumpLatencies(latss[r], RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/" .. (rate * #queuePairs))
   end
 end
 
