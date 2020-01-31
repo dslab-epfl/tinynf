@@ -12,13 +12,26 @@ import time
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 BENCH_DIR = THIS_DIR + '/../benchmarking/'
 
-if len(sys.argv) != 3: # script itself + 2 args
+if len(sys.argv) < 3: # script itself + 2 args
   print('[ERROR] Please provide 2 arguments: <NF directory> <NF (e.g. nop, nat, bridge...)>')
   sys.exit(1)
 
 NF_DIR_BASE = os.path.realpath(sys.argv[1])
 NF_DIR_NAME = os.path.basename(NF_DIR_BASE)
 NF = sys.argv[2]
+
+if len(sys.argv) == 4:
+  if sys.argv[3] == 'single':
+    NF_KIND_CHOICES = ['custom', 'dpdk']
+    BENCH_KIND = ['-l', '1000', 'standard-single']
+    FILE_SUFFIX = '-single'
+  else:
+    print('[ERROR] Unknown bench kind')
+    sys.exit(1)
+else:
+  NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk']
+  BENCH_KIND = ['standard']
+  FILE_SUFFIX = ''
 
 OUTPUT_DIR = get_output_folder(NF_DIR_NAME, NF)
 
@@ -40,24 +53,24 @@ elif NF == 'pol':
   os.environ['POLICER_BURST'] = '10000000000'
   os.environ['POLICER_RATE'] = '10000000000'
 
-NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk']
-
 RESULTS = {}
 for NF_KIND in NF_KIND_CHOICES:
-  PARAM_CHOICES = ['1', '2', '4', '8', '16', '32', '64', '128']
+  #PARAM_CHOICES = ['1', '2', '4', '8', '16', '32', '64', '128']
   CUSTOM_ENV = {}
   if NF_KIND == 'custom' or NF_KIND == 'dpdk-shim':
     # Necessary if DPDK has been used before and didn't exit cleanly (call sh to have it expand the *)
     subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
 
+    PARAM_CHOICES = ['4', '16', '32', '64']
     LTO = True
-    ONEWAY_CHOICES = [True, False]
+    ONEWAY_CHOICES = [True] # [True, False]
     if NF_KIND == 'custom':
       NF_DIR = NF_DIR_BASE
     else:
       NF_DIR = NF_DIR_BASE + '/with-dpdk'
       CUSTOM_ENV = { 'RTE_SDK': THIS_DIR + '/../shims/dpdk', 'RTE_TARGET': '.' }
   else:
+    PARAM_CHOICES = ['1', '16', '32', '64']
     LTO = False
     ONEWAY_CHOICES = [False]
     NF_DIR = NF_DIR_BASE + '/with-dpdk'
@@ -105,12 +118,19 @@ for NF_KIND in NF_KIND_CHOICES:
       # can fail for spurious reasons, e.g. random DNS failures
       while True:
         print('[!!!] Benchmarking "' + KEY + '", param: ' + str(PARAM) + ' ...')
-        RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR, 'standard', LAYER], cwd=BENCH_DIR, env=ENV).returncode
+        RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR] + BENCH_KIND + [LAYER], cwd=BENCH_DIR, env=ENV).returncode
         if RESULT == 0:
           break
         else:
           time.sleep(60)
 
+      BENCH_RESULTS_PATH = BENCH_DIR + '/results'
+      TPUT_FILE_PATH = BENCH_RESULTS_PATH + '/throughput'
+      LAT_FOLDER_PATH = BENCH_RESULTS_PATH + '/latencies'
+
+      os.rename(TPUT_FILE_PATH, TPUT_FILE_PATH + FILE_SUFFIX)
+      os.rename(LAT_FOLDER_PATH, LAT_FOLDER_PATH + FILE_SUFFIX)
+
       DIR = OUTPUT_DIR + '/' + KEY + '/' + str(PARAM)
       os.makedirs(DIR, exist_ok=True)
-      copy_tree(BENCH_DIR + '/results', DIR)
+      copy_tree(BENCH_RESULTS_PATH, DIR)
