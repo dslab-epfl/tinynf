@@ -101,7 +101,7 @@ static_assert(IXGBE_PIPE_SCHEDULING_PERIOD >= 1, "Scheduling period must be at l
 static_assert((IXGBE_PIPE_SCHEDULING_PERIOD & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == 0, "Scheduling period must be a power of 2");
 // Updating period for receiving transmit head updates from the hardware. Not based on any spec, can be redefined at will as long as it's a positive power of 2 below the ring size.
 #ifndef IXGBE_PIPE_UPDATE_PERIOD
-#define IXGBE_PIPE_UPDATE_PERIOD 512
+#define IXGBE_PIPE_UPDATE_PERIOD 64
 #endif
 static_assert(IXGBE_PIPE_UPDATE_PERIOD >= 1, "Update period must be at least 1");
 static_assert(IXGBE_PIPE_UPDATE_PERIOD < IXGBE_RING_SIZE, "Update period must be less than the ring size");
@@ -1157,35 +1157,16 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 
 bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_t* out_packet_length)
 {
-	pipe->scheduling_counter = pipe->scheduling_counter + 1u;
-
-	if((pipe->scheduling_counter & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) {
-		// In case there are no send queues, the "earliest" send head is the processed delimiter
-		uint32_t earliest_send_head = (uint32_t) pipe->processed_delimiter;
-		uint64_t min_diff = (uint64_t) -1;
-		// Race conditions are possible here, but all they can do is make our "earliest send head" value too low, which is fine
-		for (uint64_t n = 0; n < pipe->send_count; n++) {
-			uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
-			uint64_t diff = head - pipe->processed_delimiter;
-			if (diff <= min_diff) {
-				earliest_send_head = head;
-				min_diff = diff;
-			}
-
-			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
-		}
-
-		ixgbe_reg_write_raw(pipe->receive_tail_addr, (earliest_send_head - 1) & (IXGBE_RING_SIZE - 1));
-	}
-
 	// Since descriptors are 16 bytes, the index must be doubled
 	volatile uint64_t* main_metadata_addr = pipe->rings[0] + 2u*pipe->processed_delimiter + 1;
 	uint64_t receive_metadata = *main_metadata_addr;
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
 	if ((receive_metadata & BITL(32)) == 0) {
+		pipe->scheduling_counter = pipe->scheduling_counter + 16u;
 		return false;
 	}
+	pipe->scheduling_counter = (pipe->scheduling_counter + 1u) | 0x8000000000000000;
 
 	// This cannot overflow because the packet is by definition in an allocated block of memory
 	*out_packet = (uint8_t*) pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
@@ -1235,6 +1216,40 @@ void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* se
 
 	// Increment the processed delimiter, modulo the ring size
 	pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
+
+	// Do the 2 other actors here, not in receive, to optimize symbolic execution (assuming no merges):
+	// doing it in send means the forks caused by these actors won't last long,
+	// whereas doing it in receive forks at the very beginning.
+
+	// Transmitter 2nd part, moving descriptors to the receive pool
+	// This should happen as rarely as the update period since that's the period controlling send head updates from the NIC
+	if (rs_bit != 0) {
+		// In case there are no send queues, the "earliest" send head is the processed delimiter
+		uint32_t earliest_send_head = (uint32_t) pipe->processed_delimiter;
+		uint64_t min_diff = (uint64_t) -1;
+		// Race conditions are possible here, but all they can do is make our "earliest send head" value too low, which is fine
+		for (uint64_t n = 0; n < pipe->send_count; n++) {
+			uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
+			uint64_t diff = head - pipe->processed_delimiter;
+			if (diff <= min_diff) {
+				earliest_send_head = head;
+				min_diff = diff;
+			}
+		}
+
+		ixgbe_reg_write_raw(pipe->receive_tail_addr, (earliest_send_head - 1) & (IXGBE_RING_SIZE - 1));
+	}
+
+	// Processor 2nd half, moving descriptors to the transmission pool
+	// This must eventually happen after processing a packet, otherwise it won't really be transmitted;
+	// but it should not happen too often when there are many packets, otherwise throughput drops.
+	// Also, it's pointless to do it if no packets have been processed since last time
+	if (pipe->scheduling_counter > 0x8000000000000040) {
+		pipe->scheduling_counter = 0;
+		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
+			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
+		}
+	}
 }
 
 void tn_net_pipe_process(struct tn_net_pipe* pipe, tn_net_packet_handler* handler)

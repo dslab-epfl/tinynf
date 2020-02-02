@@ -42,6 +42,9 @@ end
 
 -- Helper function to summarize latencies: min, max, median, stdev, 99th
 function summarizeLatencies(lats)
+  if #lats == 0 then
+    return "no data"
+  end
   local hist = histo:new()
   for _, val in ipairs(lats) do
     hist:update(val)
@@ -366,8 +369,8 @@ end
 -- Measure latency without any load
 function measureLatencyAlone(queuePairs, extraPair, args)
   io.write("[bench] Measuring latency without load...\n")
-  local lats = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, 1):wait()
-  dumpHistogram(lats[1], RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/0")
+  local latss = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, 1):wait()
+  dumpLatencies(latss[1], RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/0")
 end
 
 function flood(queuePairs, extraPair, args)
