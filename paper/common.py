@@ -9,11 +9,11 @@ def percentile(list, n):
   size = len(list)
   return sorted(list)[int(math.ceil((size * n) / 100)) - 1]
 
-def get_pyplot_ax(title):
+def get_pyplot_ax(title, figsize=None):
   import matplotlib as mpl
   mpl.use('Agg') # avoid the need for an X server
   import matplotlib.pyplot as plt
-  fig = plt.figure()
+  fig = plt.figure(figsize=figsize)
   fig.suptitle(title, y=0.85) # put the title inside the plot to save space
   ax = fig.add_subplot(1, 1, 1)
   # Remove top and right spines

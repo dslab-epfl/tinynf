@@ -61,7 +61,7 @@ for NF_KIND in NF_KIND_CHOICES:
     # Necessary if DPDK has been used before and didn't exit cleanly (call sh to have it expand the *)
     subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
 
-    PARAM_CHOICES = ['4', '16', '32', '64']
+    PARAM_CHOICES = ['4', '32']
     LTO = True
     ONEWAY_CHOICES = [True] # [True, False]
     if NF_KIND == 'custom':
@@ -70,7 +70,7 @@ for NF_KIND in NF_KIND_CHOICES:
       NF_DIR = NF_DIR_BASE + '/with-dpdk'
       CUSTOM_ENV = { 'RTE_SDK': THIS_DIR + '/../shims/dpdk', 'RTE_TARGET': '.' }
   else:
-    PARAM_CHOICES = ['1', '16', '32', '64']
+    PARAM_CHOICES = ['1', '64']
     LTO = False
     ONEWAY_CHOICES = [False]
     NF_DIR = NF_DIR_BASE + '/with-dpdk'

@@ -27,7 +27,7 @@ local LATENCY_DURATION = 30 -- seconds
 local LATENCY_PACKETS_PER_SECOND = 1000 -- packets; not too much or MoonGen gets very confused
 local LATENCY_PACKETS_SIZE = 84 -- bytes, minimum 84
 local LATENCY_LOAD_INCREMENT = 500 -- Mbps
-local LATENCY_LOAD_PADDING   = 50 -- Mbps; removed from max load when measuring latency
+local LATENCY_LOAD_PADDING   = 100 -- Mbps; removed from max load when measuring latency
 
 local RESULTS_FOLDER_NAME = 'results'
 local RESULTS_THROUGHPUT_FILE_NAME = 'throughput'

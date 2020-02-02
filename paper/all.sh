@@ -1,15 +1,11 @@
 #!/bin/sh
 
-# Vigor NOP / NAT full info
-for nf in nop nat; do
-  ./bench-nf.py ../baselines/vigor $nf
-done
-
 # Click NOP full info
 ./bench-nf.py ../baselines/click nop
 
-# Vigor comparison
+# Vigor full info + comparison
 for nf in nop nat fw bridge pol; do
-  ./bench-nf.py ../baselines/vigor $nf simple
+  ./bench-nf.py ../baselines/vigor $nf
+  ./bench-nf.py ../baselines/vigor $nf single
 done
 
