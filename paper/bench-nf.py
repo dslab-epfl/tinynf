@@ -55,13 +55,12 @@ elif NF == 'pol':
 
 RESULTS = {}
 for NF_KIND in NF_KIND_CHOICES:
-  #PARAM_CHOICES = ['1', '2', '4', '8', '16', '32', '64', '128']
   CUSTOM_ENV = {}
   if NF_KIND == 'custom' or NF_KIND == 'dpdk-shim':
     # Necessary if DPDK has been used before and didn't exit cleanly (call sh to have it expand the *)
     subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
 
-    PARAM_CHOICES = ['4', '32']
+    BATCH_CHOICES = ['1']
     LTO = True
     ONEWAY_CHOICES = [True] # [True, False]
     if NF_KIND == 'custom':
@@ -70,7 +69,7 @@ for NF_KIND in NF_KIND_CHOICES:
       NF_DIR = NF_DIR_BASE + '/with-dpdk'
       CUSTOM_ENV = { 'RTE_SDK': THIS_DIR + '/../shims/dpdk', 'RTE_TARGET': '.' }
   else:
-    PARAM_CHOICES = ['1', '64']
+    BATCH_CHOICES = ['1', '64']
     LTO = False
     ONEWAY_CHOICES = [False]
     NF_DIR = NF_DIR_BASE + '/with-dpdk'
@@ -91,12 +90,9 @@ for NF_KIND in NF_KIND_CHOICES:
     else:
       ONEWAY_FLAG = '-DIXGBE_PIPE_MAX_SENDS=2'
 
-    for PARAM in PARAM_CHOICES:
+    for BATCH in BATCH_CHOICES:
       if NF_KIND == 'dpdk':
-        PARAM_FLAG = ''
-        CUSTOM_ENV['TN_BATCH_SIZE'] = PARAM
-      else:
-        PARAM_FLAG = '-DIXGBE_PIPE_SCHEDULING_PERIOD=' + PARAM
+        CUSTOM_ENV['TN_BATCH_SIZE'] = BATCH
 
       if NF_KIND == 'dpdk':
         KEY = 'original'
@@ -112,12 +108,12 @@ for NF_KIND in NF_KIND_CHOICES:
       ENV = dict(os.environ)
       ENV['TN_NF'] = NF
       ENV['TN_LDFLAGS'] = LTO_FLAG
-      ENV['TN_CFLAGS'] = LTO_FLAG + ' ' + ONEWAY_FLAG + ' ' + PARAM_FLAG
+      ENV['TN_CFLAGS'] = LTO_FLAG + ' ' + ONEWAY_FLAG
       ENV.update(CUSTOM_ENV)
 
       # can fail for spurious reasons, e.g. random DNS failures
       while True:
-        print('[!!!] Benchmarking "' + KEY + '", param: ' + str(PARAM) + ' ...')
+        print('[!!!] Benchmarking "' + KEY + '", batch: ' + str(BATCH) + ' ...')
         RESULT = subprocess.run(['sh', 'bench.sh', NF_DIR] + BENCH_KIND + [LAYER], cwd=BENCH_DIR, env=ENV).returncode
         if RESULT == 0:
           break
@@ -131,6 +127,6 @@ for NF_KIND in NF_KIND_CHOICES:
       os.rename(TPUT_FILE_PATH, TPUT_FILE_PATH + FILE_SUFFIX)
       os.rename(LAT_FOLDER_PATH, LAT_FOLDER_PATH + FILE_SUFFIX)
 
-      DIR = OUTPUT_DIR + '/' + KEY + '/' + str(PARAM)
+      DIR = OUTPUT_DIR + '/' + KEY + '/' + str(BATCH)
       os.makedirs(DIR, exist_ok=True)
       copy_tree(BENCH_RESULTS_PATH, DIR)

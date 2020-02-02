@@ -28,17 +28,6 @@ for key_folder in [f for f in sorted(glob.glob(get_output_folder(kind, nf) + '/*
     latencies = [(float(latf.name), int(percentile([int(l) for l in latf.read_text().splitlines()], perc))) for latf in pathlib.Path(param_folder, 'latencies').glob('*')]
     params[param] = sorted(latencies, key=lambda t: t[0])
   numbers[key] = dict(sorted(params.items()))
-  if key == 'original':
-    newp = {}
-    newp[1] = numbers[key][1]
-    maxk = max(numbers[key].keys())
-    newp[maxk] = numbers[key][maxk]
-    numbers[key] = newp
-  else:
-    newp = {}
-    newp[4] = numbers[key][4]
-    newp[32] = numbers[key][32]
-    numbers[key] = newp
 
 plt, ax = get_pyplot_ax(get_title(kind, nf))
 
