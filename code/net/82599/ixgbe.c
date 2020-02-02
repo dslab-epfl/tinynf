@@ -10,9 +10,12 @@
 #define static_assert _Static_assert
 #endif
 
-// INTERPRETATIONS
 // ===============
-// Unfortunately, we sometimes have to interpret the specification; these are categorized as follows:
+// Interpretations
+// ===============
+
+// Unfortunately, we sometimes have to interpret the specification; these are categorized as follows.
+
 // INCORRECT: The data sheet is plain wrong given how the hardware actually behaves.
 // MISSING: Data is missing, forcing us to make a guess.
 // CONTRADICTION: The data sheet contradicts itself, forcing us to make a guess.
@@ -20,9 +23,12 @@
 // TYPO: Obvious typo in the spec that is very unlikely to be ambiguous.
 
 
-// ASSUMPTIONS
 // ===========
-// We make the following assumptions, which we later refer to by name:
+// Assumptions
+// ===========
+
+// We make the following assumptions, which we later refer to by name.
+
 // CACHE: The cache line size is 64 bytes
 // CRC: We want CRC stripped when receiving and generated on the entire packet when sending
 // DROP: We want to drop packets if we can't process them fast enough, for predictable behavior
@@ -54,6 +60,18 @@
 // TXPAD: We want all sent frames to be at least 64 bytes
 
 
+// ====
+// Data
+// ====
+
+// The following subsections contain values extracted from the data sheet.
+
+// ---------
+// Constants
+// ---------
+
+// The following are constants defined by the data sheet.
+
 // Section 7.1.2.5 L3/L4 5-tuple Filters:
 // 	"There are 128 different 5-tuple filter configuration registers sets"
 #define IXGBE_5TUPLE_FILTERS_COUNT 128u
@@ -66,18 +84,13 @@
 #define IXGBE_MULTICAST_TABLE_ARRAY_SIZE (4u * 1024u)
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
 // Section 7.2.3.2.2 Legacy Transmit Descriptor Format: "The maximum length associated with a single descriptor is 15.5 KB"
-#define IXGBE_PACKET_SIZE_MAX (2u * 1024u)
+#define IXGBE_PACKET_BUFFER_SIZE_MAX (15u * 1024u + 512u)
 // Section 7.1.1.1.1 Unicast Filter:
 // 	"The Ethernet MAC address is checked against the 128 host unicast addresses"
 #define IXGBE_RECEIVE_ADDRS_COUNT 128u
 // Section 1.3 Features Summary:
 // 	"Number of Rx Queues (per port): 128"
 #define IXGBE_RECEIVE_QUEUES_COUNT 128u
-// Section 7.2.3.3 Transmit Descriptor Ring:
-// "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
-// This must be a power of 2 to enable fast modulo
-#define IXGBE_RING_SIZE 1024u
-static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2");
 // 	"Number of Tx Queues (per port): 128"
 #define IXGBE_SEND_QUEUES_COUNT 128u
 // Section 7.1.2 Rx Queues Assignment:
@@ -89,95 +102,10 @@ static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be
 // Section 7.10.3.2 Pool Selection:
 // 	"64 shared VLAN filters"
 #define IXGBE_VLAN_FILTER_COUNT 64u
-// Maximum number of send queues assigned to a pipe. Not based on any spec, can be redefined at will
-#ifndef IXGBE_PIPE_MAX_SENDS
-#define IXGBE_PIPE_MAX_SENDS 4u
-#endif
-// Scheduling period for bookkeeping and sending. Not based on any spec, can be redefined at will as long as it's a positive power of 2 for fast modulo
-#ifndef IXGBE_PIPE_SCHEDULING_PERIOD
-#define IXGBE_PIPE_SCHEDULING_PERIOD 32
-#endif
-static_assert(IXGBE_PIPE_SCHEDULING_PERIOD >= 1, "Scheduling period must be at least 1");
-static_assert((IXGBE_PIPE_SCHEDULING_PERIOD & (IXGBE_PIPE_SCHEDULING_PERIOD - 1)) == 0, "Scheduling period must be a power of 2");
-// Updating period for receiving transmit head updates from the hardware. Not based on any spec, can be redefined at will as long as it's a positive power of 2 below the ring size.
-#ifndef IXGBE_PIPE_UPDATE_PERIOD
-#define IXGBE_PIPE_UPDATE_PERIOD 64
-#endif
-static_assert(IXGBE_PIPE_UPDATE_PERIOD >= 1, "Update period must be at least 1");
-static_assert(IXGBE_PIPE_UPDATE_PERIOD < IXGBE_RING_SIZE, "Update period must be less than the ring size");
-static_assert((IXGBE_PIPE_UPDATE_PERIOD & (IXGBE_PIPE_UPDATE_PERIOD - 1)) == 0, "Update period must be a power of 2");
 
-
-// ---------
-// Utilities
-// ---------
-
-// Overload macros for up to 5 args, see https://stackoverflow.com/a/11763277/3311770
-#define GET_MACRO(_1, _2, _3, _4, _5, NAME, ...) NAME
-
-// Bit tricks; note that bit indices start at 0!
-#define BIT(n) (1u << (n))
-#define BITL(n) (1ull << (n))
-#define BITS(start, end) (((end) == 31 ? 0u : (0xFFFFFFFFu << ((end) + 1))) ^ (0xFFFFFFFFu << (start)))
-#define TRAILING_ZEROES(n) __builtin_ctzll(n)
-
-// Like if(...) but polls with a timeout, and executes the body only if the condition is still true after the timeout
-static bool timed_out;
-#define IF_AFTER_TIMEOUT(timeout_in_us, condition) \
-		timed_out = true; \
-		tn_sleep_us((timeout_in_us) % 10); \
-		for (uint8_t i = 0; i < 10; i++) { \
-			if (!(condition)) { \
-				timed_out = false; \
-				break; \
-			} \
-			tn_sleep_us((timeout_in_us) / 10); \
-		} \
-		if (timed_out)
-
-
-// ---------------------
-// Operations on the NIC
-// ---------------------
-
-// Register primitives
-static uint32_t ixgbe_reg_read(const uintptr_t addr, const uint32_t reg)
-{
-	uint32_t val_le = *((volatile uint32_t*)(addr + reg));
-	uint32_t result = tn_le_to_cpu(val_le);
-	TN_VERBOSE("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
-	return result;
-}
-static void ixgbe_reg_write_raw(const uintptr_t reg_addr, const uint32_t value)
-{
-	*((volatile uint32_t*)reg_addr) = tn_cpu_to_le(value);
-}
-static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint32_t value)
-{
-	ixgbe_reg_write_raw(addr + reg, value);
-	TN_VERBOSE("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
-}
-
-#define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
-#define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
-#define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
-#define IXGBE_REG_WRITE4(addr, reg, idx, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), value)
-#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | (((value) << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
-#define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
-#define IXGBE_REG_CLEARED(addr, reg, idx, field) (IXGBE_REG_READ(addr, reg, idx, field) == 0u)
-#define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0U)
-#define IXGBE_REG_CLEAR4(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field))
-#define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR4, IXGBE_REG_CLEAR3, _UNUSED)(__VA_ARGS__)
-#define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) | IXGBE_REG_##reg##_##field))
-
-#define IXGBE_PCIREG_READ(pci_dev, reg) tn_pci_read(pci_dev, IXGBE_PCIREG_##reg)
-#define IXGBE_PCIREG_CLEARED(pci_dev, reg, field) ((IXGBE_PCIREG_READ(pci_dev, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
-#define IXGBE_PCIREG_SET(pci_dev, reg, field) tn_pci_write(pci_dev, IXGBE_PCIREG_##reg, (IXGBE_PCIREG_READ(pci_dev, reg) | IXGBE_PCIREG_##reg##_##field))
-
-
-// -------------------------------------------------------------
-// PCI registers, in alphabetical order, along with their fields
-// -------------------------------------------------------------
+// -------------
+// PCI registers
+// -------------
 
 // Section 9.3.2 PCIe Configuration Space Summary: "0x10 Base Address Register 0" (32 bit), "0x14 Base Address Register 1" (32 bit)
 #define IXGBE_PCIREG_BAR0_LOW 0x10u
@@ -205,9 +133,9 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_PCIREG_PMCSR 0x44u
 #define IXGBE_PCIREG_PMCSR_POWER_STATE BITS(0,1)
 
-// ---------------------------------------------------------
-// Registers, in alphabetical order, along with their fields
-// ---------------------------------------------------------
+// -------------
+// NIC registers
+// -------------
 
 // Section 8.2.3.1.1 Device Control Register
 #define IXGBE_REG_CTRL(_) 0x00000u
@@ -373,9 +301,108 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 #define IXGBE_REG_TXPBTHRESH_THRESH BITS(0,9)
 
 
-// ======
-// Device
-// ======
+// ====
+// Code
+// ====
+
+// ----------
+// Parameters
+// ----------
+
+#define IXGBE_PACKET_BUFFER_SIZE (2 * 1024u)
+static_assert(IXGBE_PACKET_BUFFER_SIZE < IXGBE_PACKET_BUFFER_SIZE_MAX, "Packet size cannot be larger than the maximum allowed");
+// Section 7.2.3.3 Transmit Descriptor Ring:
+// "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
+#define IXGBE_RING_SIZE 1024u
+static_assert(IXGBE_RING_SIZE % 128 == 0, "Ring size must be 0 modulo 128");
+static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2 for fast modulo");
+// Maximum number of send queues assigned to a pipe.
+#ifndef IXGBE_PIPE_MAX_SENDS
+#define IXGBE_PIPE_MAX_SENDS 4u
+#endif
+// Updating period for the transmit tail
+#define IXGBE_PIPE_PROCESS_PERIOD 64
+static_assert(IXGBE_PIPE_PROCESS_PERIOD >= 1, "Process period must be at least 1");
+// Override for the process period: if this many checks result in no packet, the transmit tail will be updated anyway
+#define IXGBE_PIPE_PROCESS_BLANK_PERIOD 4
+static_assert(IXGBE_PIPE_PROCESS_BLANK_PERIOD >= 1, "Process blank period must be at least 1");
+static_assert(IXGBE_PIPE_PROCESS_PERIOD % IXGBE_PIPE_PROCESS_BLANK_PERIOD == 0, "Process period must be a multiple of the blank period, for implementation convenience");
+// Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
+#define IXGBE_PIPE_TRANSMIT_PERIOD 64
+static_assert(IXGBE_PIPE_TRANSMIT_PERIOD >= 1, "Transmit period must be at least 1");
+static_assert(IXGBE_PIPE_TRANSMIT_PERIOD < IXGBE_RING_SIZE, "Transmit period must be less than the ring size");
+static_assert((IXGBE_PIPE_TRANSMIT_PERIOD & (IXGBE_PIPE_TRANSMIT_PERIOD - 1)) == 0, "Transmit period must be a power of 2 for fast modulo");
+
+
+// ---------
+// Utilities
+// ---------
+
+// Overload macros for up to 5 args, see https://stackoverflow.com/a/11763277/3311770
+#define GET_MACRO(_1, _2, _3, _4, _5, NAME, ...) NAME
+
+// Bit tricks; note that bit indices start at 0!
+#define BIT(n) (1u << (n))
+#define BITL(n) (1ull << (n))
+#define BITS(start, end) (((end) == 31 ? 0u : (0xFFFFFFFFu << ((end) + 1))) ^ (0xFFFFFFFFu << (start)))
+#define TRAILING_ZEROES(n) __builtin_ctzll(n)
+
+// Like if(...) but polls with a timeout, and executes the body only if the condition is still true after the timeout
+static bool timed_out;
+#define IF_AFTER_TIMEOUT(timeout_in_us, condition) \
+		timed_out = true; \
+		tn_sleep_us((timeout_in_us) % 10); \
+		for (uint8_t i = 0; i < 10; i++) { \
+			if (!(condition)) { \
+				timed_out = false; \
+				break; \
+			} \
+			tn_sleep_us((timeout_in_us) / 10); \
+		} \
+		if (timed_out)
+
+
+// ---------------------
+// Operations on the NIC
+// ---------------------
+
+// Register primitives
+static uint32_t ixgbe_reg_read(const uintptr_t addr, const uint32_t reg)
+{
+	uint32_t val_le = *((volatile uint32_t*)(addr + reg));
+	uint32_t result = tn_le_to_cpu(val_le);
+	TN_VERBOSE("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
+	return result;
+}
+static void ixgbe_reg_write_raw(const uintptr_t reg_addr, const uint32_t value)
+{
+	*((volatile uint32_t*)reg_addr) = tn_cpu_to_le(value);
+}
+static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint32_t value)
+{
+	ixgbe_reg_write_raw(addr + reg, value);
+	TN_VERBOSE("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
+}
+
+#define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
+#define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
+#define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
+#define IXGBE_REG_WRITE4(addr, reg, idx, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), value)
+#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | (((value) << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
+#define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
+#define IXGBE_REG_CLEARED(addr, reg, idx, field) (IXGBE_REG_READ(addr, reg, idx, field) == 0u)
+#define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0U)
+#define IXGBE_REG_CLEAR4(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field))
+#define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR4, IXGBE_REG_CLEAR3, _UNUSED)(__VA_ARGS__)
+#define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) | IXGBE_REG_##reg##_##field))
+
+#define IXGBE_PCIREG_READ(pci_dev, reg) tn_pci_read(pci_dev, IXGBE_PCIREG_##reg)
+#define IXGBE_PCIREG_CLEARED(pci_dev, reg, field) ((IXGBE_PCIREG_READ(pci_dev, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
+#define IXGBE_PCIREG_SET(pci_dev, reg, field) tn_pci_write(pci_dev, IXGBE_PCIREG_##reg, (IXGBE_PCIREG_READ(pci_dev, reg) | IXGBE_PCIREG_##reg##_##field))
+
+// -----------------
+// Device definition
+// -----------------
 
 struct tn_net_device
 {
@@ -815,7 +842,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//				"Default values: 0x96 for TXPBSIZE0, 0x0 for TXPBSIZE1-7."
 	// INTERPRETATION-TYPO: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
 	// Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
-	IXGBE_REG_WRITE(device.addr, TXPBTHRESH, 0, THRESH, 0xA0u - IXGBE_PACKET_SIZE_MAX);
+	IXGBE_REG_WRITE(device.addr, TXPBTHRESH, 0, THRESH, 0xA0u - IXGBE_PACKET_BUFFER_SIZE);
 	//		"- MTQC"
 	//			"- Clear both RT_Ena and VT_Ena bits in the MTQC register."
 	//			"- Set MTQC.NUM_TC_OR_Q to 00b."
@@ -845,10 +872,9 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	return true;
 }
 
-
-// ============================
+// ----------------------------
 // Section 7.1.1.1 L2 Filtering
-// ============================
+// ----------------------------
 
 bool tn_net_device_set_promiscuous(const struct tn_net_device* const device)
 {
@@ -875,12 +901,10 @@ bool tn_net_device_set_promiscuous(const struct tn_net_device* const device)
 	return true;
 }
 
+// ---------------
+// Pipe definition
+// ---------------
 
-// ====
-// Pipe
-// ====
-
-// See paper for an extensive description of the pipes model
 struct tn_net_pipe
 {
 	uintptr_t buffer;
@@ -899,9 +923,9 @@ struct tn_net_pipe
 	uintptr_t send_tail_addrs[IXGBE_PIPE_MAX_SENDS];
 };
 
-// ===================
-// Pipe initialization - no HW interactions
-// ===================
+// -------------------
+// Pipe initialization
+// -------------------
 
 bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
 {
@@ -911,7 +935,7 @@ bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
 		return false;
 	}
 
-	if (!tn_mem_allocate(IXGBE_RING_SIZE * IXGBE_PACKET_SIZE_MAX, &(pipe->buffer))) {
+	if (!tn_mem_allocate(IXGBE_RING_SIZE * IXGBE_PACKET_BUFFER_SIZE, &(pipe->buffer))) {
 		TN_DEBUG("Could not allocate buffer for pipe");
 		tn_mem_free((uintptr_t) pipe);
 		return false;
@@ -939,10 +963,9 @@ bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
 	return true;
 }
 
-
-// ====================================
+// ------------------------------------
 // Section 4.6.7 Receive Initialization
-// ====================================
+// ------------------------------------
 
 bool tn_net_pipe_set_receive(struct tn_net_pipe* const pipe, const struct tn_net_device* const device, const uint64_t long_queue_index)
 {
@@ -992,7 +1015,7 @@ bool tn_net_pipe_set_receive(struct tn_net_pipe* const pipe, const struct tn_net
 	//	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
 	//		"BSIZEPACKET, Receive Buffer Size for Packet Buffer. The value is in 1 KB resolution. Value can be from 1 KB to 16 KB."
 	// Set it to the ceiling of PACKET_SIZE_MAX in KB.
-	IXGBE_REG_WRITE(device->addr, SRRCTL, queue_index, BSIZEPACKET, IXGBE_PACKET_SIZE_MAX / 1024u + (IXGBE_PACKET_SIZE_MAX % 1024u != 0));
+	IXGBE_REG_WRITE(device->addr, SRRCTL, queue_index, BSIZEPACKET, IXGBE_PACKET_BUFFER_SIZE / 1024u + (IXGBE_PACKET_BUFFER_SIZE % 1024u != 0));
 	//		"DESCTYPE, Define the descriptor type in Rx: Init Val 000b [...] 000b = Legacy."
 	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
 	// Enable this because of assumption DROP
@@ -1039,10 +1062,9 @@ bool tn_net_pipe_set_receive(struct tn_net_pipe* const pipe, const struct tn_net
 	return true;
 }
 
-
-// =====================================
+// -------------------------------------
 // Section 4.6.8 Transmit Initialization
-// =====================================
+// -------------------------------------
 
 bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_device* const device, const uint64_t long_queue_index)
 {
@@ -1078,7 +1100,7 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	for (uintptr_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 		// "Buffer Address (64)", 1st line offset 0
-		uintptr_t packet = pipe->buffer + n * IXGBE_PACKET_SIZE_MAX;
+		uintptr_t packet = pipe->buffer + n * IXGBE_PACKET_BUFFER_SIZE;
 		uintptr_t packet_phys_addr;
 		if (!tn_mem_virt_to_phys(packet, &packet_phys_addr)) {
 			TN_DEBUG("Could not get a packet's phys addr");
@@ -1155,6 +1177,10 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	return true;
 }
 
+// ----------------
+// Packet reception
+// ----------------
+
 bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_t* out_packet_length)
 {
 	// Since descriptors are 16 bytes, the index must be doubled
@@ -1163,18 +1189,22 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
 	if ((receive_metadata & BITL(32)) == 0) {
-		pipe->scheduling_counter = pipe->scheduling_counter + 16u;
+		pipe->scheduling_counter = pipe->scheduling_counter + (IXGBE_PIPE_PROCESS_PERIOD / IXGBE_PIPE_PROCESS_BLANK_PERIOD);
 		return false;
 	}
-	pipe->scheduling_counter = (pipe->scheduling_counter + 1u) | 0x8000000000000000;
+	pipe->scheduling_counter = (pipe->scheduling_counter + 1u) | BITL(63);
 
 	// This cannot overflow because the packet is by definition in an allocated block of memory
-	*out_packet = (uint8_t*) pipe->buffer + (IXGBE_PACKET_SIZE_MAX * pipe->processed_delimiter);
+	*out_packet = (uint8_t*) pipe->buffer + (IXGBE_PACKET_BUFFER_SIZE * pipe->processed_delimiter);
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
 	*out_packet_length = receive_metadata & 0xFFu;
 
 	return true;
 }
+
+// -------------------
+// Packet transmission
+// -------------------
 
 void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* send_list)
 {
@@ -1209,7 +1239,7 @@ void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* se
 	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first send ring, it will clear the Descriptor Done flag of the receive descriptor
 	// If not all send rings are used, we will write into an unused (but allocated!) ring, that's fine
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
-	uint64_t rs_bit = (uint64_t) ((pipe->processed_delimiter & (IXGBE_PIPE_UPDATE_PERIOD - 1)) == (IXGBE_PIPE_UPDATE_PERIOD - 1)) << (24+3);
+	uint64_t rs_bit = (uint64_t) ((pipe->processed_delimiter & (IXGBE_PIPE_TRANSMIT_PERIOD - 1)) == (IXGBE_PIPE_TRANSMIT_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
 		*(pipe->rings[n] + 2u*pipe->processed_delimiter + 1) = (send_list[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24);
 	}
@@ -1244,13 +1274,17 @@ void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* se
 	// This must eventually happen after processing a packet, otherwise it won't really be transmitted;
 	// but it should not happen too often when there are many packets, otherwise throughput drops.
 	// Also, it's pointless to do it if no packets have been processed since last time
-	if (pipe->scheduling_counter > 0x8000000000000040) {
+	if (pipe->scheduling_counter > (BITL(63) | IXGBE_PIPE_PROCESS_PERIOD)) {
 		pipe->scheduling_counter = 0;
 		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
 			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
 		}
 	}
 }
+
+// --------------
+// High-level API
+// --------------
 
 void tn_net_pipe_process(struct tn_net_pipe* pipe, tn_net_packet_handler* handler)
 {
