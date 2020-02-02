@@ -12,22 +12,23 @@ local PACKET_BATCH_SIZE = 64 -- packets
 
 local FLOWS_COUNT = 60000 -- flows
 
-local THROUGHPUT_STEPS_DURATION = 30 -- seconds
+local THROUGHPUT_STEPS_DURATION = 30000 -- seconds
 local THROUGHPUT_STEPS_COUNT = 10 -- number of trials
 
 local RATE_MIN = 0 -- Mbps
 local RATE_MAX = 10000 -- Mbps
 
 -- heatup needs to open all ports consecutively on a NAT so that reverse packets can go through
-local HEATUP_DURATION   = 5 -- seconds
+local HEATUP_DURATION   = 5000 -- milliseconds
 local HEATUP_RATE = 100 -- Mbps
 local HEATUP_BATCH_SIZE = 8 -- packets
 
-local LATENCY_DURATION = 30 -- seconds
+local LATENCY_DURATION = 30000 -- milliseconds
 local LATENCY_PACKETS_PER_SECOND = 1000 -- packets; not too much or MoonGen gets very confused
 local LATENCY_PACKETS_SIZE = 84 -- bytes, minimum 84
 local LATENCY_LOAD_INCREMENT = 500 -- Mbps
 local LATENCY_LOAD_PADDING   = 100 -- Mbps; removed from max load when measuring latency
+local LATENCY_TIME_PADDING = 50 -- milliseconds; added before and after all latency measurements to smooth measurements
 
 local RESULTS_FOLDER_NAME = 'results'
 local RESULTS_THROUGHPUT_FILE_NAME = 'throughput'
@@ -120,10 +121,13 @@ local packetInits = {
 function _latencyTask(txQueue, rxQueue, layer, direction, count)
   local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
   local rateLimiter = timer:new(1 / LATENCY_PACKETS_PER_SECOND)
-  local sendTimer = timer:new(LATENCY_DURATION)
+  local sendTimer = timer:new(LATENCY_DURATION / 1000)
 
   local results = {}
   for i = 1, count do
+    mg.sleepMillis(LATENCY_TIME_PADDING)
+    sendTimer:reset()
+
     local lats = {}
     local counter = 0
     local measureFunc = function()
@@ -143,8 +147,7 @@ function _latencyTask(txQueue, rxQueue, layer, direction, count)
     end
     results[#results+1] = lats
     io.write("[bench] " .. summarizeLatencies(lats) .. "\n")
-    mg.sleepMillis(100)
-    sendTimer:reset()
+    mg.sleepMillis(LATENCY_TIME_PADDING)
   end
 
   return results
@@ -163,7 +166,7 @@ function _throughputTask(txQueue, rxQueue, layer, duration, direction, flowBatch
   local rxCounter = stats:newDevRxCounter(rxQueue, "nil")
   local bufs = mempool:bufArray(PACKET_BATCH_SIZE)
   local packetConfig = packetConfigs[direction][layer]
-  local sendTimer = timer:new(duration)
+  local sendTimer = timer:new(duration / 1000)
   local counter = 0
   local batchCounter = 0
 
@@ -231,7 +234,7 @@ function startMeasureThroughput(txQueue, rxQueue, rate, layer, duration, directi
   end
 
   txQueue:setRate(moongenRate(rate))
-  local targetTx = (rate * 1000 * 1000) / ((PACKET_SIZE + 24) * 8) * duration
+  local targetTx = (rate * 1000 * 1000) / ((PACKET_SIZE + 24) * 8) * (duration / 1000)
   return mg.startTask("_throughputTask", txQueue, rxQueue, layer, duration, direction, flowBatchSize, targetTx)
 end
 
@@ -325,10 +328,10 @@ function measureStandard(queuePairs, extraPair, args)
     local loss = 0
 
     if rate == 0 then
-      mg.sleepMillis(LATENCY_DURATION * 1000)
+      mg.sleepMillis(LATENCY_DURATION + LATENCY_TIME_PADDING * 2)
     else
       for i, pair in ipairs(queuePairs) do
-        throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, args.layer, LATENCY_DURATION, pair.direction, 1)
+        throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, args.layer, LATENCY_DURATION + LATENCY_TIME_PADDING * 2, pair.direction, 1)
       end
       for _, task in ipairs(throughputTasks) do
         loss = loss + task:wait()
@@ -346,9 +349,6 @@ function measureStandard(queuePairs, extraPair, args)
       io.write("[FATAL] Too much loss! (" .. (loss / #queuePairs) .. ")\n")
       os.exit(1)
     end
-
-    -- the latency task sleeps 100ms inbetween runs, we must match it
-    mg.sleepMillis(100)
   end
 
   local latss = latencyTask:wait()

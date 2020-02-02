@@ -321,10 +321,10 @@ static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be
 #define IXGBE_PIPE_MAX_SENDS 4u
 #endif
 // Updating period for the transmit tail
-#define IXGBE_PIPE_PROCESS_PERIOD 64
+#define IXGBE_PIPE_PROCESS_PERIOD 15
 static_assert(IXGBE_PIPE_PROCESS_PERIOD >= 1, "Process period must be at least 1");
 // Override for the process period: if this many checks result in no packet, the transmit tail will be updated anyway
-#define IXGBE_PIPE_PROCESS_BLANK_PERIOD 4
+#define IXGBE_PIPE_PROCESS_BLANK_PERIOD 5
 static_assert(IXGBE_PIPE_PROCESS_BLANK_PERIOD >= 1, "Process blank period must be at least 1");
 static_assert(IXGBE_PIPE_PROCESS_PERIOD % IXGBE_PIPE_PROCESS_BLANK_PERIOD == 0, "Process period must be a multiple of the blank period, for implementation convenience");
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
