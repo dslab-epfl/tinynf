@@ -323,10 +323,7 @@ static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be
 // Updating period for the transmit tail
 #define IXGBE_PIPE_PROCESS_PERIOD 8
 static_assert(IXGBE_PIPE_PROCESS_PERIOD >= 1, "Process period must be at least 1");
-// Override for the process period: if this many checks result in no packet, the transmit tail will be updated anyway
-#define IXGBE_PIPE_PROCESS_BLANK_PERIOD 1
-static_assert(IXGBE_PIPE_PROCESS_BLANK_PERIOD >= 1, "Process blank period must be at least 1");
-static_assert(IXGBE_PIPE_PROCESS_PERIOD % IXGBE_PIPE_PROCESS_BLANK_PERIOD == 0, "Process period must be a multiple of the blank period, for implementation convenience");
+static_assert(IXGBE_PIPE_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
 #define IXGBE_PIPE_TRANSMIT_PERIOD 64
 static_assert(IXGBE_PIPE_TRANSMIT_PERIOD >= 1, "Transmit period must be at least 1");
@@ -909,9 +906,9 @@ struct tn_net_pipe
 {
 	uintptr_t buffer;
 	uintptr_t receive_tail_addr;
-	uint64_t scheduling_counter;
 	uint64_t processed_delimiter;
 	uint64_t send_count;
+	uint64_t flushed_processed_delimiter;
 	uint8_t _padding[3*8];
 	// send heads must be 16-byte aligned; see alignment remarks in send queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
@@ -1183,36 +1180,32 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 
 bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_t* out_packet_length)
 {
-
-	// Processor 2nd half, moving descriptors to the transmission pool
-	// This must eventually happen after processing a packet, otherwise it won't really be transmitted;
-	// but it should not happen too often when there are many packets, otherwise throughput drops.
-	// Also, it's pointless to do it if no packets have been processed since last time.
-	// We must do it here since this is the only place that keeps getting called even if no packets arrive.
-	if (pipe->scheduling_counter > (BITL(63) | IXGBE_PIPE_PROCESS_PERIOD)) {
-		pipe->scheduling_counter = 0;
-		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
-		}
-	}
-
 	// Since descriptors are 16 bytes, the index must be doubled
 	volatile uint64_t* main_metadata_addr = pipe->rings[0] + 2u*pipe->processed_delimiter + 1;
 	uint64_t receive_metadata = *main_metadata_addr;
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
-	if ((receive_metadata & BITL(32)) == 0) {
-		pipe->scheduling_counter = pipe->scheduling_counter + IXGBE_PIPE_PROCESS_PERIOD;
-		return false;
+	bool has_packet = (receive_metadata & BITL(32)) != 0;
+
+	// Processor 2nd half, moving descriptors to the transmission pool
+	// This must eventually happen after processing a packet, otherwise it won't really be transmitted;
+	// but it should not happen too often when there are many packets, otherwise throughput drops.
+	// Also, it's pointless to do it if no packets have been processed since last time.
+	// We must do it in receive since this is the only place that keeps getting called even if no packets arrive.
+	if (!has_packet | (pipe->processed_delimiter == ((pipe->flushed_processed_delimiter + IXGBE_PIPE_PROCESS_PERIOD) & (IXGBE_RING_SIZE - 1)))) {
+		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
+			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
+		}
+		pipe->flushed_processed_delimiter = pipe->processed_delimiter;
 	}
-	pipe->scheduling_counter = (pipe->scheduling_counter + 1u) | BITL(63);
 
 	// This cannot overflow because the packet is by definition in an allocated block of memory
 	*out_packet = (uint8_t*) pipe->buffer + (IXGBE_PACKET_BUFFER_SIZE * pipe->processed_delimiter);
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
 	*out_packet_length = receive_metadata & 0xFFu;
 
-	return true;
+	// Note that the out_ parameters have no meaning if this is false, but it's fine, their value will still make sense
+	return has_packet;
 }
 
 // -------------------
