@@ -4,6 +4,16 @@
 # Note that binding/unbinding devices occasionally has weird effects like killing SSH sessions,
 # so we should only do it if absolutely necessary
 
+# Unbind any other devices
+all_bound="$(sudo ~/dpdk/usertools/dpdk-devbind.py --status | grep 'drv=igb_uio' | awk '{print $1}')"
+for pci in $@; do
+  all_bound="$(echo "$all_bound" | grep -Fv "$pci")"
+done
+all_bound="$(echo "$all_bound" | tr '\n' ' ' | xargs)" # xargs is a cheap way to trim whitespace
+if [ ! -z "$all_bound" ]; then
+  sudo "$RTE_SDK/usertools/dpdk-devbind.py" -u $(echo "$all_bound" | tr '\n' ' ')
+fi
+
 needs_reset='false'
 for pci in $@; do
   if ! sudo "$RTE_SDK/usertools/dpdk-devbind.py" --status | grep -F "$pci" | grep -q 'drv=igb_uio'; then
