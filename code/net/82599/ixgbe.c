@@ -321,10 +321,10 @@ static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be
 #define IXGBE_PIPE_MAX_SENDS 4u
 #endif
 // Updating period for the transmit tail
-#define IXGBE_PIPE_PROCESS_PERIOD 15
+#define IXGBE_PIPE_PROCESS_PERIOD 8
 static_assert(IXGBE_PIPE_PROCESS_PERIOD >= 1, "Process period must be at least 1");
 // Override for the process period: if this many checks result in no packet, the transmit tail will be updated anyway
-#define IXGBE_PIPE_PROCESS_BLANK_PERIOD 5
+#define IXGBE_PIPE_PROCESS_BLANK_PERIOD 1
 static_assert(IXGBE_PIPE_PROCESS_BLANK_PERIOD >= 1, "Process blank period must be at least 1");
 static_assert(IXGBE_PIPE_PROCESS_PERIOD % IXGBE_PIPE_PROCESS_BLANK_PERIOD == 0, "Process period must be a multiple of the blank period, for implementation convenience");
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
@@ -1183,13 +1183,26 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 
 bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_t* out_packet_length)
 {
+
+	// Processor 2nd half, moving descriptors to the transmission pool
+	// This must eventually happen after processing a packet, otherwise it won't really be transmitted;
+	// but it should not happen too often when there are many packets, otherwise throughput drops.
+	// Also, it's pointless to do it if no packets have been processed since last time.
+	// We must do it here since this is the only place that keeps getting called even if no packets arrive.
+	if (pipe->scheduling_counter > (BITL(63) | IXGBE_PIPE_PROCESS_PERIOD)) {
+		pipe->scheduling_counter = 0;
+		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
+			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
+		}
+	}
+
 	// Since descriptors are 16 bytes, the index must be doubled
 	volatile uint64_t* main_metadata_addr = pipe->rings[0] + 2u*pipe->processed_delimiter + 1;
 	uint64_t receive_metadata = *main_metadata_addr;
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
 	if ((receive_metadata & BITL(32)) == 0) {
-		pipe->scheduling_counter = pipe->scheduling_counter + (IXGBE_PIPE_PROCESS_PERIOD / IXGBE_PIPE_PROCESS_BLANK_PERIOD);
+		pipe->scheduling_counter = pipe->scheduling_counter + IXGBE_PIPE_PROCESS_PERIOD;
 		return false;
 	}
 	pipe->scheduling_counter = (pipe->scheduling_counter + 1u) | BITL(63);
@@ -1247,12 +1260,9 @@ void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* se
 	// Increment the processed delimiter, modulo the ring size
 	pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
 
-	// Do the 2 other actors here, not in receive, to optimize symbolic execution (assuming no merges):
-	// doing it in send means the forks caused by these actors won't last long,
-	// whereas doing it in receive forks at the very beginning.
-
 	// Transmitter 2nd part, moving descriptors to the receive pool
 	// This should happen as rarely as the update period since that's the period controlling send head updates from the NIC
+	// Doing it here allows us to (1) reuse rs_bit and (2) make less divergent paths for symbolic execution (as opposed to doing it in receive)
 	if (rs_bit != 0) {
 		// In case there are no send queues, the "earliest" send head is the processed delimiter
 		uint32_t earliest_send_head = (uint32_t) pipe->processed_delimiter;
@@ -1268,17 +1278,6 @@ void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* se
 		}
 
 		ixgbe_reg_write_raw(pipe->receive_tail_addr, (earliest_send_head - 1) & (IXGBE_RING_SIZE - 1));
-	}
-
-	// Processor 2nd half, moving descriptors to the transmission pool
-	// This must eventually happen after processing a packet, otherwise it won't really be transmitted;
-	// but it should not happen too often when there are many packets, otherwise throughput drops.
-	// Also, it's pointless to do it if no packets have been processed since last time
-	if (pipe->scheduling_counter > (BITL(63) | IXGBE_PIPE_PROCESS_PERIOD)) {
-		pipe->scheduling_counter = 0;
-		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
-		}
 	}
 }
 
