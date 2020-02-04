@@ -1192,7 +1192,7 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 	// but it should not happen too often when there are many packets, otherwise throughput drops.
 	// Also, it's pointless to do it if no packets have been processed since last time.
 	// We must do it in receive since this is the only place that keeps getting called even if no packets arrive.
-	if (!has_packet | (pipe->processed_delimiter == ((pipe->flushed_processed_delimiter + IXGBE_PIPE_PROCESS_PERIOD) & (IXGBE_RING_SIZE - 1)))) {
+	if ((!has_packet & (pipe->processed_delimiter != pipe->flushed_processed_delimiter)) | (pipe->processed_delimiter == ((pipe->flushed_processed_delimiter + IXGBE_PIPE_PROCESS_PERIOD) & (IXGBE_RING_SIZE - 1)))) {
 		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
 			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
 		}
