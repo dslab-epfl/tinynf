@@ -1185,18 +1185,18 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 	uint64_t receive_metadata = *main_metadata_addr;
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
-	bool has_packet = (receive_metadata & BITL(32)) != 0;
-
-	// Processor 2nd half, moving descriptors to the transmission pool
-	// This must eventually happen after processing a packet, otherwise it won't really be transmitted;
-	// but it should not happen too often when there are many packets, otherwise throughput drops.
-	// Also, it's pointless to do it if no packets have been processed since last time.
-	// We must do it in receive since this is the only place that keeps getting called even if no packets arrive.
-	if ((!has_packet & (pipe->processed_delimiter != pipe->flushed_processed_delimiter)) | (pipe->processed_delimiter == ((pipe->flushed_processed_delimiter + IXGBE_PIPE_PROCESS_PERIOD) & (IXGBE_RING_SIZE - 1)))) {
-		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
+	if ((receive_metadata & BITL(32)) == 0) {
+		// No packet; flush if we need to, i.e., 2nd part of the processor
+		// Done here since we must eventually flush after processing a packet even if no more packets are received
+		if ((pipe->flushed_processed_delimiter != (uint64_t) -1) & (pipe->flushed_processed_delimiter != pipe->processed_delimiter)) {
+			for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
+				ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
+			}
 		}
-		pipe->flushed_processed_delimiter = pipe->processed_delimiter;
+		// Record that there was no packet
+		pipe->flushed_processed_delimiter = -1;
+
+		return false;
 	}
 
 	// This cannot overflow because the packet is by definition in an allocated block of memory
@@ -1205,7 +1205,7 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 	*out_packet_length = receive_metadata & 0xFFu;
 
 	// Note that the out_ parameters have no meaning if this is false, but it's fine, their value will still make sense
-	return has_packet;
+	return true;
 }
 
 // -------------------
@@ -1252,6 +1252,15 @@ void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* se
 
 	// Increment the processed delimiter, modulo the ring size
 	pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
+
+	// Flush if we need to, i.e., 2nd part of the processor
+	// Done here so that latency is minimal in low-load cases
+	if ((pipe->flushed_processed_delimiter == (uint64_t) -1) | (pipe->processed_delimiter == ((pipe->flushed_processed_delimiter + IXGBE_PIPE_PROCESS_PERIOD) & (IXGBE_RING_SIZE - 1)))) {
+		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
+			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
+		}
+		pipe->flushed_processed_delimiter = pipe->processed_delimiter;
+	}
 
 	// Transmitter 2nd part, moving descriptors to the receive pool
 	// This should happen as rarely as the update period since that's the period controlling send head updates from the NIC
