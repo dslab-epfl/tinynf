@@ -1,0 +1,5 @@
+things to try out on a blank machine:
+- can run basic-tinynf (no baseline, just tinynf.c) without any deps beyond an install.sh script
+- can run benchmarks on basic-tinynf, same
+- can run benchmarks on baselines-vigor/click (not with dpdk), same
+- can run benchmarks on baselines with dpdk, without manually installing it
