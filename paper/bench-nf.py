@@ -20,11 +20,13 @@ NF_DIR_BASE = os.path.realpath(sys.argv[1])
 NF_DIR_NAME = os.path.basename(NF_DIR_BASE)
 NF = sys.argv[2]
 
+print('[!!!] Benchmarking ' + sys.argv[1] + ' ' + sys.argv[2])
 if len(sys.argv) == 4:
   if sys.argv[3] == 'single':
     NF_KIND_CHOICES = ['custom', 'dpdk']
     BENCH_KIND = ['-l', '1000', 'standard-single']
     FILE_SUFFIX = '-single'
+    print('[!!!] Single-direction benchmark')
   else:
     print('[ERROR] Unknown bench kind')
     sys.exit(1)

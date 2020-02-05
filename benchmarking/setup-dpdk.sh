@@ -4,8 +4,15 @@
 # Note that binding/unbinding devices occasionally has weird effects like killing SSH sessions,
 # so we should only do it if absolutely necessary
 
+# If DPDK doesn't exist (or we are using the TinyNF DPDK shim), ensure we were asked to do nothing
+if [ -z "$RTE_SDK" ] || [ "$RTE_TARGET" = '.' ]; then
+  if [ -z "$@" ]; then exit 0; fi
+  echo "Could not find DPDK, cannot bind $@"
+  exit 1
+fi
+
 # Unbind any other devices
-all_bound="$(sudo ~/dpdk/usertools/dpdk-devbind.py --status | grep 'drv=igb_uio' | awk '{print $1}')"
+all_bound="$(sudo $RTE_SDK/usertools/dpdk-devbind.py --status | grep 'drv=igb_uio' | awk '{print $1}')"
 for pci in $@; do
   all_bound="$(echo "$all_bound" | grep -Fv "$pci")"
 done

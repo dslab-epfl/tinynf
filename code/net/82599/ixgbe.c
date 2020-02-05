@@ -908,7 +908,7 @@ struct tn_net_pipe
 	uintptr_t receive_tail_addr;
 	uint64_t processed_delimiter;
 	uint64_t send_count;
-	uint64_t flushed_processed_delimiter;
+	uint64_t flushed_processed_delimiter; // -1 if there was no packet last time, otherwise last flushed processed_delimiter
 	uint8_t _padding[3*8];
 	// send heads must be 16-byte aligned; see alignment remarks in send queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
@@ -956,6 +956,8 @@ bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
 		pipe->rings[n] = (volatile uint64_t*) ring_addr;
 	}
 
+	// Start in "no packet" state
+	pipe->flushed_processed_delimiter = (uint64_t) -1;
 	*out_pipe = pipe;
 	return true;
 }
@@ -1194,7 +1196,7 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 			}
 		}
 		// Record that there was no packet
-		pipe->flushed_processed_delimiter = -1;
+		pipe->flushed_processed_delimiter = (uint64_t) -1;
 
 		return false;
 	}

@@ -20,6 +20,14 @@ if [ $# -lt 2 ]; then
   exit 1
 fi
 
+THIS_DIR="$(dirname "$(readlink -f "$0")")"
+
+if [ ! -f "$THIS_DIR/config" ]; then
+  echo "[ERROR] Please create a 'config' file from the 'config.template' file in the same directory as $0"
+  exit 1
+fi
+. "$THIS_DIR/config"
+
 echo '[bench] Setting up the benchmark...'
 
 # Ensure there are no outdated (and thus misleading) results/logs
@@ -36,24 +44,19 @@ fi
 # Kill the NF in case some old instance is still running
 sudo pkill -x -9 "$NF_NAME" >/dev/null 2>&1
 
-THIS_DIR="$(dirname "$(readlink -f "$0")")"
-
-if [ ! -f "$THIS_DIR/config" ]; then
-  echo "[ERROR] Please create a 'config' file from the 'config.template' file in the same directory as $0"
-  exit 1
-fi
-. "$THIS_DIR/config"
+# Delete any hugepages in case some program left them around
+sudo rm -f "$(grep hugetlbfs /proc/mounts  | awk '{print $2}')"/*
 
 # Initialize DPDK if needed, as explained in the script header
 make -C "$NF_DIR" -q is-dpdk >/dev/null 2>&1
 if [ $? -eq 2 ]; then
   ./setup-dpdk.sh # no args, ensure nothing is on the DPDK driver
   # Unbind driver from kernel if needed (the PCI domain is necessary, otherwise we get ENXIO)
-  for pci in "$DUT_DEV_0" "$DUT_DEV_1"; do
+  for pci in $DUT_DEVS; do
     echo -n "0000:$pci" | sudo tee "/sys/bus/pci/devices/0000:$pci/driver/unbind" >/dev/null 2>&1
   done
 else
-  ./setup-dpdk.sh "$DUT_DEV_0" "$DUT_DEV_1"
+  ./setup-dpdk.sh $DUT_DEVS
 fi
 
 git submodule update --init --recursive
@@ -70,13 +73,13 @@ fi
 
 echo '[bench] Building and running the NF...'
 
-TN_ARGS="$DUT_DEV_0 $DUT_DEV_1" make -C "$NF_DIR" >"$LOG_FILE" 2>&1
+TN_ARGS="$DUT_DEVS" make -C "$NF_DIR" >"$LOG_FILE" 2>&1
 if [ $? -ne 0 ]; then
   echo "[FATAL] Could not build; the $LOG_FILE file in the same directory as $0 may be useful"
   exit 1
 fi
 
-TN_ARGS="$DUT_DEV_0 $DUT_DEV_1" taskset -c "$DUT_CPU" make -C "$NF_DIR" run >>"$LOG_FILE" 2>&1 &
+TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPU" make -C "$NF_DIR" run >>"$LOG_FILE" 2>&1 &
 # Sleep (as little as possible) if the NF needs a while to start
 for i in $(seq 1 30); do
   sleep 1

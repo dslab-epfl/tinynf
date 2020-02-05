@@ -39,6 +39,7 @@ function configure(parser)
   parser:argument("type", "'latency' or 'throughput'.")
   parser:argument("layer", "Layer at which the flows are meaningful."):convert(tonumber)
   parser:option("-l --latencyload", "Specific total background load for standard latency; if not set, script does from 0 to max tput"):default(-1):convert(tonumber)
+  parser:flag("-x --xchange", "Exchange order of devices, in case you messed up your wiring")
 end
 
 -- Helper function to summarize latencies: min, max, median, stdev, 99th
@@ -392,9 +393,16 @@ function master(args)
   --              in both directions at the same time, thus with a maximum of 20 Gb/s
   --  Latency: Measure the one-way latency of the NF, with background traffic of 1 Gb/s in both directions
 
+  local port0 = 0
+  local port1 = 1
+  if args.xchange then
+    port0 = 1
+    port1 = 0
+  end
+
   -- Thus we need 1 TX + 1 RX queue in each device for throughput, and 1 TX in device 0 / 1 RX in device 1 for latency
-  local dev0 = device.config{port = 0, rxQueues = 1, txQueues = 2}
-  local dev1 = device.config{port = 1, rxQueues = 2, txQueues = 1}
+  local dev0 = device.config{port = port0, rxQueues = 1, txQueues = 2}
+  local dev1 = device.config{port = port1, rxQueues = 2, txQueues = 1}
   device.waitForLinks()
 
   local queuePairs = {

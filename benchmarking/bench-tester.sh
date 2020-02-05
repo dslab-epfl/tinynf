@@ -19,14 +19,19 @@ echo '[bench] Setting up tester...'
 sudo pkill -x -9 MoonGen >/dev/null 2>&1 # in case it crashed previously
 sudo rm -rf /dev/hugepages/* # make sure there are no leftovers from a previous run
 
-RTE_SDK='moongen/libmoon/deps/dpdk' RTE_TARGET='x86_64-native-linuxapp-gcc' ./setup-dpdk.sh "$TESTER_DEV_0" "$TESTER_DEV_1"
+RTE_SDK='moongen/libmoon/deps/dpdk' RTE_TARGET='x86_64-native-linuxapp-gcc' ./setup-dpdk.sh $TESTER_DEVS
 
 # Remove the output to avoid a stale one if the script fails
 rm -f bench.result
 
+CROSS_OPT=
+if [ $TESTER_CABLES_CROSSED -ne 0 ]; then
+  CROSS_OPT='-x'
+fi
+
 echo '[bench] Running benchmark...'
 # Ignore pointless output (this is why this script needs -o pipefail)
-sudo ./moongen/build/MoonGen bench-moongen.lua "$@" 2>&1 \
+sudo ./moongen/build/MoonGen bench-moongen.lua $CROSS_OPT "$@" 2>&1 \
   | grep -Fv --line-buffered 'EAL: Detected' \
   | grep -Fv --line-buffered 'EAL: No free hugepages reported in hugepages-1048576kB' \
   | grep -Fv --line-buffered 'EAL: Probing VFIO support...' \

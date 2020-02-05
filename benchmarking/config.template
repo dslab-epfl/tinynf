@@ -1,13 +1,13 @@
-# Index of the CPU on which the NF will run
+# Notes:
+# If using multiple ports on the same NIC, ensure PCIe bandwidth doesn't become the bottleneck
+# PCI addresses must be listed in ascending order so that their order matches in TinyNF and DPDK
+
+# 0-based index of the CPU on which the NF will run
 DUT_CPU=8
 # PCI BDF addresses of the DUT's NICs
-# If using the same NIC, ensure PCIe bandwidth doesn't become the bottleneck
-DUT_DEV_0=83:00.0
-DUT_DEV_1=85:00.0
+DUT_DEVS=83:00.0 85:00.0
 
-# Hostname of the tester
+# Hostname of the tester, such that the DUT can SSH to it
 TESTER_HOST=icnalsp3s4
 # PCI BDF addresses of the tester's NICs
-# Same bandwidth remark as above
-TESTER_DEV_0=83:00.0
-TESTER_DEV_1=85:00.0
+TESTER_DEVS=83:00.0 85:00.0
