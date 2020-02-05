@@ -46,7 +46,13 @@ fi
 
 # Initialize DPDK if needed, as explained in the script header
 make -C "$NF_DIR" -q is-dpdk >/dev/null 2>&1
-if [ $? -ne 2 ]; then
+if [ $? -eq 2 ]; then
+  ./setup-dpdk.sh # no args, ensure nothing is on the DPDK driver
+  # Unbind driver from kernel if needed (the PCI domain is necessary, otherwise we get ENXIO)
+  for pci in "$DUT_DEV_0" "$DUT_DEV_1"; do
+    echo -n "0000:$pci" | sudo tee "/sys/bus/pci/devices/0000:$pci/driver/unbind" >/dev/null 2>&1
+  done
+else
   ./setup-dpdk.sh "$DUT_DEV_0" "$DUT_DEV_1"
 fi
 

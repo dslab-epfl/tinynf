@@ -1,5 +1,5 @@
 #!/bin/sh
-# Ensures that the devices given as $@ are bound to the DPDK kernel module
+# Ensures that the devices given as $@, and only those devices, are bound to the DPDK kernel module
 
 # Note that binding/unbinding devices occasionally has weird effects like killing SSH sessions,
 # so we should only do it if absolutely necessary
