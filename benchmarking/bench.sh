@@ -41,8 +41,11 @@ else
   NF_NAME="$(make -C "$NF_DIR" -s print-nf-name)" # -s to not print 'Entering directory...'
 fi
 
+# Convenience function, now that we know what to clean up
+cleanup() { sudo pkill -x -9 "$NF_NAME" >/dev/null 2>&1; }
+
 # Kill the NF in case some old instance is still running
-sudo pkill -x -9 "$NF_NAME" >/dev/null 2>&1
+cleanup
 
 # Delete any hugepages in case some program left them around
 sudo rm -f "$(grep hugetlbfs /proc/mounts  | awk '{print $2}')"/*
@@ -79,6 +82,15 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+# Before running the NF, ensure we'll clean up even on Ctrl+C
+trap_cleanup()
+{
+  echo '[bench] Ctrl+C detected, cleaning up'
+  cleanup
+  exit 1
+}
+trap 'trap_cleanup' 2
+
 TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPU" make -C "$NF_DIR" run >>"$LOG_FILE" 2>&1 &
 # Sleep (as little as possible) if the NF needs a while to start
 for i in $(seq 1 30); do
@@ -109,6 +121,6 @@ else
 fi
 
 # Ensure we always kill the NF at the end, even in cases of failure
-sudo kill -9 "$NF_PID" >/dev/null 2>&1
+cleanup
 
 exit $RESULT
