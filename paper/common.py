@@ -27,15 +27,15 @@ def get_output_folder(kind, nf):
 def get_color(key):
   color = ''
   if key == 'original, batching':
-    color = 'goldenrod'
+    color = 'orange brown'
   elif key == 'original':
-    color = 'gold'
+    color = 'reddish orange'
   elif 'shim' in key:
     color = 'blue'
     if 'simple' in key:
       color = 'indigo'
   elif 'custom' in key:
-    color = 'red'
+    color = 'dark lime green'
     if 'simple' in key:
       color = 'brick red'
 
