@@ -38,14 +38,18 @@ files = glob.glob(sys.argv[1] + '/**/*.c') + glob.glob(sys.argv[1] + '/*.c')
 
 # for each function, count its LoC (it's in the file for which count-function-loc returns something)
 counts = []
+comps = []
 for function in lines:
   for file in files:
     out = subprocess.check_output(['sh', 'count-function-loc.sh', file, function]).decode('utf-8').strip()
     if out != '':
       counts.append(int(out))
+      out = subprocess.check_output(['sh', 'count-function-cyccomp.sh', file, function]).decode('utf-8').strip()
+      comps.append(int(out))
       break
 
 print('Total LoC: ' + str(sum(counts)))
+print('Average cyclomatic complexity: ' + str(statistics.mean(comps)))
 if len(counts) > 1:
   print('Average LoC: ' + str(statistics.mean(counts)))
   print('Median LoC: ' + str(statistics.median(counts)) + ' / stdev: ' + str(statistics.stdev(counts)))

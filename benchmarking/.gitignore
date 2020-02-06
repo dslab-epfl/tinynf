@@ -1,3 +1,7 @@
+# Benchmark outputs
 *.log
 results/
+
+# Configuration (and alternates)
 config
+config-*

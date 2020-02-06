@@ -1,9 +1,9 @@
 #!/bin/sh
 
-for d in 'DPDK' 'TinyNF'; do
-  path="$RTE_SDK/drivers/net/ixgbe"
-  if [ "$d" != 'DPDK' ]; then
-    path='../../code/net/82599'
+for d in 'TinyNF' 'DPDK'; do
+  path='../../code/net/82599'
+  if [ "$d" = 'DPDK' ]; then
+    path="$RTE_SDK/drivers/net/ixgbe"
   fi
 
   for x in 'initialization' 'reception' 'transmission'; do
