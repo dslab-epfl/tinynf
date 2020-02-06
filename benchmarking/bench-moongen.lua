@@ -36,10 +36,11 @@ local RESULTS_LATENCIES_FOLDER_NAME = 'latencies'
 
 -- Arguments for the script
 function configure(parser)
-  parser:argument("type", "'latency' or 'throughput'.")
+  parser:argument("type", "Benchmark type: standard, standard-single, flood, or debug ones (see source).")
   parser:argument("layer", "Layer at which the flows are meaningful."):convert(tonumber)
   parser:option("-l --latencyload", "Specific total background load for standard latency; if not set, script does from 0 to max tput"):default(-1):convert(tonumber)
   parser:flag("-x --xchange", "Exchange order of devices, in case you messed up your wiring")
+  parser:flag("-r --reverseheatup", "Add heatup in reverse, for Maglev-like load balancers; only for standard-single")
 end
 
 -- Helper function to summarize latencies: min, max, median, stdev, 99th
@@ -241,11 +242,11 @@ end
 
 
 -- Heats up at the given layer
-function heatUp(queuePairs, layer)
+function heatUp(queuePair, layer, ignoreloss)
   io.write("[bench] Heating up...\n")
-  local task = startMeasureThroughput(queuePairs[1].tx, queuePairs[1].rx, HEATUP_RATE, layer, HEATUP_DURATION, queuePairs[1].direction, HEATUP_BATCH_SIZE)
+  local task = startMeasureThroughput(queuePair.tx, queuePair.rx, HEATUP_RATE, layer, HEATUP_DURATION, queuePair.direction, HEATUP_BATCH_SIZE)
   local loss = task:wait()
-  if loss > 0.01 then
+  if not ignoreloss and loss > 0.01 then
     io.write("[FATAL] Heatup lost " .. (loss * 100) .. "% of packets!\n")
     os.exit(1)
   end
@@ -255,7 +256,10 @@ end
 -- Measure max throughput with less than 0.1% loss,
 -- and latency at lower rates up to max throughput minus 100Mbps
 function measureStandard(queuePairs, extraPair, args)
-  heatUp(queuePairs, args.layer)
+  if args.reverseheatup then
+    heatUp(queuePairs[99], args.layer, true) -- 99 is a hack, see master function
+  end
+  heatUp(queuePairs[1], args.layer, false)
 
   local upperBound = RATE_MAX
   local lowerBound = RATE_MIN
@@ -417,6 +421,7 @@ function master(args)
     measureFunc = measureStandard
   -- Same, but on 1 link
   elseif args.type == 'standard-single' then
+    queuePairs[99] = queuePairs[2] -- stupid hack, pass a 2nd pair but hide it from iteration
     queuePairs[2] = nil
     measureFunc = measureStandard
   -- Flood forever, useful to inspect client behavior
@@ -430,6 +435,11 @@ function master(args)
     measureFunc = measureLatencyAlone
   else
     print("Unknown type.")
+    os.exit(1)
+  end
+
+  if args.reverseheatup and args.type ~= 'standard-single' then
+    print("Reverse heatup is only for standard-single")
     os.exit(1)
   end
 

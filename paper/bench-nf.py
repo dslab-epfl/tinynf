@@ -34,6 +34,9 @@ else:
   NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk']
   BENCH_KIND = ['standard']
   FILE_SUFFIX = ''
+  if NF == 'lb':
+    print('[ERROR] Cannot benchmark LB unless in single mode')
+    sys.exit(1)
 
 OUTPUT_DIR = get_output_folder(NF_DIR_NAME, NF)
 
@@ -54,6 +57,11 @@ if NF == 'bridge':
 elif NF == 'pol':
   os.environ['POLICER_BURST'] = '10000000000'
   os.environ['POLICER_RATE'] = '10000000000'
+elif NF == 'lb':
+  # Device from which the load balancer will receive packets (and not heartbeats)
+  os.environ['WAN_DEVICE'] = '0'
+  # LB needs reverse heatup to work
+  BENCH_KIND = ['-r'] + BENCH_KIND
 
 RESULTS = {}
 for NF_KIND in NF_KIND_CHOICES:
