@@ -14,7 +14,11 @@ nf = sys.argv[2]
 args = [arg.split('/') for arg in sys.argv[3:]]
 
 keys = [arg[0] for arg in args]
+keys = ['custom' if k == 'custom, simple' else k for k in keys]
 values = [[float(l.strip())/1000.0 for l in pathlib.Path(get_output_folder(kind, nf), arg[0], arg[1], 'latencies', '0').read_text().splitlines()] for arg in args]
+
+values = [sorted(vals) for vals in values]
+values = [vals[0:int(len(vals)/10000*9999)] for vals in values] # Primorac 2017, values after 99.99% are inaccurate
 
 # Find outlier limit, i.e., first one very far from previous
 limit = 0
@@ -85,12 +89,17 @@ for ax in axes:
   ax.grid(True, color='xkcd:light grey')
   ax.set_axisbelow(True) # ensure the grid ends up below the data
 
+def real_label(key):
+  if key == 'custom': return 'TinyNF'
+  if key == 'original': return 'DPDK'
+  return 'WRONG_LABEL'
+
 # Custom legend so we get lines and not rectangles
 import matplotlib.lines as mlines
-lines = [mlines.Line2D([], [], color=get_color(key), label=key) for key in keys]
+lines = [mlines.Line2D([], [], color=get_color(key), label=real_label(key)) for key in keys]
 plt.legend(handles=lines, loc='center right', handletextpad=0.3, borderaxespad=0)
 
-fig.suptitle(get_title(kind, nf), y=0.96)
+fig.suptitle(get_title(kind, nf), y=0.85)
 fig.text(0.5, -0.04, 'Latency (us)', ha='center')
 fig.text(0.02, 0.5, 'Cumulative probability', va='center', rotation='vertical')
-plt.savefig(get_output_folder(kind, nf) + '/latencies-ccdf.svg', bbox_inches='tight')
+plt.savefig(get_output_folder(kind, nf) + '/latencies-cdf.svg', bbox_inches='tight', pad_inches=0)
