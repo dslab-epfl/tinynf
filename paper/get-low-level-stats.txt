@@ -1,0 +1,42 @@
+# make sure it's the right ver for papi, the latest commits are broken
+git checkout papi-5-7-0-t
+
+# otherwise there are no counters
+echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
+
+# for both
+# - start 'sudo ./moon-gen/build/MoonGen ./tinynf-benchmarking/bench-moongen.lua flood 2' on s4 before!
+
+# for tinynf
+TN_CFLAGS='-DTN_DEBUG_PERF=1001 -flto -DIXGBE_PIPE_MAX_SENDS=1' TN_LDFLAGS='-lpapi -flto' TN_DEBUG=0 make
+sudo taskset -c 6 ./tinynf 06:00.0 06:00.1 >loglog 2>&1
+
+# for vignop:
+# - bind the right dpdk interfaces on s3/s4
+EXTRA_CFLAGS='-DVIGOR_DEBUG_PERF=1001 -DVIGOR_DEBUG_REALNOP' EXTRA_LDFLAGS='-lpapi' taskset -c 6 make run >loglog 2>&1
+
+# analyzing the log: ignore until after the line with the counters header, and skip the first batch (note that tail skips up to N exclusive)
+for i in $(seq 1 6); do sed -e '0,/Counters:/d' loglog | tail -n +10001 | awk "{print \$$i}" | ministat -A; done
+
+# for vignop, this yields:
+avg cycles: 958
+med cycles: 906
+stdev cycles: 287
+avg instrs: 981
+med instrs: 860
+stdev instrs: 61
+avg l1i misses: 18.78
+avg l1d misses: 0.81
+avg l2 misses: 1.53
+avg l3 misses: 0.000284
+# for tinynf nop:
+avg cycles: 628
+med cycles: 631
+stdev cycles: 59 
+avg instrs: 420
+med instrs: 412
+stdev instrs: 9
+avg l1i misses: 6.03
+avg l1d misses: 0.03
+avg l2 misses: 0.08
+avg l3 misses: 0.000006
