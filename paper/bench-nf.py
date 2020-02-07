@@ -20,6 +20,7 @@ NF_DIR_BASE = os.path.realpath(sys.argv[1])
 NF_DIR_NAME = os.path.basename(NF_DIR_BASE)
 NF = sys.argv[2]
 
+LTO = True
 print('[!!!] Benchmarking ' + sys.argv[1] + ' ' + sys.argv[2])
 if len(sys.argv) == 4:
   if sys.argv[3] == 'single':
@@ -27,6 +28,15 @@ if len(sys.argv) == 4:
     BENCH_KIND = ['-l', '1000', 'standard-single']
     FILE_SUFFIX = '-single'
     print('[!!!] Single-direction benchmark')
+  elif sys.argv[3] == 'no-lto':
+    NF_KIND_CHOICES = ['custom']
+    BENCH_KIND = ['standard']
+    FILE_SUFFIX = ''
+    LTO = False
+  elif sys.argv[3] == 'only-lto':
+    NF_KIND_CHOICES = ['custom']
+    BENCH_KIND = ['standard']
+    FILE_SUFFIX = ''
   else:
     print('[ERROR] Unknown bench kind')
     sys.exit(1)
@@ -71,7 +81,6 @@ for NF_KIND in NF_KIND_CHOICES:
     subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
 
     BATCH_CHOICES = ['1']
-    LTO = True
     ONEWAY_CHOICES = [True] # [True, False]
     if NF_KIND == 'custom':
       NF_DIR = NF_DIR_BASE
@@ -110,10 +119,14 @@ for NF_KIND in NF_KIND_CHOICES:
         KEY = 'shim'
         if ONEWAY:
           KEY += ', simple'
+        if not LTO:
+          KEY += ', no-lto'
       else:
         KEY = 'custom'
         if ONEWAY:
           KEY += ', simple'
+        if not LTO:
+          KEY += ', no-lto'
 
       ENV = dict(os.environ)
       ENV['TN_NF'] = NF
