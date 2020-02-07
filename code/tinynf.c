@@ -2,6 +2,7 @@
 #include "net/network.h"
 #include "util/log.h"
 #include "util/parse.h"
+#include "util/perf.h"
 
 // This NF does as little as possible, it's only intended for benchmarking/profiling the driver
 
@@ -51,10 +52,13 @@ int main(int argc, char** argv)
 	}
 
 	TN_INFO("TinyNF initialized successfully!");
+	TN_PERF_PAPI_START();
 
 	while(true) {
 		for (uint64_t p = 0; p < 2; p++) {
+			TN_PERF_PAPI_RESET();
 			tn_net_pipe_process(pipes[p], tinynf_packet_handler);
+			TN_PERF_PAPI_RECORD();
 		}
 	}
 }

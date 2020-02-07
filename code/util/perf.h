@@ -1,31 +1,16 @@
 #pragma once
 
-#include <inttypes.h>
-#include <stdio.h>
-#include <x86intrin.h>
-
+#ifdef TN_DEBUG_PERF
 #include "papi.h"
-
-
-struct perf_measurement {
-	uint64_t tsc;
-	const char* name;
-};
-
-static uint64_t perf_index;
-static struct perf_measurement perf_measurements[10 * 1024 * 1024];
-
-// Cycle-counting functions: call START, then RECORD("event name"), and DUMP at the end
-#define TN_PERF_CYCLES_RECORD(text) do { _mm_mfence(); _mm_lfence(); perf_measurements[perf_index].tsc = __rdtsc(); perf_measurements[perf_index].name = text; perf_index++; _mm_lfence(); } while(0)
-#define TN_PERF_CYCLES_START() do { perf_index = 0; TN_PERF_RECORD("init"); } while(0)
-#define TN_PERF_CYCLES_DUMP() do { for (uint64_t n = 1; n < perf_index; n++) { printf("%s: %"PRIu64"\n", perf_measurements[n].name, perf_measurements[n].tsc - perf_measurements[n-1].tsc); } fflush(stdout); } while(0)
-
+#include <stdio.h>
+#include <stdlib.h>
 
 static int papi_events[] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_L1_DCM, PAPI_L1_ICM, PAPI_L2_TCM, PAPI_L3_TCM};
 static uint64_t papi_counter;
+static uint64_t papi_batch_counter;
 #define papi_events_count sizeof(papi_events)/sizeof(papi_events[0])
 #define TN_PERF_PAPI_BATCH_SIZE 10000
-static long long papi_values[TN_PERF_PAPI_BATCH_SIZE][papi_events_count]; \
+static long long papi_values[TN_PERF_PAPI_BATCH_SIZE][papi_events_count];
 
 // PAPI functions: call START(), then RESET() before your event and RECORD() immediately after
 #define TN_PERF_PAPI_START() do { \
@@ -40,12 +25,21 @@ static long long papi_values[TN_PERF_PAPI_BATCH_SIZE][papi_events_count]; \
 		PAPI_read_counters(papi_values[papi_counter], papi_events_count); \
 		papi_counter++; \
 		if (papi_counter == TN_PERF_PAPI_BATCH_SIZE) { \
-			papi_counter = 0; \
 			for (uint64_t n = 0; n < TN_PERF_PAPI_BATCH_SIZE; n++) { \
 				for (uint64_t e = 0; e < papi_events_count; e++) { \
 					printf("%lld ", papi_values[n][e]); \
 				} \
 				printf("\n"); \
 			} \
+			papi_counter = 0; \
+			papi_batch_counter++; \
+			if (papi_batch_counter == TN_DEBUG_PERF) { \
+				exit(0); \
+			} \
 		} \
 	} while(0)
+#else
+#define TN_PERF_PAPI_START()
+#define TN_PERF_PAPI_RESET()
+#define TN_PERF_PAPI_RECORD()
+#endif
