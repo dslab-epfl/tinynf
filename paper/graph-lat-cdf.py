@@ -100,6 +100,6 @@ lines = [mlines.Line2D([], [], color=get_color(key), label=real_label(key)) for 
 plt.legend(handles=lines, loc='center right', handletextpad=0.3, borderaxespad=0)
 
 fig.suptitle(get_title(kind, nf), y=0.85)
-fig.text(0.5, -0.04, 'Latency (us)', ha='center')
+fig.text(0.5, -0.04, 'Latency (\u03BCs)', ha='center')
 fig.text(0.02, 0.5, 'Cumulative probability', va='center', rotation='vertical')
-plt.savefig(get_output_folder(kind, nf) + '/latencies-cdf.svg', bbox_inches='tight', pad_inches=0)
+plt.savefig(get_output_folder(kind, nf) + '/latencies-cdf.svg', bbox_inches='tight', pad_inches=0.01)

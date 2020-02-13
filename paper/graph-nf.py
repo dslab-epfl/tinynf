@@ -45,7 +45,7 @@ for key, params in numbers.items():
 
 ax.set_xlim(left=0)
 ax.set_ylim(bottom=0)
-plt.xlabel('Max throughput with <0.1% loss (Mbps)')
+plt.xlabel('Max throughput with <0.1% loss (Mb/s)')
 plt.ylabel(perc_str + ' latency (ns)')
 plt.legend(loc='upper left', handletextpad=0.3)
 

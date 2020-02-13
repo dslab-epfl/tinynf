@@ -18,11 +18,11 @@ result = subprocess.check_output(['sh', '-c', "for d in $(ls -1 -d $RTE_SDK/driv
 
 splits = [line.split(' ') for line in result.split('\n') if talks_to_hw(line.split(' ')[1])]
 x = list(range(len(splits)))
-y = [int(split[0]) for split in splits]
+y = [float(split[0]) / 1000.0 for split in splits]
 labels = [split[1] for split in splits]
 
 plt, ax = get_pyplot_ax('', figsize=[6.6, 2.4])
-ax.set_ylabel('Lines of code')
+ax.set_ylabel('Thousands of lines of code')
 ax.bar(x, y)
 ax.set_xticks(x)
 ax.set_xticklabels(labels, rotation=60, ha='right')
@@ -30,7 +30,7 @@ ax.set_ylim(bottom=0)
 ax.margins(x=0)
 
 # line for 1000LoC
-ax.axhline(1000, color='xkcd:dark grey', linestyle='--')
-ax.set_yticks([t for t in ax.get_yticks() if t != 0] + [1000])
+ax.axhline(1.0, color='xkcd:dark grey', linestyle='--')
+ax.set_yticks([t for t in ax.get_yticks() if t != 0] + [1])
 
 plt.savefig('driver-loc.svg', bbox_inches='tight', pad_inches=0)

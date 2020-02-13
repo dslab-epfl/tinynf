@@ -3,3 +3,5 @@ things to try out on a blank machine:
 - can run benchmarks on basic-tinynf, same
 - can run benchmarks on baselines-vigor/click (not with dpdk), same
 - can run benchmarks on baselines with dpdk, without manually installing it
+
+FIX BUG: max sends treatment is buggy - by default it tries to write to addr 0 (uninitialized) for send tail

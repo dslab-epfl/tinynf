@@ -70,7 +70,7 @@ def translate(nf):
     return 'Firewall'
   return '???'
 
-ax.set_ylabel('Throughput (Mbps)')
+ax.set_ylabel('Throughput (Mb/s)')
 ax.set_xticks(x)
 ax.set_xticklabels([translate(nf) for nf in nfs])
 ax.legend()

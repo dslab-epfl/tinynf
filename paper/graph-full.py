@@ -72,14 +72,14 @@ for key, latencies in numbers.items():
   marker = 'o'
   if key == 'original':
     label = 'DPDK'
-    marker = 'v'
+    marker = 'P' # filled plus
   if key == 'original, batching':
     label = 'DPDK, batching'
     marker = '^'
   ax.scatter(x, y, color=color, label=label, marker=marker)
 
-plt.xlabel('Throughput (Mbps)')
-plt.ylabel(perc_str + ' latency (us)')
+plt.xlabel('Throughput (Mb/s)')
+plt.ylabel(perc_str + ' latency (\u03BCs)')
 plt.legend(loc='upper left', handletextpad=0.3)
 fig.suptitle(get_title(kind, nf), y=0.85)
 
