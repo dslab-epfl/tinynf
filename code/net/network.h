@@ -1,7 +1,9 @@
 // Network abstractions.
 // A 'device' represents a physical network card: https://en.wikipedia.org/wiki/Network_interface_controller
+// Devices only handle packets destined to them by default, by looking at packets' MAC address: https://en.wikipedia.org/wiki/MAC_address
+// Devices can be set into 'promiscuous' mode to handle all packets regardless of MAC address.
 // Each device has one 'queue' to receive packet, and multiple 'queues' to transmit packets.
-// An 'agent' handles packets received on one input device, forwarding them through other devices as needed.
+// An 'agent' handles packets received on one input device, forwarding them through zero or more output devices as needed.
 
 #pragma once
 
@@ -18,7 +20,7 @@ struct tn_net_device;
 struct tn_net_agent;
 
 bool tn_net_device_init(struct tn_pci_device pci_device, struct tn_net_device** out_device);
-bool tn_net_device_set_promiscuous(const struct tn_net_device* device);
+bool tn_net_device_set_promiscuous(struct tn_net_device* device);
 
 bool tn_net_agent_init(struct tn_net_agent** out_agent);
 bool tn_net_agent_set_input(struct tn_net_agent* agent, const struct tn_net_device* device);

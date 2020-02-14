@@ -873,7 +873,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 // Section 7.1.1.1 L2 Filtering
 // ----------------------------
 
-bool tn_net_device_set_promiscuous(const struct tn_net_device* const device)
+bool tn_net_device_set_promiscuous(struct tn_net_device* const device)
 {
 	// "A packet passes successfully through L2 Ethernet MAC address filtering if any of the following conditions are met:"
 	// 	Section 8.2.3.7.1 Filter Control Register:
