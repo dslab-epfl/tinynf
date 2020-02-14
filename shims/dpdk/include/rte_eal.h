@@ -37,11 +37,11 @@ static inline int rte_eal_init(int argc, char** argv)
 			return -2;
 		}
 
-		if (!tn_net_pipe_init(&(tn_dpdk_devices[n].pipe))) {
+		if (!tn_net_agent_init(&(tn_dpdk_devices[n].agent))) {
 			return -3;
 		}
 
-		if (!tn_net_pipe_set_receive(tn_dpdk_devices[n].pipe, tn_dpdk_devices[n].device, 0)) {
+		if (!tn_net_agent_set_input(tn_dpdk_devices[n].agent, tn_dpdk_devices[n].device)) {
 			return -4;
 		}
 	}
@@ -52,14 +52,14 @@ static inline int rte_eal_init(int argc, char** argv)
 	}
 
 	for (int n = 0; n < devices_count; n++) {
-		if (!tn_net_pipe_add_send(tn_dpdk_devices[n].pipe, tn_dpdk_devices[1 - n].device, n)) {
+		if (!tn_net_agent_add_output(tn_dpdk_devices[n].agent, tn_dpdk_devices[1 - n].device, n)) {
 			return -6;
 		}
 	}
 #else
 	for (int n = 0; n < devices_count; n++) {
 		for (int d = 0; d < devices_count; d++) {
-			if (!tn_net_pipe_add_send(tn_dpdk_devices[n].pipe, tn_dpdk_devices[d].device, n)) {
+			if (!tn_net_agent_add_output(tn_dpdk_devices[n].agent, tn_dpdk_devices[d].device, n)) {
 				return -7;
 			}
 		}

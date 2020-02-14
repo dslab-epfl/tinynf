@@ -38,7 +38,7 @@ void tn_net_agent_process(struct tn_net_agent* agent, tn_net_packet_handler* han
 
 // Low-level processing API
 // ------------------------
-// This API only exists for use in compatibility layers, so that programs that use existing C frameworks based on separate receive/send can be ported
+// This API only exists for use in compatibility layers, so that programs that use existing C frameworks based on separate receive/transmit can be ported
 
 // Returns true iff there is a packet to process, in which case the out_ arguments point to valid data
 bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint16_t* out_packet_length);

@@ -198,7 +198,7 @@ static inline uint16_t rte_eth_rx_burst(uint16_t port_id, uint16_t queue_id, str
 
 	rx_pkts[0] = (struct rte_mbuf*) &(tn_dpdk_devices[port_id].buffer);
 
-	if (tn_net_pipe_receive(tn_dpdk_devices[port_id].pipe, (uint8_t**) &(rx_pkts[0]->buf_addr), &(rx_pkts[0]->data_len))) {
+	if (tn_net_agent_receive(tn_dpdk_devices[port_id].agent, (uint8_t**) &(rx_pkts[0]->buf_addr), &(rx_pkts[0]->data_len))) {
 		rx_pkts[0]->pkt_len = rx_pkts[0]->data_len;
 		rx_pkts[0]->port = port_id;
 		rx_pkts[0]->refcnt = 1;
@@ -206,9 +206,9 @@ static inline uint16_t rte_eth_rx_burst(uint16_t port_id, uint16_t queue_id, str
 		tn_dpdk_devices[port_id].is_processing = true;
 
 #ifdef ASSUME_ONE_WAY
-		memset(tn_dpdk_devices[port_id].current_send_list, 1, TN_DPDK_DEVICES_MAX_COUNT * sizeof(bool));
+		memset(tn_dpdk_devices[port_id].current_outputs, 1, TN_DPDK_DEVICES_MAX_COUNT * sizeof(bool));
 #else
-		memset(tn_dpdk_devices[port_id].current_send_list, 0, TN_DPDK_DEVICES_MAX_COUNT * sizeof(bool));
+		memset(tn_dpdk_devices[port_id].current_outputs, 0, TN_DPDK_DEVICES_MAX_COUNT * sizeof(bool));
 #endif
 		return 1;
 	}
@@ -224,14 +224,14 @@ static inline uint16_t rte_eth_tx_burst(uint16_t port_id, uint16_t queue_id, str
 	struct tn_dpdk_device* dev = tx_pkts[0]->tn_dpdk_device;
 
 #ifdef ASSUME_ONE_WAY
-	tn_net_pipe_send(dev->pipe, tx_pkts[0]->data_len, dev->current_send_list);
+	tn_net_agent_transmit(dev->agent, tx_pkts[0]->data_len, dev->current_outputs);
 	dev->is_processing = false;
 #else
-	dev->current_send_list[port_id] = true;
+	dev->current_outputs[port_id] = true;
 	tx_pkts[0]->refcnt--;
-	// Assume that if the ref count is more than 1 on sending, the intent is to send to another device as well
+	// Assume that if the ref count is more than 1 on transmit, the intent is to transmit to another device as well
 	if (tx_pkts[0]->refcnt == 0) {
-		tn_net_pipe_send(dev->pipe, tx_pkts[0]->data_len, dev->current_send_list);
+		tn_net_agent_transmit(dev->agent, tx_pkts[0]->data_len, dev->current_outputs);
 		dev->is_processing = false;
 	}
 #endif

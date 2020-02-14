@@ -34,7 +34,7 @@ struct tn_net_device* TinyNF::get_device(String addr) {
   return _devices[pci];
 }
 
-TinyNF::TinyNF() : _pipe(nullptr), _task(this), _killing(false) { }
+TinyNF::TinyNF() : _agent(nullptr), _task(this), _killing(false) { }
 TinyNF::~TinyNF() { }
 
 int TinyNF::configure(Vector<String>& conf, ErrorHandler* errh) {
@@ -51,9 +51,9 @@ int TinyNF::configure(Vector<String>& conf, ErrorHandler* errh) {
     return -1;
   }
 
-  if (!tn_net_pipe_init(&_pipe)
-   || !tn_net_pipe_set_receive(_pipe, src_dev, 0)
-   || !tn_net_pipe_add_send(_pipe, dst_dev, _instance_count++)) {
+  if (!tn_net_agent_init(&_agent)
+   || !tn_net_agent_set_input(_agent, src_dev)
+   || !tn_net_agent_add_output(_agent, dst_dev, _instance_count++)) {
     return -1;
   }
 
@@ -72,14 +72,14 @@ void TinyNF::packet_destructor(unsigned char* buffer, size_t size, void* arg) {
   if (!nf->_killing) {
     bool list[1];
     list[0] = false;
-    tn_net_pipe_send(nf->_pipe, (uint16_t) size, list);
+    tn_net_agent_transmit(nf->_agent, (uint16_t) size, list);
   }
 }
 
 bool TinyNF::run_task(Task* task) {
   uint8_t* data;
   uint16_t length;
-  if (tn_net_pipe_receive(_pipe, &data, &length)) {
+  if (tn_net_agent_receive(_agent, &data, &length)) {
     WritablePacket* packet = Packet::make(data, length, packet_destructor, this, 0, 0);
     packet->set_packet_type_anno(Packet::HOST);
     packet->set_mac_header(data);
@@ -96,7 +96,7 @@ void TinyNF::push(int port, Packet* p) {
 
   bool list[1];
   list[0] = true;
-  tn_net_pipe_send(_pipe, p->length(), list);
+  tn_net_agent_transmit(_agent, p->length(), list);
 
   _killing = true;
   p->kill();

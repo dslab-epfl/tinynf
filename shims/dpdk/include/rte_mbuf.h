@@ -99,9 +99,9 @@ static inline void rte_mbuf_refcnt_set(struct rte_mbuf* m, uint16_t new_value)
 
 static inline void rte_pktmbuf_free(struct rte_mbuf* m)
 {
-	// Assume that if freeing the mbuf is dropping it
-	bool send_list[TN_DPDK_DEVICES_MAX_COUNT] = {0};
-	tn_net_pipe_send(m->tn_dpdk_device->pipe, m->data_len, send_list);
+	// Assume that if freeing, the mbuf is supposed to be dropped
+	bool outputs[TN_DPDK_DEVICES_MAX_COUNT] = {0};
+	tn_net_agent_transmit(m->tn_dpdk_device->agent, m->data_len, outputs);
 	m->tn_dpdk_device->is_processing = false;
 }
 

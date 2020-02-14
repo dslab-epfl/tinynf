@@ -33,7 +33,7 @@ class TinyNF : public Element {
     static void packet_destructor(unsigned char* buffer, size_t size, void* arg);
     static std::map<tn_pci_device, tn_net_device*, tn_pci_device_comparer> _devices;
     static std::atomic<int> _instance_count;
-    struct tn_net_pipe* _pipe;
+    struct tn_net_agent* _agent;
     Task _task;
     bool _killing;
 };
