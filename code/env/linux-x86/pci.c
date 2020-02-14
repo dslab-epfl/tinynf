@@ -1,3 +1,7 @@
+// Access PCI configuration space using port-mapped I/O: https://sysplay.github.io/books/LinuxDrivers/book/Content/Part08.html
+// Note that Linux requires programs to call `ioperm` before accessing ports.
+// To hide this, we pretend that reads and writes fail if we can't get permission.
+
 #include "../pci.h"
 
 #include "filesystem.h"

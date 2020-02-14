@@ -1,3 +1,8 @@
+// The only way to have pinned pages on Linux is to use huge pages: https://www.kernel.org/doc/Documentation/vm/hugetlbpage.txt
+// Note that Linux's `mlock` system call is not sufficient to pin; it only guarantees the pages will not be swapped out, not that the physical address won't change.
+// While Linux doesn't actually guarantee that huge pages are pinned, in practice its implementation pins them.
+// This file makes heavy use of the `mmap`/`munmap` calls for memory-mapped files: https://en.wikipedia.org/wiki/Mmap
+
 #include "../memory.h"
 
 #include "numa.h"
@@ -30,10 +35,6 @@ static uintptr_t get_page_size(void)
 	return cached_page_size;
 }
 
-// ASSUMPTION: The Linux kernel will not move hugepages, i.e. that their physical address remains constant.
-//             If this assumption were to be broken, this code would need to change.
-//             Locking a page is not sufficient - it guarantees the page won't be swapped out,
-//             not that it won't be moved.
 bool tn_mem_allocate(const uint64_t size, uintptr_t* out_addr)
 {
 	// OK if size is smaller, we'll just return too much memory

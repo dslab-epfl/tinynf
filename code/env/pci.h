@@ -1,3 +1,6 @@
+// PCI configuration space reads and writes
+// https://en.wikipedia.org/wiki/PCI_configuration_space
+
 #pragma once
 
 #include <stdint.h>
@@ -11,7 +14,7 @@ struct tn_pci_device {
 };
 
 
-// Reads the given register of the given device.
+// Reads the given register of the given device and return its value.
 uint32_t tn_pci_read(struct tn_pci_device device, uint8_t reg);
 
 // Writes the given value to the given register of the given device

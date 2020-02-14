@@ -1,3 +1,6 @@
+// Endianness abstraction
+// https://en.wikipedia.org/wiki/Endianness
+
 #pragma once
 
 #include <stdint.h>

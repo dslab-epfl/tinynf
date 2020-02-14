@@ -29,8 +29,10 @@ TN_APP ?= tinynf
 TN_CC ?= gcc-9 # hardcode version for reproducibility
 TN_STRIP ?= strip
 
-# Files
+# Current directory
 TN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
+# Special behavior when TN_FILES is not set
 ifeq (,$(TN_FILES))
 TN_FILES := $(TN_DIR)/tinynf.c
 ifneq (,$(findstring clang,$(TN_CC)))
@@ -40,9 +42,12 @@ ifneq (,$(findstring gcc,$(TN_CC)))
 TN_CFLAGS += -Wall -Wextra -Wshadow -Wstrict-aliasing -pedantic
 endif
 endif
+
+# Files
 TN_FILES += $(shell echo $(TN_DIR)/env/$(TN_ENV)/*.c $(TN_DIR)/net/$(TN_NET)/*.c)
 
 # Compiler and stripping args
+TN_CFLAGS += -std=c11
 TN_CFLAGS += -march=native
 TN_CFLAGS += -I $(TN_DIR)
 TN_CFLAGS += -DLOG_LEVEL=$(TN_DEBUG)
@@ -54,6 +59,11 @@ TN_STRIP := true # don't strip
 TN_CFLAGS += -O0 -g
 else
 TN_CFLAGS += -O3
+endif
+
+# Linux-only compiler flags
+ifeq (linux-x86,$(TN_ENV))
+TN_CFLAGS += -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
 endif
 
 ifndef TN_NO_DEFAULT_TARGET

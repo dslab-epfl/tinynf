@@ -1,3 +1,6 @@
+// Time management using POSIX's "nanosleep" call, which takes in a (seconds, nanoseconds) tuple, and can fail completely or partially.
+// Note that POSIX's "usleep" call, which could be used directly here, was removed in POSIX-2008.
+
 #include "../time.h"
 
 #include <assert.h>
@@ -15,8 +18,7 @@ void tn_sleep_us(uint64_t microseconds)
 	request.tv_nsec = (int64_t)(microseconds % 1000000) * 1000;
 
 	for (uint64_t n = 0; n < MAX_SLEEP_ATTEMPTS; n++) {
-		// Note that usleep was removed in POSIX-2008
-		// Also, we don't care if we end up sleeping more than requested due to interrupts and restarts.
+		// We don't care if we end up sleeping more than requested due to interrupts and restarts.
 		// (properly doing it with clock_gettime then clock_nanosleep in absolute time would require handling time overflows; not fun)
 		struct timespec remain;
 		int ret = nanosleep(&request, &remain);
