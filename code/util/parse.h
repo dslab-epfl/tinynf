@@ -1,3 +1,6 @@
+// Parsing utilities.
+// Useful mostly for the last method, which parses a PCI address from a string.
+
 #pragma once
 
 #include "env/pci.h"
