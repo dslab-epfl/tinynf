@@ -3,17 +3,15 @@
 // While Linux doesn't actually guarantee that huge pages are pinned, in practice its implementation pins them.
 // This file makes heavy use of the `mmap`/`munmap` calls for memory-mapped files: https://en.wikipedia.org/wiki/Mmap
 
-#include "../memory.h"
+#include "env/memory.h"
 
 #include "numa.h"
 #include "util/log.h"
 
 #include <fcntl.h>
 #include <unistd.h>
-#include <stddef.h>
 
 #include <sys/mman.h>
-#include <linux/mman.h>
 
 // We only support 2MB hugepages
 #define HUGEPAGE_SIZE_POWER (10 + 10 + 1)

@@ -2,7 +2,7 @@
 // Note that Linux requires programs to call `ioperm` before accessing ports.
 // To hide this, we pretend that reads and writes fail if we can't get permission.
 
-#include "../pci.h"
+#include "env/pci.h"
 
 #include "filesystem.h"
 #include "numa.h"

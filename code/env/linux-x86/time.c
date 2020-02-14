@@ -1,10 +1,10 @@
 // Time management using POSIX's "nanosleep" call, which takes in a (seconds, nanoseconds) tuple, and can fail completely or partially.
 // Note that POSIX's "usleep" call, which could be used directly here, was removed in POSIX-2008.
 
-#include "../time.h"
+#include "env/time.h"
 
-#include <assert.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <time.h>
 
 
@@ -25,15 +25,15 @@ void tn_sleep_us(uint64_t microseconds)
 		if (ret == 0) {
 			return;
 		}
-		if (ret == EINTR) {
+		if (errno == EINTR) {
 			// Got interrupted; try again.
 			request.tv_sec = remain.tv_sec;
 			request.tv_nsec = remain.tv_nsec;
 			continue;
 		}
-		// Other codes cannot happen according to the documentation.
-		assert(0);
+		// Other codes should not happen according to the documentation (memory issue or invalid sec/nsec).
+		exit(1);
 	}
 	// Something went terribly wrong
-	assert(0);
+	exit(1);
 }

@@ -1,6 +1,6 @@
 // The x86 architecture is little-endian, so the implementations here are trivial
 
-#include "../endian.h"
+#include "env/endian.h"
 
 
 uint32_t tn_cpu_to_le(const uint32_t val)
