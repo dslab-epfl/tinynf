@@ -1,4 +1,7 @@
 // Network abstractions.
+// A 'device' represents a physical network card: https://en.wikipedia.org/wiki/Network_interface_controller
+// Each device has one 'queue' to receive packet, and multiple 'queues' to transmit packets.
+// An 'agent' handles packets received on one input device, forwarding them through other devices as needed.
 
 #pragma once
 
@@ -12,27 +15,23 @@
 // -----------------
 
 struct tn_net_device;
-struct tn_net_pipe;
+struct tn_net_agent;
 
 bool tn_net_device_init(struct tn_pci_device pci_device, struct tn_net_device** out_device);
 bool tn_net_device_set_promiscuous(const struct tn_net_device* device);
 
-bool tn_net_pipe_init(struct tn_net_pipe** out_pipe);
-bool tn_net_pipe_set_receive(struct tn_net_pipe* pipe, const struct tn_net_device* device, uint64_t queue_index);
-bool tn_net_pipe_add_send(struct tn_net_pipe* pipe, const struct tn_net_device* device, uint64_t queue_index);
+bool tn_net_agent_init(struct tn_net_agent** out_agent);
+bool tn_net_agent_set_input(struct tn_net_agent* agent, const struct tn_net_device* device);
+bool tn_net_agent_add_output(struct tn_net_agent* agent, const struct tn_net_device* device, uint64_t queue_index);
 
 
 // Packet processing API
 // ---------------------
 
-// Returns the new length of the packet, and sets send_list[N] = true if and only if the packet should be sent on queue N (queues are in the order they were added)
-typedef uint16_t tn_net_packet_handler(uint8_t* packet, uint16_t packet_length, bool* send_list);
-// Runs one step of the given pipe using the given handler; expects to be run an infinite number of times
-void tn_net_pipe_process(struct tn_net_pipe* pipe, tn_net_packet_handler* handler);
-
-
-
-
+// Returns the new length of the packet, and sets outputs[N] = true if and only if the packet should be sent on queue N (queues are in the order they were added)
+typedef uint16_t tn_net_packet_handler(uint8_t* packet, uint16_t packet_length, bool* outputs);
+// Runs one step of the given agent using the given handler; expects to be run an infinite number of times
+void tn_net_agent_process(struct tn_net_agent* agent, tn_net_packet_handler* handler);
 
 
 // Low-level processing API
@@ -40,8 +39,8 @@ void tn_net_pipe_process(struct tn_net_pipe* pipe, tn_net_packet_handler* handle
 // This API only exists for use in compatibility layers, so that programs that use existing C frameworks based on separate receive/send can be ported
 
 // Returns true iff there is a packet to process, in which case the out_ arguments point to valid data
-bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_t* out_packet_length);
-// Must be called exactly once after receive
-void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* send_list);
+bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint16_t* out_packet_length);
+// Must be called exactly once after receive (even if the packet is to be dropped by all outputs)
+void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, bool* outputs);
 
 

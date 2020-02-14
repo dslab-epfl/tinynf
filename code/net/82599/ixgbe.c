@@ -30,7 +30,7 @@
 // We make the following assumptions, which we later refer to by name.
 
 // CACHE: The cache line size is 64 bytes
-// CRC: We want CRC stripped when receiving and generated on the entire packet when sending
+// CRC: We want CRC stripped when receiving and generated on the entire packet when transmitting
 // DROP: We want to drop packets if we can't process them fast enough, for predictable behavior
 // NOCARE: We do not care about the following:
 //         - Statistics
@@ -92,7 +92,7 @@
 // 	"Number of Rx Queues (per port): 128"
 #define IXGBE_RECEIVE_QUEUES_COUNT 128u
 // 	"Number of Tx Queues (per port): 128"
-#define IXGBE_SEND_QUEUES_COUNT 128u
+#define IXGBE_TRANSMIT_QUEUES_COUNT 128u
 // Section 7.1.2 Rx Queues Assignment:
 // 	"Packets are classified into one of several (up to eight) Traffic Classes (TCs)."
 #define IXGBE_TRAFFIC_CLASSES_COUNT 8u
@@ -316,19 +316,19 @@ static_assert(IXGBE_PACKET_BUFFER_SIZE < IXGBE_PACKET_BUFFER_SIZE_MAX, "Packet s
 #define IXGBE_RING_SIZE 1024u
 static_assert(IXGBE_RING_SIZE % 128 == 0, "Ring size must be 0 modulo 128");
 static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2 for fast modulo");
-// Maximum number of send queues assigned to a pipe.
-#ifndef IXGBE_PIPE_MAX_SENDS
-#define IXGBE_PIPE_MAX_SENDS 4u
+// Maximum number of transmit queues assigned to an agent.
+#ifndef IXGBE_AGENT_OUTPUTS_MAX
+#define IXGBE_AGENT_OUTPUTS_MAX 4u
 #endif
 // Updating period for the transmit tail
-#define IXGBE_PIPE_PROCESS_PERIOD 8
-static_assert(IXGBE_PIPE_PROCESS_PERIOD >= 1, "Process period must be at least 1");
-static_assert(IXGBE_PIPE_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
+#define IXGBE_AGENT_PROCESS_PERIOD 8
+static_assert(IXGBE_AGENT_PROCESS_PERIOD >= 1, "Process period must be at least 1");
+static_assert(IXGBE_AGENT_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
-#define IXGBE_PIPE_TRANSMIT_PERIOD 64
-static_assert(IXGBE_PIPE_TRANSMIT_PERIOD >= 1, "Transmit period must be at least 1");
-static_assert(IXGBE_PIPE_TRANSMIT_PERIOD < IXGBE_RING_SIZE, "Transmit period must be less than the ring size");
-static_assert((IXGBE_PIPE_TRANSMIT_PERIOD & (IXGBE_PIPE_TRANSMIT_PERIOD - 1)) == 0, "Transmit period must be a power of 2 for fast modulo");
+#define IXGBE_AGENT_TRANSMIT_PERIOD 64
+static_assert(IXGBE_AGENT_TRANSMIT_PERIOD >= 1, "Transmit period must be at least 1");
+static_assert(IXGBE_AGENT_TRANSMIT_PERIOD < IXGBE_RING_SIZE, "Transmit period must be less than the ring size");
+static_assert((IXGBE_AGENT_TRANSMIT_PERIOD & (IXGBE_AGENT_TRANSMIT_PERIOD - 1)) == 0, "Transmit period must be a power of 2 for fast modulo");
 
 
 // ---------
@@ -898,47 +898,47 @@ bool tn_net_device_set_promiscuous(const struct tn_net_device* const device)
 	return true;
 }
 
-// ---------------
-// Pipe definition
-// ---------------
+// ----------------
+// Agent definition
+// ----------------
 
-struct tn_net_pipe
+struct tn_net_agent
 {
 	uintptr_t buffer;
 	uintptr_t receive_tail_addr;
 	uint64_t processed_delimiter;
-	uint64_t send_count;
+	uint64_t outputs_count;
 	uint64_t flushed_processed_delimiter; // -1 if there was no packet last time, otherwise last flushed processed_delimiter
 	uint8_t _padding[3*8];
-	// send heads must be 16-byte aligned; see alignment remarks in send queue setup
+	// transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
 	// plus, we want each head on its own cache line to avoid conflicts
 	// thus, using assumption CACHE, we multiply indices by 16
-	#define SEND_HEAD_MULTIPLIER 16
-	volatile uint32_t send_heads[IXGBE_PIPE_MAX_SENDS * SEND_HEAD_MULTIPLIER];
-	volatile uint64_t* rings[IXGBE_PIPE_MAX_SENDS]; // 0 == shared receive/send, rest are exclusive send
-	uintptr_t send_tail_addrs[IXGBE_PIPE_MAX_SENDS];
+	#define TRANSMIT_HEAD_MULTIPLIER 16
+	volatile uint32_t transmit_heads[IXGBE_AGENT_OUTPUTS_MAX * TRANSMIT_HEAD_MULTIPLIER];
+	volatile uint64_t* rings[IXGBE_AGENT_OUTPUTS_MAX]; // 0 == shared receive/transmit, rest are exclusive transmit
+	uintptr_t transmit_tail_addrs[IXGBE_AGENT_OUTPUTS_MAX];
 };
 
-// -------------------
-// Pipe initialization
-// -------------------
+// --------------------
+// Agent initialization
+// --------------------
 
-bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
+bool tn_net_agent_init(struct tn_net_agent** out_agent)
 {
-	struct tn_net_pipe* pipe;
-	if (!tn_mem_allocate(sizeof(struct tn_net_pipe), (uintptr_t*) &pipe)) {
-		TN_DEBUG("Could not allocate pipe");
+	struct tn_net_agent* agent;
+	if (!tn_mem_allocate(sizeof(struct tn_net_agent), (uintptr_t*) &agent)) {
+		TN_DEBUG("Could not allocate agent");
 		return false;
 	}
 
-	if (!tn_mem_allocate(IXGBE_RING_SIZE * IXGBE_PACKET_BUFFER_SIZE, &(pipe->buffer))) {
-		TN_DEBUG("Could not allocate buffer for pipe");
-		tn_mem_free((uintptr_t) pipe);
+	if (!tn_mem_allocate(IXGBE_RING_SIZE * IXGBE_PACKET_BUFFER_SIZE, &(agent->buffer))) {
+		TN_DEBUG("Could not allocate buffer for agent");
+		tn_mem_free((uintptr_t) agent);
 		return false;
 	}
 
-	for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
+	for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
 		// Rings need to be 128-byte aligned, as seen later
 		static_assert(IXGBE_RING_SIZE * 16 >= 128, "The ring address should be 128-byte aligned");
 
@@ -946,19 +946,19 @@ bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
 		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring_addr)) { // 16 bytes per descriptor, i.e. 2x64bits
 			TN_DEBUG("Could not allocate ring");
 			for (uint64_t m = 0; m < n; m++) {
-				tn_mem_free((uintptr_t) pipe->rings[m]);
+				tn_mem_free((uintptr_t) agent->rings[m]);
 			}
-			tn_mem_free(pipe->buffer);
-			tn_mem_free((uintptr_t) pipe);
+			tn_mem_free(agent->buffer);
+			tn_mem_free((uintptr_t) agent);
 			return false;
 		}
 
-		pipe->rings[n] = (volatile uint64_t*) ring_addr;
+		agent->rings[n] = (volatile uint64_t*) ring_addr;
 	}
 
 	// Start in "no packet" state
-	pipe->flushed_processed_delimiter = (uint64_t) -1;
-	*out_pipe = pipe;
+	agent->flushed_processed_delimiter = (uint64_t) -1;
+	*out_agent = agent;
 	return true;
 }
 
@@ -966,19 +966,15 @@ bool tn_net_pipe_init(struct tn_net_pipe** out_pipe)
 // Section 4.6.7 Receive Initialization
 // ------------------------------------
 
-bool tn_net_pipe_set_receive(struct tn_net_pipe* const pipe, const struct tn_net_device* const device, const uint64_t long_queue_index)
+bool tn_net_agent_set_input(struct tn_net_agent* const agent, const struct tn_net_device* const device)
 {
-	if (pipe->receive_tail_addr != 0) {
-		TN_DEBUG("Pipe receive was already set");
+	if (agent->receive_tail_addr != 0) {
+		TN_DEBUG("Agent receive was already set");
 		return false;
 	}
 
-	if (long_queue_index >= IXGBE_RECEIVE_QUEUES_COUNT) {
-		TN_DEBUG("Receive queue does not exist");
-		return false;
-	}
-	static_assert((uint8_t) -1 >= IXGBE_RECEIVE_QUEUES_COUNT, "This code assumes receive queues fit in an uint8_t");
-	uint8_t queue_index = (uint8_t) long_queue_index;
+	// The 82599 has more than one receive queue, but we only need queue 0
+	uint8_t queue_index = 0;
 
 	// See later for details of RXDCTL.ENABLE
 	if (!IXGBE_REG_CLEARED(device->addr, RXDCTL, queue_index, ENABLE)) {
@@ -988,18 +984,18 @@ bool tn_net_pipe_set_receive(struct tn_net_pipe* const pipe, const struct tn_net
 
 	// "The following should be done per each receive queue:"
 	// "- Allocate a region of memory for the receive descriptor list."
-	// This is already done in pipe initialization as pipe->rings[0]
+	// This is already done in agent initialization as agent->rings[0]
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
-	// This will be done when setting up the first send ring
+	// This will be done when setting up the first transmit ring
 	// Note that only the first line (buffer address) needs to be configured, the second line is only for write-back except End Of Packet (bit 33)
 	// and Descriptor Done (bit 32), which must be 0 as per table in "EOP (End of Packet) and DD (Descriptor Done)"
 	// "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
 	// INTERPRETATION-TYPO: This is a typo, the second "RDBAL" should read "RDBAH".
 	// 	Section 8.2.3.8.1 Receive Descriptor Base Address Low (RDBAL[n]):
 	// 	"The receive descriptor base address must point to a 128 byte-aligned block of data."
-	// This alignment is guaranteed by the pipe initialization
+	// This alignment is guaranteed by the agent initialization
 	uintptr_t ring_phys_addr;
-	if (!tn_mem_virt_to_phys((uintptr_t) pipe->rings[0], &ring_phys_addr)) {
+	if (!tn_mem_virt_to_phys((uintptr_t) agent->rings[0], &ring_phys_addr)) {
 		TN_DEBUG("Could not get phys addr of main ring");
 		return false;
 	}
@@ -1057,7 +1053,7 @@ bool tn_net_pipe_set_receive(struct tn_net_pipe* const pipe, const struct tn_net
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
 	IXGBE_REG_SET(device->addr, DCARXCTRL, queue_index, UNKNOWN);
 
-	pipe->receive_tail_addr = device->addr + IXGBE_REG_RDT(queue_index);
+	agent->receive_tail_addr = device->addr + IXGBE_REG_RDT(queue_index);
 	return true;
 }
 
@@ -1065,54 +1061,54 @@ bool tn_net_pipe_set_receive(struct tn_net_pipe* const pipe, const struct tn_net
 // Section 4.6.8 Transmit Initialization
 // -------------------------------------
 
-bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_device* const device, const uint64_t long_queue_index)
+bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_net_device* const device, const uint64_t long_queue_index)
 {
-	uint64_t send_queues_count = 0;
-	for (; send_queues_count < IXGBE_PIPE_MAX_SENDS; send_queues_count++) {
-		if (pipe->send_tail_addrs[send_queues_count] == 0) {
+	uint64_t outputs_count = 0;
+	for (; outputs_count < IXGBE_AGENT_OUTPUTS_MAX; outputs_count++) {
+		if (agent->transmit_tail_addrs[outputs_count] == 0) {
 			break;
 		}
 	}
-	if (send_queues_count == IXGBE_PIPE_MAX_SENDS) {
-		TN_DEBUG("The pipe is already using the maximum amount of send queues");
+	if (outputs_count == IXGBE_AGENT_OUTPUTS_MAX) {
+		TN_DEBUG("The agent is already using the maximum amount of transmit queues");
 		return false;
 	}
 
-	if (long_queue_index >= IXGBE_SEND_QUEUES_COUNT) {
-		TN_DEBUG("Send queue does not exist");
+	if (long_queue_index >= IXGBE_TRANSMIT_QUEUES_COUNT) {
+		TN_DEBUG("Transmit queue does not exist");
 		return false;
 	}
-	static_assert((uint8_t) -1 >= IXGBE_SEND_QUEUES_COUNT, "This code assumes send queues fit in an uint8_t");
+	static_assert((uint8_t) -1 >= IXGBE_TRANSMIT_QUEUES_COUNT, "This code assumes transmit queues fit in an uint8_t");
 	uint8_t queue_index = (uint8_t) long_queue_index;
 
 	// See later for details of TXDCTL.ENABLE
 	if (!IXGBE_REG_CLEARED(device->addr, TXDCTL, queue_index, ENABLE)) {
-		TN_DEBUG("Send queue is already in use");
+		TN_DEBUG("Transmit queue is already in use");
 		return false;
 	}
 
 	// "The following steps should be done once per transmit queue:"
 	// "- Allocate a region of memory for the transmit descriptor list."
-	// This is already done in pipe initialization as pipe->rings[*]
-	volatile uint64_t* ring = pipe->rings[send_queues_count];
+	// This is already done in agent initialization as agent->rings[*]
+	volatile uint64_t* ring = agent->rings[outputs_count];
 	// Program all descriptors' buffer address now
 	for (uintptr_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 		// "Buffer Address (64)", 1st line offset 0
-		uintptr_t packet = pipe->buffer + n * IXGBE_PACKET_BUFFER_SIZE;
+		uintptr_t packet = agent->buffer + n * IXGBE_PACKET_BUFFER_SIZE;
 		uintptr_t packet_phys_addr;
 		if (!tn_mem_virt_to_phys(packet, &packet_phys_addr)) {
-			TN_DEBUG("Could not get a packet's phys addr");
+			TN_DEBUG("Could not get a packet's physical address");
 		}
 		ring[n * 2u] = packet_phys_addr;
 	}
 	// "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
 	// 	Section 8.2.3.9.5 Transmit Descriptor Base Address Low (TDBAL[n]):
 	// 	"The Transmit Descriptor Base Address must point to a 128 byte-aligned block of data."
-	// This alignment is guaranteed by the pipe initialization
+	// This alignment is guaranteed by the agent initialization
 	uintptr_t ring_phys_addr;
 	if (!tn_mem_virt_to_phys((uintptr_t) ring, &ring_phys_addr)) {
-		TN_DEBUG("Could not get a send ring's phys addr");
+		TN_DEBUG("Could not get a transmit ring's physical address");
 		return false;
 	}
 	IXGBE_REG_WRITE(device->addr, TDBAH, queue_index, (uint32_t) (ring_phys_addr >> 32));
@@ -1133,8 +1129,8 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	IXGBE_REG_WRITE(device->addr, TXDCTL, queue_index, HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	uintptr_t head_phys_addr;
-	if (!tn_mem_virt_to_phys((uintptr_t) &(pipe->send_heads[send_queues_count * SEND_HEAD_MULTIPLIER]), &head_phys_addr)) {
-		TN_DEBUG("Could not get the physical address of the send head");
+	if (!tn_mem_virt_to_phys((uintptr_t) &(agent->transmit_heads[outputs_count * TRANSMIT_HEAD_MULTIPLIER]), &head_phys_addr)) {
+		TN_DEBUG("Could not get the physical address of the transmit head");
 		return false;
 	}
 	//	Section 7.2.3.5.2 Tx Head Pointer Write Back:
@@ -1146,7 +1142,7 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	// INTERPRETATION-CONTRADICTION: There is an obvious contradiction here; qword-aligned seems like a safe option since it will also be dword-aligned.
 	// INTERPRETATION-INCORRECT: Empirically, the answer is... 16 bytes. Write-back has no effect otherwise. So both versions are wrong.
 	if (head_phys_addr % 16u != 0) {
-		TN_DEBUG("Send head's physical address is not aligned properly");
+		TN_DEBUG("Transmit head's physical address is not aligned properly");
 		return false;
 	}
 	//	Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low (TDWBAL[n]):
@@ -1171,8 +1167,8 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
 	// Nothing to transmit yet, so leave TDT alone.
 
-	pipe->send_tail_addrs[send_queues_count] = device->addr + IXGBE_REG_TDT(queue_index);
-	pipe->send_count = pipe->send_count + 1;
+	agent->transmit_tail_addrs[outputs_count] = device->addr + IXGBE_REG_TDT(queue_index);
+	agent->outputs_count = agent->outputs_count + 1;
 	return true;
 }
 
@@ -1180,29 +1176,29 @@ bool tn_net_pipe_add_send(struct tn_net_pipe* const pipe, const struct tn_net_de
 // Packet reception
 // ----------------
 
-bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_t* out_packet_length)
+bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint16_t* out_packet_length)
 {
 	// Since descriptors are 16 bytes, the index must be doubled
-	volatile uint64_t* main_metadata_addr = pipe->rings[0] + 2u*pipe->processed_delimiter + 1;
+	volatile uint64_t* main_metadata_addr = agent->rings[0] + 2u*agent->processed_delimiter + 1;
 	uint64_t receive_metadata = *main_metadata_addr;
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
 	if ((receive_metadata & BITL(32)) == 0) {
 		// No packet; flush if we need to, i.e., 2nd part of the processor
 		// Done here since we must eventually flush after processing a packet even if no more packets are received
-		if ((pipe->flushed_processed_delimiter != (uint64_t) -1) & (pipe->flushed_processed_delimiter != pipe->processed_delimiter)) {
-			for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-				ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
+		if ((agent->flushed_processed_delimiter != (uint64_t) -1) & (agent->flushed_processed_delimiter != agent->processed_delimiter)) {
+			for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
+				ixgbe_reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 			}
 		}
 		// Record that there was no packet
-		pipe->flushed_processed_delimiter = (uint64_t) -1;
+		agent->flushed_processed_delimiter = (uint64_t) -1;
 
 		return false;
 	}
 
 	// This cannot overflow because the packet is by definition in an allocated block of memory
-	*out_packet = (uint8_t*) pipe->buffer + (IXGBE_PACKET_BUFFER_SIZE * pipe->processed_delimiter);
+	*out_packet = (uint8_t*) agent->buffer + (IXGBE_PACKET_BUFFER_SIZE * agent->processed_delimiter);
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
 	*out_packet_length = receive_metadata & 0xFFu;
 
@@ -1214,7 +1210,7 @@ bool tn_net_pipe_receive(struct tn_net_pipe* pipe, uint8_t** out_packet, uint16_
 // Packet transmission
 // -------------------
 
-void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* send_list)
+void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, bool* outputs)
 {
 	// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 	// "Buffer Address (64)", 1st line
@@ -1244,44 +1240,44 @@ void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* se
 			// All zero
 	// INTERPRETATION-INCORRECT: Despite being marked as "reserved", the buffer address does not get clobbered by write-back, so no need to set it again
 	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want to get updated
-	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first send ring, it will clear the Descriptor Done flag of the receive descriptor
-	// If not all send rings are used, we will write into an unused (but allocated!) ring, that's fine
+	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor
+	// If not all transmit rings are used, we will write into an unused (but allocated!) ring, that's fine
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
-	uint64_t rs_bit = (uint64_t) ((pipe->processed_delimiter & (IXGBE_PIPE_TRANSMIT_PERIOD - 1)) == (IXGBE_PIPE_TRANSMIT_PERIOD - 1)) << (24+3);
-	for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-		*(pipe->rings[n] + 2u*pipe->processed_delimiter + 1) = (send_list[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24);
+	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_TRANSMIT_PERIOD - 1)) == (IXGBE_AGENT_TRANSMIT_PERIOD - 1)) << (24+3);
+	for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
+		*(agent->rings[n] + 2u*agent->processed_delimiter + 1) = (outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24);
 	}
 
 	// Increment the processed delimiter, modulo the ring size
-	pipe->processed_delimiter = (pipe->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
+	agent->processed_delimiter = (agent->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
 
 	// Flush if we need to, i.e., 2nd part of the processor
 	// Done here so that latency is minimal in low-load cases
-	if ((pipe->flushed_processed_delimiter == (uint64_t) -1) | (pipe->processed_delimiter == ((pipe->flushed_processed_delimiter + IXGBE_PIPE_PROCESS_PERIOD) & (IXGBE_RING_SIZE - 1)))) {
-		for (uint64_t n = 0; n < IXGBE_PIPE_MAX_SENDS; n++) {
-			ixgbe_reg_write_raw(pipe->send_tail_addrs[n], (uint32_t) pipe->processed_delimiter);
+	if ((agent->flushed_processed_delimiter == (uint64_t) -1) | (agent->processed_delimiter == ((agent->flushed_processed_delimiter + IXGBE_AGENT_PROCESS_PERIOD) & (IXGBE_RING_SIZE - 1)))) {
+		for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
+			ixgbe_reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
-		pipe->flushed_processed_delimiter = pipe->processed_delimiter;
+		agent->flushed_processed_delimiter = agent->processed_delimiter;
 	}
 
 	// Transmitter 2nd part, moving descriptors to the receive pool
-	// This should happen as rarely as the update period since that's the period controlling send head updates from the NIC
+	// This should happen as rarely as the update period since that's the period controlling transmit head updates from the NIC
 	// Doing it here allows us to (1) reuse rs_bit and (2) make less divergent paths for symbolic execution (as opposed to doing it in receive)
 	if (rs_bit != 0) {
-		// In case there are no send queues, the "earliest" send head is the processed delimiter
-		uint32_t earliest_send_head = (uint32_t) pipe->processed_delimiter;
+		// In case there are no transmit queues, the "earliest" transmit head is the processed delimiter
+		uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
 		uint64_t min_diff = (uint64_t) -1;
-		// Race conditions are possible here, but all they can do is make our "earliest send head" value too low, which is fine
-		for (uint64_t n = 0; n < pipe->send_count; n++) {
-			uint32_t head = pipe->send_heads[n * SEND_HEAD_MULTIPLIER];
-			uint64_t diff = head - pipe->processed_delimiter;
+		// Race conditions are possible here, but all they can do is make our "earliest transmit head" value too low, which is fine
+		for (uint64_t n = 0; n < agent->outputs_count; n++) {
+			uint32_t head = agent->transmit_heads[n * TRANSMIT_HEAD_MULTIPLIER];
+			uint64_t diff = head - agent->processed_delimiter;
 			if (diff <= min_diff) {
-				earliest_send_head = head;
+				earliest_transmit_head = head;
 				min_diff = diff;
 			}
 		}
 
-		ixgbe_reg_write_raw(pipe->receive_tail_addr, (earliest_send_head - 1) & (IXGBE_RING_SIZE - 1));
+		ixgbe_reg_write_raw(agent->receive_tail_addr, (earliest_transmit_head - 1) & (IXGBE_RING_SIZE - 1));
 	}
 }
 
@@ -1289,16 +1285,16 @@ void tn_net_pipe_send(struct tn_net_pipe* pipe, uint16_t packet_length, bool* se
 // High-level API
 // --------------
 
-void tn_net_pipe_process(struct tn_net_pipe* pipe, tn_net_packet_handler* handler)
+void tn_net_agent_process(struct tn_net_agent* agent, tn_net_packet_handler* handler)
 {
 	uint8_t* packet;
 	uint16_t receive_packet_length;
-	if (!tn_net_pipe_receive(pipe, &packet, &receive_packet_length)) {
+	if (!tn_net_agent_receive(agent, &packet, &receive_packet_length)) {
 		return;
 	}
 
-	bool send_list[IXGBE_PIPE_MAX_SENDS] = {0};
-	uint16_t send_packet_length = handler(packet, receive_packet_length, send_list);
+	bool outputs[IXGBE_AGENT_OUTPUTS_MAX] = {0};
+	uint16_t transmit_packet_length = handler(packet, receive_packet_length, outputs);
 
-	tn_net_pipe_send(pipe, send_packet_length, send_list);
+	tn_net_agent_transmit(agent, transmit_packet_length, outputs);
 }
