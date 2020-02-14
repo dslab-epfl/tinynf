@@ -39,7 +39,7 @@ ifneq (,$(findstring clang,$(TN_CC)))
 TN_CFLAGS += -Weverything
 endif
 ifneq (,$(findstring gcc,$(TN_CC)))
-TN_CFLAGS += -Wall -Wextra -Wshadow -Wstrict-aliasing -pedantic
+TN_CFLAGS += -Wall -Wextra -Wshadow -Wstrict-aliasing -Wunused-macros -pedantic
 endif
 endif
 

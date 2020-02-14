@@ -10,7 +10,6 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
-#include <stdlib.h>
 
 #include <sys/io.h>
 
@@ -39,20 +38,17 @@ static bool get_ioport_access(void)
 // From https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-bus-pci
 static bool get_device_node(const struct tn_pci_device device, uint64_t* out_node)
 {
-	char* node_str;
-	if (!tn_fs_readline(&node_str, "/sys/bus/pci/devices/0000:%02" PRIx8 ":%02" PRIx8 ".%" PRIx8 "/numa_node", device.bus, device.device, device.function)) {
+	char node_str[3] = {0};
+	if (!tn_fs_readline(node_str, sizeof(node_str)/sizeof(char), "/sys/bus/pci/devices/0000:%02" PRIx8 ":%02" PRIx8 ".%" PRIx8 "/numa_node", device.bus, device.device, device.function)) {
 		TN_DEBUG("Could not read PCI numa node");
+		return false;
+	}
+	if (node_str[1] != '\n') {
+		TN_DEBUG("Long NUMA node, not supported");
 		return false;
 	}
 
 	const char node_chr = node_str[0];
-	const char node_delim = node_str[1];
-	free(node_str);
-
-	if (node_delim != '\n') {
-		TN_DEBUG("Long NUMA node, not supported");
-		return false;
-	}
 	if (node_chr < '0' || node_chr > '9') {
 		TN_DEBUG("Unknown NUMA node encoding");
 		return false;

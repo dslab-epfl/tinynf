@@ -4,20 +4,17 @@
 
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 
 // Should be big enough
 #define PATH_SIZE 1024
-#define LINE_SIZE 1024
 
 
-bool tn_fs_readline(char** out_line, const char* path_format, ...)
+bool tn_fs_readline(char* line, int line_size, const char* path_format, ...)
 {
 	va_list path_args;
 	va_start(path_args, path_format);
 	FILE* file = NULL;
-	char* line = NULL;
 	char* fgets_result = NULL;
 
 	char path[PATH_SIZE];
@@ -32,8 +29,7 @@ bool tn_fs_readline(char** out_line, const char* path_format, ...)
 		goto error;
 	}
 
-	line = (char*) calloc(LINE_SIZE, sizeof(char));
-	fgets_result = fgets(line, LINE_SIZE, file);
+	fgets_result = fgets(line, line_size, file);
 	if (fgets_result == NULL) {
 		TN_DEBUG("Couldn't read a line");
 		goto error;
@@ -41,7 +37,6 @@ bool tn_fs_readline(char** out_line, const char* path_format, ...)
 
 	va_end(path_args);
 	fclose(file);
-	*out_line = line;
 	return true;
 
 error:
@@ -49,6 +44,5 @@ error:
 	if (file != NULL) {
 		fclose(file);
 	}
-	free(line);
 	return false;
 }
