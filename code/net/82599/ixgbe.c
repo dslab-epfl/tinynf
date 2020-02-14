@@ -954,6 +954,9 @@ bool tn_net_agent_init(struct tn_net_agent** out_agent)
 		}
 
 		agent->rings[n] = (volatile uint64_t*) ring_addr;
+		// Initialize to an existing but meaningless address so that writing to it is not an issue later
+		// TODO: Benchmark with the loop replaced by a proper for loop up to outputs_count...
+		agent->transmit_tail_addrs[n] = (uintptr_t) &(agent->_padding[0]);
 	}
 
 	// Start in "no packet" state
@@ -1065,7 +1068,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_n
 {
 	uint64_t outputs_count = 0;
 	for (; outputs_count < IXGBE_AGENT_OUTPUTS_MAX; outputs_count++) {
-		if (agent->transmit_tail_addrs[outputs_count] == 0) {
+		if (agent->transmit_tail_addrs[outputs_count] == (uintptr_t) &(agent->_padding[0])) {
 			break;
 		}
 	}
