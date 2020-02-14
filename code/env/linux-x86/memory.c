@@ -17,20 +17,20 @@
 #define HUGEPAGE_SIZE_POWER (10 + 10 + 1)
 #define HUGEPAGE_SIZE (1u << HUGEPAGE_SIZE_POWER)
 
+// glibc defines it but musl doesn't
+#ifndef MAP_HUGE_SHIFT
+#define MAP_HUGE_SHIFT 26
+#endif
 
 // Gets the page size, or returns 0 on error
 static uintptr_t get_page_size(void)
 {
-	static uintptr_t cached_page_size = 0;
-	if (cached_page_size == 0) {
-		// sysconf is documented to return -1 on error; let's check all negative cases along the way, to make sure the conversion to unsigned is sound
-		const long page_size_long = sysconf(_SC_PAGESIZE);
-		if (page_size_long > 0) {
-			cached_page_size = (uintptr_t) page_size_long;
-		}
+	// sysconf is documented to return -1 on error; let's check all negative cases along the way, to make sure the conversion to unsigned is sound
+	const long page_size_long = sysconf(_SC_PAGESIZE);
+	if (page_size_long > 0) {
+		return (uintptr_t) page_size_long;
 	}
-
-	return cached_page_size;
+	return 0;
 }
 
 bool tn_mem_allocate(const uint64_t size, uintptr_t* out_addr)

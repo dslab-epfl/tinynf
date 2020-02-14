@@ -5,3 +5,5 @@ things to try out on a blank machine:
 - can run benchmarks on baselines with dpdk, without manually installing it
 
 FIX BUG: max sends treatment is buggy - by default it tries to write to addr 0 (uninitialized) for send tail
+
+compile with musl: REALGCC=gcc-9 TN_CC=musl-gcc TN_CFLAGS='-static -flto -fdata-sections -ffunction-sections -Wl,--gc-sections' TN_DEBUG=0 make (this assumes the makefiles puts all cflags as ldflags - not done yet)
