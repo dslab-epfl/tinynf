@@ -25,7 +25,7 @@ done
 needs_reset='false'
 for pci in $@; do
   if ! sudo "$RTE_SDK/usertools/dpdk-devbind.py" --status | grep -F "$pci" | grep -q 'drv=igb_uio'; then
-    if ! sudo "$RTE_SDK/usertools/dpdk-devbind.py" -b igb_uio "$pci"; then
+    if ! sudo "$RTE_SDK/usertools/dpdk-devbind.py" -b igb_uio "$pci" >/dev/null 2>&1; then
       needs_reset='true'
     fi
   fi
