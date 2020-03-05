@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 
-static inline void rte_exit(int exit_code, const char *format,...)
+static inline void rte_exit(int exit_code, const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);

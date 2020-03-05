@@ -12,7 +12,7 @@ local PACKET_BATCH_SIZE = 64 -- packets
 
 local FLOWS_COUNT = 60000 -- flows
 
-local THROUGHPUT_STEPS_DURATION = 30000 -- seconds
+local THROUGHPUT_STEPS_DURATION = 30000 -- milliseconds
 local THROUGHPUT_STEPS_COUNT = 10 -- number of trials
 
 local RATE_MIN = 0 -- Mbps
