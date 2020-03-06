@@ -5,9 +5,11 @@
 # 0-based index of the CPU on which the NF will run
 DUT_CPU=8
 # PCI BDF addresses of the DUT's NICs
-DUT_DEVS=83:00.0 85:00.0
+DUT_DEVS='83:00.0 85:00.0'
 
 # Hostname of the tester, such that the DUT can SSH to it
-TESTER_HOST=icnalsp3s4
+TESTER_HOST='icnalsp3s4'
 # PCI BDF addresses of the tester's NICs
-TESTER_DEVS=83:00.0 85:00.0
+TESTER_DEVS='83:00.0 85:00.0'
+# 1 if you messed up your wiring and crossed the cables, 0 otherwise
+TESTER_CABLES_CROSSED=1
