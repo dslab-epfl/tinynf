@@ -512,7 +512,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 		TN_DEBUG("PCI device not in D0.");
 		return false;
 	}
-	// The bus master may not be ebabled; enable it just in case.
+	// The bus master may not be enabled; enable it just in case.
 	IXGBE_PCIREG_SET(pci_device, COMMAND, BUS_MASTER_ENABLE);
 	// Same for memory reads, i.e. actually using the BARs.
 	IXGBE_PCIREG_SET(pci_device, COMMAND, MEMORY_ACCESS_ENABLE);
