@@ -1,6 +1,9 @@
 # This Makefile expects to be included in all kinds of contexts, such as in "shim" layers.
 # Thus, it does not use any of the standard variable names such as "CC" to avoid conflicts.
 # Instead, every variable name is prefixed by TN_.
+# Targets:
+# - Default target to compile
+# - 'run' target to run
 # Overrideable variables:
 # - TN_DEBUG, default 1, debug level (0 = no output, 1 = info, 2 = debug, 3 = verbose); if > 1, code will be compiled with debug symbols
 # - TN_ENV, default 'linux-x86', environment to use (folder in env/)
@@ -17,7 +20,7 @@
 # - The "main" TinyNF file is included in compilation
 # - Compiler warnings are enabled
 # Special behavior when the variable TN_NO_DEFAULT_TARGET is set:
-# - The default target is not defined
+# - The default and run targets are not defined
 
 # Configuration
 TN_DEBUG ?= 1
@@ -73,4 +76,7 @@ tn_default:
 	@$(TN_CC) $(subst .c,.o,$(notdir $(TN_FILES))) $(TN_LDFLAGS) -o $(TN_APP)
 	@$(TN_STRIP) $(TN_STRIPFLAGS) $(TN_APP)
 	@rm -f $(subst .c,.o,$(notdir $(TN_FILES)))
+
+run:
+	@sudo ./tinynf $(TN_ARGS)
 endif
