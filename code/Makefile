@@ -66,7 +66,7 @@ endif
 
 # Linux-only compiler flags
 ifeq (linux-x86,$(TN_ENV))
-TN_CFLAGS += -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
+TN_CFLAGS += -D_DEFAULT_SOURCE # for MAP_* constants and the syscall function
 endif
 
 ifndef TN_NO_DEFAULT_TARGET
