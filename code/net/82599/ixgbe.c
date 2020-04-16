@@ -844,7 +844,8 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//				"Default values: 0x96 for TXPBSIZE0, 0x0 for TXPBSIZE1-7."
 	// INTERPRETATION-TYPO: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
 	// Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
-	IXGBE_REG_WRITE(device.addr, TXPBTHRESH, 0, THRESH, 0xA0u - IXGBE_PACKET_BUFFER_SIZE);
+	// Note that TXPBTHRESH is in kilobytes, so we should convert the packet buffer size accordingly
+	IXGBE_REG_WRITE(device.addr, TXPBTHRESH, 0, THRESH, 0xA0u - (IXGBE_PACKET_BUFFER_SIZE / 1024u));
 	//		"- MTQC"
 	//			"- Clear both RT_Ena and VT_Ena bits in the MTQC register."
 	//			"- Set MTQC.NUM_TC_OR_Q to 00b."
