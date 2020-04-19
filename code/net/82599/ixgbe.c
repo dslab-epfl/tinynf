@@ -529,8 +529,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	uint32_t pci_bar0high = IXGBE_PCIREG_READ(pci_device, BAR0_HIGH);
 	// No need to detect the size, since we know exactly which device we're dealing with. (This also means no writes to BARs, one less chance to mess everything up)
 
-	struct tn_net_device device;
-	device.pci = pci_device;
+	struct tn_net_device device = { .pci = pci_device };
 	// Section 9.3.6.1 Memory and IO Base Address Registers:
 	// As indicated in Table 9-4, the low 4 bits are read-only and not part of the address
 	uintptr_t dev_phys_addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
@@ -869,9 +868,8 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 		TN_DEBUG("Could not allocate device struct");
 		return false;
 	}
-	struct tn_net_device* heap_device = (struct tn_net_device*) device_addr;
-	*heap_device = device;
-	*out_device = heap_device;
+	*out_device = (struct tn_net_device*) device_addr;
+	**out_device = device;
 	return true;
 }
 
