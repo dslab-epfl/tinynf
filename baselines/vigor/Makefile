@@ -29,11 +29,6 @@ TN_FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/!(boilerplate-assumptions)
 # Vigor expects its root dir to be an include path
 TN_CFLAGS += -I $(VIGOR_DIR)
 
-# HACK: This is not necessary for compilation, but without it DPDK's use of sscanf in config parsing is translated to __isoc99_sscanf, which imports the symbol GLIBC 2.7,
-#       which changes the alignment of the .text section, which causes a 2% loss at 20G for VigNOP whereas otherwise there is no loss.
-# TODO: Make it less brittle!
-TN_CFLAGS += -D_GNU_SOURCE
-
 # Our DPDK stub headers, and the file that holds the global variables
 RTE_SDK := $(THIS_DIR)/../../shims/dpdk
 RTE_TARGET := .

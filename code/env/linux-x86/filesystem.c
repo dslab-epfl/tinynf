@@ -2,8 +2,10 @@
 
 #include "util/log.h"
 
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <unistd.h>
 
 
 // Should be big enough
@@ -14,8 +16,8 @@ bool tn_fs_readline(char* line, int line_size, const char* path_format, ...)
 {
 	va_list path_args;
 	va_start(path_args, path_format);
-	FILE* file = NULL;
-	char* fgets_result = NULL;
+	int fd = -1;
+	int read_result = -1;
 
 	char path[PATH_SIZE];
 	if (vsnprintf(path, PATH_SIZE, path_format, path_args) >= PATH_SIZE) {
@@ -23,26 +25,26 @@ bool tn_fs_readline(char* line, int line_size, const char* path_format, ...)
 		goto error;
 	}
 
-	file = fopen(path, "r");
-	if (file == NULL) {
+	fd = open(path, O_RDONLY);
+	if (fd == -1) {
 		TN_DEBUG("Couldn't open the path to read a line from");
 		goto error;
 	}
 
-	fgets_result = fgets(line, line_size, file);
-	if (fgets_result == NULL) {
+	read_result = read(fd, line, line_size);
+	if (read_result == -1) {
 		TN_DEBUG("Couldn't read a line");
 		goto error;
 	}
 
 	va_end(path_args);
-	fclose(file);
+	close(fd);
 	return true;
 
 error:
 	va_end(path_args);
-	if (file != NULL) {
-		fclose(file);
+	if (fd != -1) {
+		close(fd);
 	}
 	return false;
 }
