@@ -12,12 +12,12 @@
 #define PATH_SIZE 1024
 
 
-bool tn_fs_readline(char* line, int line_size, const char* path_format, ...)
+bool tn_fs_readline(char* line, unsigned line_size, const char* path_format, ...)
 {
 	va_list path_args;
 	va_start(path_args, path_format);
 	int fd = -1;
-	int read_result = -1;
+	long read_result = -1;
 
 	char path[PATH_SIZE];
 	if (vsnprintf(path, PATH_SIZE, path_format, path_args) >= PATH_SIZE) {

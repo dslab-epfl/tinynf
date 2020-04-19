@@ -32,8 +32,8 @@ void tn_sleep_us(uint64_t microseconds)
 			continue;
 		}
 		// Other codes should not happen according to the documentation (memory issue or invalid sec/nsec).
-		exit(1);
+		abort();
 	}
 	// Something went terribly wrong
-	exit(1);
+	abort();
 }
