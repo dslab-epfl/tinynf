@@ -8,3 +8,7 @@
 	path = baselines/click/click
 	url = https://github.com/kohler/click
 	ignore = dirty
+[submodule "baselines/ixy/ixy"]
+	path = baselines/ixy/ixy
+	url = https://github.com/emmericp/ixy
+	ignore = dirty
