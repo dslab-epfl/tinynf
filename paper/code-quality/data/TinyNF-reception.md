@@ -1,3 +1,3 @@
 ```
-tn_net_pipe_receive
+tn_net_agent_receive
 ```
