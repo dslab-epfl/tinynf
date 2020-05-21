@@ -13,35 +13,24 @@ THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 BENCH_DIR = THIS_DIR + '/../benchmarking/'
 
 if len(sys.argv) < 3: # script itself + 2 args
-  print('[ERROR] Please provide 2 arguments: <NF directory> <NF (e.g. nop, nat, bridge...)>')
+  print('[ERROR] Please provide 2 arguments: <NF directory> <NF name> (e.g. "../code no-op" or "../baselines/vigor vignat")')
   sys.exit(1)
 
 NF_DIR_BASE = os.path.realpath(sys.argv[1])
-NF_DIR_NAME = os.path.basename(NF_DIR_BASE)
 NF = sys.argv[2]
 
-LTO = True
 print('[!!!] Benchmarking ' + sys.argv[1] + ' ' + sys.argv[2])
 if len(sys.argv) == 4:
   if sys.argv[3] == 'single':
-    NF_KIND_CHOICES = ['custom', 'dpdk']
+    NF_KIND_CHOICES = ['tinynf', 'dpdk']
     BENCH_KIND = ['-l', '1000', 'standard-single']
     FILE_SUFFIX = '-single'
     print('[!!!] Single-direction benchmark')
-  elif sys.argv[3] == 'no-lto':
-    NF_KIND_CHOICES = ['custom']
-    BENCH_KIND = ['standard']
-    FILE_SUFFIX = ''
-    LTO = False
-  elif sys.argv[3] == 'only-lto':
-    NF_KIND_CHOICES = ['custom']
-    BENCH_KIND = ['standard']
-    FILE_SUFFIX = ''
   else:
-    print('[ERROR] Unknown bench kind')
+    print('[ERROR] Unknown bench kind: ' + sys.argv[3])
     sys.exit(1)
 else:
-  NF_KIND_CHOICES = ['custom', 'dpdk-shim', 'dpdk']
+  NF_KIND_CHOICES = ['tinynf', 'dpdk-shim', 'dpdk']
   BENCH_KIND = ['standard']
   FILE_SUFFIX = ''
   if NF == 'lb':
@@ -76,27 +65,28 @@ elif NF == 'lb':
 RESULTS = {}
 for NF_KIND in NF_KIND_CHOICES:
   CUSTOM_ENV = {}
-  if NF_KIND == 'custom' or NF_KIND == 'dpdk-shim':
+  if NF_KIND == 'tinynf' or NF_KIND == 'dpdk-shim':
     # Necessary if DPDK has been used before and didn't exit cleanly (call sh to have it expand the *)
     subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
 
     BATCH_CHOICES = ['1']
-    ONEWAY_CHOICES = [True] # [True, False]
-    if NF_KIND == 'custom':
+    LTO = True
+    ONEWAY = True
+    if NF_KIND == 'tinynf':
       NF_DIR = NF_DIR_BASE
     else:
       NF_DIR = NF_DIR_BASE + '/with-dpdk'
       CUSTOM_ENV = { 'RTE_SDK': THIS_DIR + '/../shims/dpdk', 'RTE_TARGET': '.' }
   else:
-    BATCH_CHOICES = ['1', '64']
+    BATCH_CHOICES = ['1', '32']
     LTO = False
-    ONEWAY_CHOICES = [False]
+    ONEWAY = False
     NF_DIR = NF_DIR_BASE + '/with-dpdk'
 
   # Bridge can't do one-way, by definition it may need to flood
   # (even with only 2 devices, enabling one-way would be misleading)
   if NF == 'bridge':
-    ONEWAY_CHOICES = [False]
+    ONEWAY = False
 
   if LTO:
     LTO_FLAG = '-flto'
