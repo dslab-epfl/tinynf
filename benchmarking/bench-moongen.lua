@@ -318,14 +318,12 @@ function measureStandard(queuePairs, extraPair, args)
 
   local latencyRates = {}
   local currentGuess = 0
-  while currentGuess < bestRate do
+  while currentGuess <= bestRate do
     latencyRates[#latencyRates+1] = currentGuess
     currentGuess = currentGuess + LATENCY_LOAD_INCREMENT
   end
-  currentGuess = currentGuess - LATENCY_LOAD_INCREMENT
-  local lastGuess = bestRate - LATENCY_LOAD_PADDING - (LATENCY_PACKETS_SIZE * LATENCY_PACKETS_PER_SECOND / (1000 * 1000)) -- divide to put it in Mbps
-  if bestRate - LATENCY_LOAD_PADDING > currentGuess then
-    latencyRates[#latencyRates+1] = bestRate - LATENCY_LOAD_PADDING
+  if currentGuess - LATENCY_LOAD_INCREMENT ~= bestRate then
+    latencyRates[#latencyRates+1] = bestRate
   end
 
   -- override if necessary, see description of the parser option
@@ -343,7 +341,7 @@ function measureStandard(queuePairs, extraPair, args)
       mg.sleepMillis(LATENCY_DURATION + LATENCY_TIME_PADDING * 2)
     else
       for i, pair in ipairs(queuePairs) do
-        throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate, args.layer, LATENCY_DURATION + LATENCY_TIME_PADDING * 2, pair.direction, 1)
+        throughputTasks[i] = startMeasureThroughput(pair.tx, pair.rx, rate - LATENCY_LOAD_PADDING, args.layer, LATENCY_DURATION + LATENCY_TIME_PADDING * 2, pair.direction, 1)
       end
       for _, task in ipairs(throughputTasks) do
         loss = loss + task:wait()

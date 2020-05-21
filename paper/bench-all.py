@@ -8,8 +8,8 @@ RTE_SDK = '/home/solal/dpdk' # TODO FIXME
 RTE_TARGET = 'x86_64-native-linuxapp-gcc'
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
-BENCH_DIR = THIS_DIR + '/../benchmarking/'
-BENCH_RESULTS_PATH = BENCH_DIR + '/results'
+BENCH_PATH = THIS_DIR + '/../benchmarking/'
+BENCH_RESULTS_PATH = BENCH_PATH + '/results'
 BENCH_RESULT_TPUT_PATH = BENCH_RESULTS_PATH + '/throughput'
 BENCH_RESULT_LATS_PATH = BENCH_RESULTS_PATH + '/latencies'
 
@@ -42,7 +42,7 @@ def get_key(nf, kind, env):
         suffix += '-batched'
   return kind + '-' + nf + suffix
 
-def get_env(nf, kind='', with_dpdk=False):
+def get_env(nf, kind, env):
   result = {}
   if kind == 'vigor':
     result['TN_NF'] = nf
@@ -62,15 +62,15 @@ def get_env(nf, kind='', with_dpdk=False):
     result['TN_NF'] = nf
   return result
 
-def get_benchflags(nf, kind='', with_dpdk=False):
+def get_benchflags(nf, kind, env):
   if nf == 'lb':
     # LB needs reverse heatup to work
     return ['-r']
   return []
 
-def get_cflags(nf, kind='', with_dpdk=False):
+def get_cflags(nf, kind, env):
   result = []
-  if not with_dpdk:
+  if not has_dpdk(env):
     result.append('-flto')
     if kind == 'vigor' and nf == 'bridge':
       result.append('-DIXGBE_AGENT_OUTPUTS_MAX=2')
@@ -79,7 +79,7 @@ def get_cflags(nf, kind='', with_dpdk=False):
       result.append('-DASSUME_ONE_WAY')
   return result
 
-def get_layer(nf, kind='', with_dpdk=False):
+def get_layer(nf, kind, env):
   if nf == 'nat' or nf == 'lb' or nf == 'fw':
     return 4
   if nf == 'pol':
@@ -89,46 +89,45 @@ def get_layer(nf, kind='', with_dpdk=False):
 
 # --- benchmarking ---
 
-def bench_core(nf, kind, with_dpdk, nf_dir, benchflags, additional_env)
-  with_dpdk = has_dpdk(additional_env)
+def bench_core(nf, kind, nf_dir, benchflags, additional_env):
+  # Just in case...
+  subprocess.call(['sh', '-c', 'sudo rm -rf /dev/hugepages/*'])
 
-  env = dict(os_environ)
-  env.update(get_env(nf, kind, with_dpdk))
+  env = dict(os.environ)
+  env.update(get_env(nf, kind, env))
   env.update(additional_env)
-  env['TN_CFLAGS'] = get_cflags(nf, kind, with_dpdk)
+  env['TN_CFLAGS'] = " ".join(get_cflags(nf, kind, env))
   env['TN_LDFLAGS'] = env['TN_CFLAGS'] # TODO this should not be needed, fix makefiles
 
-  benchflags = get_benchflags(nf, 'vigor', with_dpdk) + benchflags + [get_layer(nf, kind, with_dpdk)]
+  benchflags = get_benchflags(nf, 'vigor', env) + benchflags + [str(get_layer(nf, kind, env))]
 
   while True: # bench.sh can fail for spurious reasons, e.g. random DNS failures during SSH login
-    print('[ !!! ] Benchmarking', nf, kind, 'dpdk:', with_dpdk, 'path:', nf_dir)
-    result = subprocess.run(['sh', 'bench.sh', nf_dir] + benchflags cwd=BENCH_DIR, env=env).returncode
+    print('[ !!! ] Benchmarking', nf, kind, 'path:', nf_dir)
+    result = subprocess.run(['sh', 'bench.sh', nf_dir] + benchflags, cwd=BENCH_PATH, env=env).returncode
     if result == 0:
       break
     else:
       time.sleep(60)
 
 def bench_vigor(nf, env):
-  path_suffix = '/with-dpdk' if has_dpdk(env) else ''
-  bench_core(nf, 'vigor', THIS_DIR + '/../baselines/vigor' + path_suffix, ['--latencyload=1000', 'standard-single'], env)
+  bench_core(nf, 'vigor', THIS_DIR + '/../baselines/vigor', ['--latencyload=1000', 'standard-single'], env)
   add_suffix(BENCH_RESULT_TPUT_PATH, '-single')
   add_suffix(BENCH_RESULT_LATS_PATH, '-single')
   move_into(BENCH_RESULTS_PATH, 'results/' + get_key(nf, 'vigor', env))
 
-def bench(path, nf, kind, env)
-  path_suffix = '/with-dpdk' if has_dpdk(env) else ''
+def bench(path, nf, kind, env):
   out_folder = 'results/' + get_key(nf, kind, env)
 
-  bench_core(nf, kind, THIS_DIR + '/../' + path + path_suffix, ['standard'], env)
+  bench_core(nf, kind, THIS_DIR + '/../' + path, ['standard'], env)
   move_into(BENCH_RESULTS_PATH, out_folder)
 
-  bench_core(nf, kind, THIS_DIR + '/../' + path + path_suffix, ['--acceptableloss=0', '--latencyload=-1', 'standard'], env)
+  bench_core(nf, kind, THIS_DIR + '/../' + path, ['--acceptableloss=0', '--latencyload=-1', 'standard'], env)
   add_suffix(BENCH_RESULT_TPUT_PATH, '-zeroloss')
-  move_into(BENCH_RESULT_TPUT_PATH, out_folder)
+  move_into(BENCH_RESULT_TPUT_PATH + '-zeroloss', out_folder)
 
 
-bench('code', 'nop', 'tinynf', {})
-bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+#bench('code', 'nop', 'tinynf', {})
+#bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
 bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': 32})
 
 """
