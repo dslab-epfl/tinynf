@@ -8,8 +8,24 @@
 
 static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, bool* outputs)
 {
+#ifdef TRUE_NOP
 	(void) packet;
-
+#else
+	// SRC MAC
+	packet[0] = 0;
+	packet[1] = 0;
+	packet[2] = 0;
+	packet[3] = 0;
+	packet[4] = 0;
+	packet[5] = 1;
+	// DST MAC
+	packet[6] = 0;
+	packet[7] = 0;
+	packet[8] = 0;
+	packet[9] = 0;
+	packet[10] = 0;
+	packet[11] = 0;
+#endif
 	outputs[0] = true;
 	return packet_length;
 }

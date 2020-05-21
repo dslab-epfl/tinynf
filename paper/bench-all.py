@@ -4,10 +4,14 @@ import os
 import subprocess
 import time
 
+THIS_DIR = os.path.dirname(os.path.realpath(__file__))
+
 RTE_SDK = '/home/solal/dpdk' # TODO FIXME
 RTE_TARGET = 'x86_64-native-linuxapp-gcc'
+RTE_FAKE_SDK = THIS_DIR + '/../shims/dpdk'
+RTE_FAKE_TARGET = '.'
+BATCH_SIZE = '32'
 
-THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 BENCH_PATH = THIS_DIR + '/../benchmarking/'
 BENCH_RESULTS_PATH = BENCH_PATH + '/results'
 BENCH_RESULT_TPUT_PATH = BENCH_RESULTS_PATH + '/throughput'
@@ -38,8 +42,8 @@ def get_key(nf, kind, env):
       suffix += '-shimmed'
     else:
       suffix += '-dpdk'
-      if 'TN_BATCH_SIZE' in env:
-        suffix += '-batched'
+  if env.get('TN_BATCH_SIZE', '1') != '1':
+    suffix += '-batched'
   return kind + '-' + nf + suffix
 
 def get_env(nf, kind, env):
@@ -52,10 +56,10 @@ def get_env(nf, kind, env):
     if nf == 'bridge':
       result['CAPACITY'] = '131072'
     # Policer needs large maximums so as to not really police, since we measure throughput
-    if NF == 'pol':
+    if nf == 'pol':
       result['POLICER_BURST'] = '10000000000'
       result['POLICER_RATE'] = '10000000000'
-    if NF == 'lb':
+    if nf == 'lb':
       # Device from which the load balancer will receive packets (and not heartbeats)
       result['WAN_DEVICE'] = '0'
   if kind == 'click':
@@ -70,7 +74,7 @@ def get_benchflags(nf, kind, env):
 
 def get_cflags(nf, kind, env):
   result = []
-  if not has_dpdk(env):
+  if not has_dpdk(env) or env['RTE_TARGET'] == '.':
     result.append('-flto')
     if kind == 'vigor' and nf == 'bridge':
       result.append('-DIXGBE_AGENT_OUTPUTS_MAX=2')
@@ -102,7 +106,6 @@ def bench_core(nf, kind, nf_dir, benchflags, additional_env):
   benchflags = get_benchflags(nf, 'vigor', env) + benchflags + [str(get_layer(nf, kind, env))]
 
   while True: # bench.sh can fail for spurious reasons, e.g. random DNS failures during SSH login
-    print('[ !!! ] Benchmarking', nf, kind, 'path:', nf_dir)
     result = subprocess.run(['sh', 'bench.sh', nf_dir] + benchflags, cwd=BENCH_PATH, env=env).returncode
     if result == 0:
       break
@@ -110,54 +113,41 @@ def bench_core(nf, kind, nf_dir, benchflags, additional_env):
       time.sleep(60)
 
 def bench_vigor(nf, env):
+  print('[ !!! ] Benchmarking', nf, 'in the Vigor way')
   bench_core(nf, 'vigor', THIS_DIR + '/../baselines/vigor', ['--latencyload=1000', 'standard-single'], env)
   add_suffix(BENCH_RESULT_TPUT_PATH, '-single')
   add_suffix(BENCH_RESULT_LATS_PATH, '-single')
   move_into(BENCH_RESULTS_PATH, 'results/' + get_key(nf, 'vigor', env))
 
 def bench(path, nf, kind, env):
+  print('[ !!! ] Benchmarking', nf, kind, 'in', path)
   out_folder = 'results/' + get_key(nf, kind, env)
-
   bench_core(nf, kind, THIS_DIR + '/../' + path, ['standard'], env)
   move_into(BENCH_RESULTS_PATH, out_folder)
-
   bench_core(nf, kind, THIS_DIR + '/../' + path, ['--acceptableloss=0', '--latencyload=-1', 'standard'], env)
   add_suffix(BENCH_RESULT_TPUT_PATH, '-zeroloss')
   move_into(BENCH_RESULT_TPUT_PATH + '-zeroloss', out_folder)
 
 
-#bench('code', 'nop', 'tinynf', {})
-#bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': 32})
-
-"""
-# First comparison: DPDK's testpmd no-op, batched or not, vs TinyNF no-op (throughput, zero-loss throughput, detailed latency)
-LTO, ONEWAY, bench TinyNF standard 2 -> move results
-LTO, ONEWAY, bench TinyNF zero-accepted-loss no-latency standard 2 -> move throughput to special file
-bench TestPMD standard 2
-bench TestPMD zero-accepted-loss no-latency standard 2 -> move throughput to special file
-BATCH bench TestPMD standard 2
-BATCH bench TestPMD zero-accepted-loss no-latency standard 2 -> move throughput to special file
+# First comparison: DPDK's testpmd no-op, batched or not, vs TinyNF no-op vs Ixy no-op (throughput, zero-loss throughput, detailed latency)
+bench('code', 'nop', 'tinynf', {})
+bench('baselines/dpdk', 'nop', 'testpmd', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+bench('baselines/dpdk', 'nop', 'testpmd', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+bench('baselines/ixy', 'nop', 'ixyfwd', {})
+bench('baselines/ixy', 'nop', 'ixyfwd', {'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Second comparison: VigNAT with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched
-EXP_TIME FLOW_CAP LTO ONEWAY bench VigNAT standard 4 -> move results
-EXP_TIME FLOW_CAP LTO ONEWAY bench VigNAT zero-accepted-loss no-latency standard 4 -> move throughput to special file
-SHIM EXP_TIME FLOW_CAP LTO ONEWAY bench VigNAT standard 4 -> move results
-SHIM EXP_TIME FLOW_CAP LTO ONEWAY bench VigNAT zero-accepted-loss no-latency standard 4 -> move throughput to special file
-DPDK EXP_TIME FLOW_CAP LTO ONEWAY bench VigNAT standard 4 -> move results
-DPDK EXP_TIME FLOW_CAP LTO ONEWAY bench VigNAT zero-accepted-loss no-latency standard 4 -> move throughput to special file
-DPDK BATCH EXP_TIME FLOW_CAP LTO ONEWAY bench VigNAT standard 4 -> move results
-DPDK BATCH EXP_TIME FLOW_CAP LTO ONEWAY bench VigNAT zero-accepted-loss no-latency standard 4 -> move throughput to special file
+bench('baselines/vigor', 'nat', 'vigor', {})
+bench('baselines/vigor/with-dpdk', 'nat', 'vigor', {'RTE_SDK': RTE_FAKE_SDK, 'RTE_TARGET': RTE_FAKE_TARGET})
+bench('baselines/vigor/with-dpdk', 'nat', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+bench('baselines/vigor/with-dpdk', 'nat', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Third comparison: Vigor NFs
-for each vignf:
-  PARAMS_OF(vignf) LTO ONEWAY_OF(vignf) bench vignf standard-single latency-1000 LAYER_OF(vignf) -> move results
+for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
+  bench_vigor(nf, {})
+  bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
 
 # Fourth comparison: Click no-op with TinyNF vs DPDK vs DPDK batch
-LTO, ONEWAY, bench Click standard 2 -> move results
-LTO, ONEWAY, bench Click zero-accepted-loss no-latency standard 2 -> move throughput to special file
-DPDK bench Click standard 2
-DPDK bench Click zero-accepted-loss no-latency standard 2 -> move throughput to special file
-DPDK BATCH bench TestPMD standard 2
-DPDK BATCH bench TestPMD zero-accepted-loss no-latency standard 2 -> move throughput to special file
-"""
+#bench('baselines/click', 'nop', 'click', {})
+#bench('baselines/click/with-dpdk', 'nop', 'click', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+#bench('baselines/click/with-dpdk', 'nop', 'click', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})

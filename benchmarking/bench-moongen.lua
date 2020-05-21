@@ -39,7 +39,7 @@ function configure(parser)
   parser:argument("type", "Benchmark type: standard, standard-single, flood, or debug ones (see source).")
   parser:argument("layer", "Layer at which the flows are meaningful."):convert(tonumber)
   parser:option("-l --latencyload", "Specific total background load for standard latency, or -1 to not measure it; if not set, script does from 0 to max tput"):default(-2):convert(tonumber)
-  parser:option("-a --acceptableloss", "Acceptable loss for the throughput test, defaults to 0.005 or .5%"):default(0.005):convert(tonumber)
+  parser:option("-a --acceptableloss", "Acceptable loss for the throughput test, defaults to 0.003 or .3%"):default(0.003):convert(tonumber)
   parser:flag("-x --xchange", "Exchange order of devices, in case you messed up your wiring")
   parser:flag("-r --reverseheatup", "Add heatup in reverse, for Maglev-like load balancers; only for standard-single")
 end
@@ -58,9 +58,22 @@ end
 
 -- Helper function to write latencies to a file
 function dumpLatencies(lats, filename)
+  -- Primorac et al., "How to Measure the Killer Microsecond", KBNets'17: NIC timestamps are not reliable beyond the 99.99th percentile.
+  local hist = histo:new()
+  for _, val in ipairs(lats) do
+    hist:update(val)
+  end
+  if #lats < 10000 then
+    max = hist:max()
+  else
+    max = hist:percentile(99.99)
+  end
+
   file = io.open(filename, "w")
   for _, val in ipairs(lats) do
-    file:write(val .. "\n")
+    if val <= max then
+      file:write(val .. "\n")
+    end
   end
   file:close()
 end
@@ -301,7 +314,7 @@ function measureStandard(queuePairs, extraPair, args)
     end
 
     -- Stop if the first step is already successful, let's not do pointless iterations
-    if (i == 10) or (loss <= args.acceptableloss and bestRate == upperBound) then
+    if (i == THROUGHPUT_STEPS_COUNT) or (loss <= args.acceptableloss and bestRate == upperBound) then
       -- Note that we write 'bestRate' here, i.e. the last rate with acceptable loss, not the current one
       -- (which may cause unacceptable loss since our binary search is bounded in steps)
       local tputFile = io.open(RESULTS_FOLDER_NAME .. "/" .. RESULTS_THROUGHPUT_FILE_NAME, "w")
