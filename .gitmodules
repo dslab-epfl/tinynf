@@ -12,3 +12,6 @@
 	path = baselines/ixy/ixy
 	url = https://github.com/emmericp/ixy
 	ignore = dirty
+[submodule "baselines/dpdk/dpdk"]
+	path = baselines/dpdk/dpdk
+	url = https://github.com/DPDK/dpdk
