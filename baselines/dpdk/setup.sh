@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#git submodule update --init --recursive
+git submodule update --init --recursive
 
 export RTE_SDK="$(pwd)/dpdk"
 export RTE_TARGET=x86_64-native-linuxapp-gcc

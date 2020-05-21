@@ -6,10 +6,13 @@ _IGNORED := $(shell $(THIS_DIR)/setup.sh 2>/dev/null)
 
 TN_BATCH_SIZE ?= 1
 
-# Burst sizes less than 4 need non-power-of-2 ring sizes, but they still need to be multiples of 32
+# Burst sizes less than 4 need non-power-of-2 ring sizes, but they still need to be multiples of 32, so we add 32 to the defaults
 ifeq (1,$(shell echo '$(TN_BATCH_SIZE) < 4' | bc))
 ADDITIONAL_PARAMS=--rxd=160 --txd=544
 endif
+
+compile:
+	@# nothing
 
 run:
 	@sudo $(RTE_SDK)/$(RTE_TARGET)/build/app/test-pmd/testpmd -n 2 -- \
