@@ -4,6 +4,9 @@ THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # Run the setup script, in case it hasn't been run yet
 _IGNORED := $(shell $(THIS_DIR)/setup.sh 2>/dev/null)
 
+RTE_SDK := $(THIS_DIR)/dpdk
+RTE_TARGET := x86_64-native-linuxapp-gcc
+
 TN_BATCH_SIZE ?= 1
 
 # Burst sizes less than 4 need non-power-of-2 ring sizes, but they still need to be multiples of 32, so we add 32 to the defaults
@@ -16,6 +19,12 @@ compile:
 
 run:
 	@sudo $(RTE_SDK)/$(RTE_TARGET)/build/app/test-pmd/testpmd -n 2 -- \
-	      --auto-start --port-topology=chained --forward-mode=mac \
+	      --auto-start --port-topology=chained --forward-mode=mac --disable-link-check \
 	      --eth-peer=0,00:00:00:00:00:00 --eth-peer=1,00:00:00:00:00:01 \
 	      --burst=$(TN_BATCH_SIZE) $(ADDITIONAL_PARAMS)
+
+is-dpdk:
+	@# yes
+
+print-nf-name:
+	@echo testpmd

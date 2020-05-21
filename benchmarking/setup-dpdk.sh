@@ -24,6 +24,10 @@ done
 # If this fails, reset: uninstall, recompile and reinstall the driver
 needs_reset='false'
 for pci in $@; do
+  if [ -z "$RTE_SDK" ]; then
+    echo "[FATAL] Need DPDK but RTE_SDK is not defined, cannot proceed."
+    exit 1
+  fi
   if ! sudo "$RTE_SDK/usertools/dpdk-devbind.py" --status | grep -F "$pci" | grep -q 'drv=igb_uio'; then
     if ! sudo "$RTE_SDK/usertools/dpdk-devbind.py" -b igb_uio "$pci" >/dev/null 2>&1; then
       needs_reset='true'
@@ -40,7 +44,11 @@ if [ "$needs_reset" = 'true' ]; then
   sudo rmmod igb_uio >/dev/null 2>&1 || true
   make -C "$RTE_SDK" install -j$(nproc) T=x86_64-native-linuxapp-gcc DESTDIR=. >/dev/null 2>&1
   sudo modprobe uio
-  sudo insmod "$RTE_SDK/$RTE_TARGET/kmod/igb_uio.ko"
+  if [ -d "$RTE_SDK/$RTE_TARGET/kmod" ]; then # old DPDK
+    sudo insmod "$RTE_SDK/$RTE_TARGET/kmod/igb_uio.ko"
+  else # new DPDK
+    sudo insmod "$RTE_SDK/lib/modules/$(uname -r)/extra/dpdk/igb_uio.ko"
+  fi
   sudo "$RTE_SDK/usertools/dpdk-devbind.py" -u $@ >/dev/null 2>&1
   sudo "$RTE_SDK/usertools/dpdk-devbind.py" -b igb_uio $@
 fi

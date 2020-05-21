@@ -16,16 +16,15 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, b
 
 int main(int argc, char** argv)
 {
-	uint64_t devices_count = (uint64_t) argc - 1;
 	struct tn_pci_device pci_devices[2];
-	if (devices_count != 2 || !tn_util_parse_pci(devices_count, argv + 1, pci_devices)) {
+	if (argc - 1 != 2 || !tn_util_parse_pci(2, argv + 1, pci_devices)) {
 		TN_INFO("Couldn't parse two PCI devices from argv");
 		return 1;
 	}
 
 	struct tn_net_agent* agents[2];
 	struct tn_net_device* devices[2];
-	for (uint8_t n = 0; n < devices_count; n++) {
+	for (uint8_t n = 0; n < 2; n++) {
 		if (!tn_net_agent_init(&(agents[n]))) {
 			TN_INFO("Couldn't init agent");
 			return 2 + 100*n;
@@ -44,7 +43,7 @@ int main(int argc, char** argv)
 		}
 	}
 
-	for (uint8_t n = 0; n < devices_count; n++) {
+	for (uint8_t n = 0; n < 2; n++) {
 		if (!tn_net_agent_add_output(agents[n], devices[1 - n], 0)) {
 			TN_INFO("Couldn't set agent TX");
 			return 6 + 100*n;

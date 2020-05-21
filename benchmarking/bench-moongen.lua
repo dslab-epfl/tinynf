@@ -38,7 +38,8 @@ local RESULTS_LATENCIES_FOLDER_NAME = 'latencies'
 function configure(parser)
   parser:argument("type", "Benchmark type: standard, standard-single, flood, or debug ones (see source).")
   parser:argument("layer", "Layer at which the flows are meaningful."):convert(tonumber)
-  parser:option("-l --latencyload", "Specific total background load for standard latency; if not set, script does from 0 to max tput"):default(-1):convert(tonumber)
+  parser:option("-l --latencyload", "Specific total background load for standard latency, or -1 to not measure it; if not set, script does from 0 to max tput"):default(-2):convert(tonumber)
+  parser:option("-a --acceptableloss", "Acceptable loss for the throughput test, defaults to 0.005 or .5%"):default(0.005):convert(tonumber)
   parser:flag("-x --xchange", "Exchange order of devices, in case you messed up your wiring")
   parser:flag("-r --reverseheatup", "Add heatup in reverse, for Maglev-like load balancers; only for standard-single")
 end
@@ -289,7 +290,7 @@ function measureStandard(queuePairs, extraPair, args)
 
     io.write("loss = " .. loss .. "\n")
 
-    if (loss < 0.001) then
+    if (loss <= args.acceptableloss) then
       bestRate = rate
       bestTx = tx
       lowerBound = rate
@@ -300,14 +301,19 @@ function measureStandard(queuePairs, extraPair, args)
     end
 
     -- Stop if the first step is already successful, let's not do pointless iterations
-    if (i == 10) or (loss < 0.001 and bestRate == upperBound) then
-      -- Note that we write 'bestRate' here, i.e. the last rate with < 0.001 loss, not the current one
-      -- (which may cause > 0.001 loss since our binary search is bounded in steps)
+    if (i == 10) or (loss <= args.acceptableloss and bestRate == upperBound) then
+      -- Note that we write 'bestRate' here, i.e. the last rate with acceptable loss, not the current one
+      -- (which may cause unacceptable loss since our binary search is bounded in steps)
       local tputFile = io.open(RESULTS_FOLDER_NAME .. "/" .. RESULTS_THROUGHPUT_FILE_NAME, "w")
       tputFile:write(math.floor(#queuePairs * bestRate) .. "\n")
       tputFile:close()
       break
     end
+  end
+
+  -- don't do latency if explicitly asked to
+  if args.latencyload == -1 then
+    return
   end
 
   local latencyRates = {}
@@ -323,7 +329,7 @@ function measureStandard(queuePairs, extraPair, args)
   end
 
   -- override if necessary, see description of the parser option
-  if args.latencyload ~= -1 then
+  if args.latencyload ~= -2 then
     latencyRates = {args.latencyload / #queuePairs}
   end
 
@@ -350,8 +356,7 @@ function measureStandard(queuePairs, extraPair, args)
       os.exit(0)
     end
 
-    -- for some reason even the DPDK no-op gets ~0.1% loss sometimes at low rates...
-    if (loss / #queuePairs) > 0.002 then
+    if (loss / #queuePairs) > args.acceptableloss then
       io.write("[FATAL] Too much loss! (" .. (loss / #queuePairs) .. ")\n")
       os.exit(1)
     end

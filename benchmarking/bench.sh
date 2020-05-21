@@ -60,6 +60,7 @@ if [ $? -eq 2 ]; then
   done
 else
   ./setup-dpdk.sh $DUT_DEVS
+  if [ $? -ne 0 ]; then exit 1; fi
 fi
 
 git submodule update --init --recursive
