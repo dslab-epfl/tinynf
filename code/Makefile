@@ -20,7 +20,9 @@
 # - The "main" TinyNF file is included in compilation
 # - Compiler warnings are enabled
 # Special behavior when the variable TN_NO_DEFAULT_TARGET is set:
-# - The default and run targets are not defined
+# - The default target is not defined
+# Special behavior when the variable TN_NO_RUN_TARGET is set:
+# - The run target is not defined
 
 # Configuration
 TN_DEBUG ?= 1
@@ -76,7 +78,9 @@ tn_default:
 	@$(TN_CC) $(subst .c,.o,$(notdir $(TN_FILES))) $(TN_LDFLAGS) -o $(TN_APP)
 	@$(TN_STRIP) $(TN_STRIPFLAGS) $(TN_APP)
 	@rm -f $(subst .c,.o,$(notdir $(TN_FILES)))
+endif
 
+ifndef TN_NO_RUN_TARGET
 run:
 	@sudo ./tinynf $(TN_ARGS)
 endif

@@ -250,6 +250,7 @@ function heatUp(queuePair, layer, ignoreloss)
     io.write("[FATAL] Heatup lost " .. (loss * 100) .. "% of packets!\n")
     os.exit(1)
   end
+  io.write("[bench] Finished heating up. Benchmarking...\n")
 end
 
 

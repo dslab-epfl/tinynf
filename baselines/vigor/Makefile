@@ -2,11 +2,14 @@ ifndef TN_NF
 $(error Please define TN_NF to a Vigor NF without the vig prefix, e.g. 'nat')
 endif
 
-# Allow the use of special patterns in shell, as Vigor does
-SHELL := /bin/bash -O extglob -c
-
 # Get this directory
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
+# Use our own DPDK shim, don't include the default TinyNF run target, and do all that also for sub-commands
+RTE_SDK := $(THIS_DIR)/../../shims/dpdk
+RTE_TARGET := .
+TN_NO_RUN_TARGET := true
+SHELL :=  RTE_SDK='$(RTE_SDK)' RTE_TARGET='$(RTE_TARGET)' TN_NO_RUN_TARGET='$(TN_NO_RUN_TARGET)' /bin/bash -O extglob -c
 
 # Run the setup script, in case it hasn't been run yet
 _IGNORED := $(shell $(THIS_DIR)/setup.sh 2>/dev/null)
@@ -29,9 +32,7 @@ TN_FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/!(boilerplate-assumptions)
 # Vigor expects its root dir to be an include path
 TN_CFLAGS += -I $(VIGOR_DIR)
 
-# Our DPDK stub headers, and the file that holds the global variables
-RTE_SDK := $(THIS_DIR)/../../shims/dpdk
-RTE_TARGET := .
+# Include the file that holds the global variables for the DPDK shim
 DPDK_DIR := $(RTE_SDK)/$(RTE_TARGET)
 TN_CFLAGS += -isystem $(DPDK_DIR)/include
 TN_FILES += $(DPDK_DIR)/tn_dpdk.c
