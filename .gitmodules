@@ -15,3 +15,4 @@
 [submodule "baselines/dpdk/dpdk"]
 	path = baselines/dpdk/dpdk
 	url = https://github.com/DPDK/dpdk
+	ignore = dirty

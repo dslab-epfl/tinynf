@@ -1,3 +1,5 @@
+#!/bin/sh
+
 git submodule update --init --recursive
 
 # Simplified version of the vigor setup script, with only what we need to run Vigor on top of our code
