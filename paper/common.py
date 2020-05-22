@@ -3,7 +3,7 @@
 import math
 import os
 
-this_dir = os.path.dirname(os.path.realpath(__file__))
+THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
 def percentile(list, n):
   size = len(list)
@@ -12,48 +12,36 @@ def percentile(list, n):
 def get_pyplot_ax(title, figsize=None):
   import matplotlib as mpl
   mpl.use('Agg') # avoid the need for an X server
+
   import matplotlib.pyplot as plt
+  # avoid unnecessary margins
+  plt.rcParams['axes.ymargin'] = 0
+  plt.rcParams['axes.xmargin'] = 0
+
   fig = plt.figure(figsize=figsize)
-  fig.suptitle(title, y=0.85) # put the title inside the plot to save space
+  # put the title inside the plot to save space
+  fig.suptitle(title, y=0.85)
+
   ax = fig.add_subplot(1, 1, 1)
   # Remove top and right spines
   ax.spines['top'].set_visible(False)
   ax.spines['right'].set_visible(False)
+
   return (plt, ax)
 
-def get_output_folder(kind, nf):
-  return this_dir + '/results/' + kind + '/' + nf
+def get_color_label_marker(nf):
+  # same colors as the figures
+  if 'ixy' in nf:
+    if 'batched' in nf:
+      return ('#203864', 'Ixy, batched', 'X')
+    return ('#4472C4', 'Ixy', 'x')
+  if 'dpdk' in nf:
+    if 'batched' in nf:
+      return ('#843C0C', 'DPDK, batched', '^')
+    return ('#ED7D31', 'DPDK', 'v')
+  return ('#70AD47', 'TinyNF', 'P') # P == filled plus
 
-def get_color(key):
-  color = ''
-  if key == 'original, batching':
-    color = 'orange brown'
-  elif key == 'original':
-    color = 'reddish orange'
-  elif 'shim' in key:
-    color = 'blue'
-    if 'simple' in key:
-      color = 'indigo'
-  elif 'custom' in key:
-    color = 'dark lime green'
-    if 'simple' in key:
-      color = 'brick red'
-
-  return 'xkcd:' + color
-
-def get_title(kind, nf):
-  title = kind.title() + ' '
-  if nf == 'nop':
-    title += 'No-op'
-  elif nf == 'nat':
-    title += 'NAT'
-  elif nf == 'bridge':
-    title += 'Bridge'
-  elif nf == 'pol':
-    title += 'Policer'
-  elif nf == 'fw':
-    title += 'Firewall'
-  else:
-    title += ' ' + nf
-
-  return title
+def save_plot(plt, name):
+  plot_dir = THIS_DIR + '/plots/'
+  os.makedirs(plot_dir, exist_ok=True)
+  plt.savefig(plot_dir + name + '.svg', bbox_inches='tight', pad_inches=0.01)

@@ -5,4 +5,3 @@
 - Use as few agent outputs as your NF needs; for instance, VigNAT only needs 2 agents that each receive from one device and send to the other,
   so they only need one output per agent since by design VigNAT cannot send a packet back to the device that it received it from.
   To do this, set `IXGBE_AGENT_OUTPUTS_MAX` to a number, and only configure one output per agent (this is done for the baselines by setting the `ASSUME_ONEWAY` define)
-- Beware of binary alignment; a tiny change in the alignment of the .text section can have a few % effect on handling 20G traffic for a no-op. (See the HACK in baselines/vigor/Makefile)

@@ -1,86 +1,94 @@
 #!/usr/bin/python3
 
-from common import *
-import glob
-import itertools
-import pathlib
+import common
+import math
 import os
+import pathlib
+import statistics
 import sys
 
-this_dir = os.path.dirname(os.path.realpath(__file__))
+THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
-if len(sys.argv) != 4:
-  print('[ERROR] Please provide 3 arguments: kind, NF, latency percentile')
+if len(sys.argv) < 4:
+  print('Args: <title> <latency percentile> <nf folder name>*')
   sys.exit(1)
 
-kind = sys.argv[1]
-nf = sys.argv[2]
-perc = int(sys.argv[3])
+title = sys.argv[1]
+
+perc = int(sys.argv[2])
 perc_str = str(perc) + 'th percentile'
 if perc == 50:
   perc_str = 'Median'
 
-SAMESCALE=False
-if nf == 'nop': SAMESCALE=True
+nfs = sys.argv[3:]
+
+def lats_at_perc(lats, perc):
+  return [(tput, common.percentile(ls, perc)) for (tput, ls) in lats]
+
 numbers = {}
 all_vals = []
 max_tput = 0
-max_99lat = 0
-MAXLAT = 400
-for key_folder in [f for f in sorted(glob.glob(get_output_folder(kind, nf) + '/*')) if os.path.isdir(f)]:
-  for param_folder in glob.glob(key_folder + '/*'):
-    param = int(os.path.basename(param_folder))
-    latencies = [(float(latf.name), [float(l) / 1000.0 for l in latf.read_text().splitlines()]) for latf in pathlib.Path(param_folder, 'latencies').glob('*')]
-    these_latencies = [(t, percentile(ls, perc)) for (t, ls) in latencies if percentile(ls, perc) <= MAXLAT]
-    key = os.path.basename(key_folder)
-    if key == 'shim, simple': continue
-    if key == 'custom, simple': key = 'custom'
-    if param == 64:
-      key += ', batching'
-    numbers[key] = sorted(these_latencies, key=lambda t: t[0])
-    all_vals += [l for (t, l) in these_latencies]
-    max_tput = max(max_tput, max([t for (t, l) in these_latencies]))
-    max_99lat = max(max_99lat, max([percentile(ls, 99) for (t, ls) in latencies if percentile(ls, 99) <= MAXLAT]))
-numbers = dict(sorted(numbers.items()))
+lats_99th = []
+for nf in nfs:
+  nf_folder = THIS_DIR + '/results/' + nf
 
-import matplotlib as mpl
-mpl.use('Agg') # avoid the need for an X server
-import matplotlib.pyplot as plt
-# Avoid margins for axes
-plt.rcParams['axes.ymargin'] = 0
-plt.rcParams['axes.xmargin'] = 0
+  lats_folder = pathlib.Path(nf_folder, 'latencies')
+  lats = [(float(lat_file.name), [float(l) / 1000.0 for l in lat_file.read_text().splitlines()]) for lat_file in lats_folder.glob('*')]
+  lats = sorted(lats, key=lambda t: t[0])
 
-axes = []
-if SAMESCALE: max_val = max_99lat + 0.5
-else: max_val = 8 #max([max([l for _, l in ls]) for _, ls in numbers.items()]) * 1.03
-fig, ax = plt.subplots(1, 1)
-ax.set_ylim(bottom=0, top=max_val)
+  tput = lats[-1][0]
 
-# Remove top/right spines
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
+  tput_zeroloss_file = pathlib.Path(nf_folder, 'throughput-zeroloss')
+  tput_zeroloss = float(tput_zeroloss_file.read_text()) if tput_zeroloss_file.exists() else math.inf
 
-# Plot the data
-ax.set_xlim(0, max_tput + 1000)
-for key, latencies in numbers.items():
-  color = get_color(key)
-  x = [t for (t, l) in latencies]
-  y = [l for (t, l) in latencies]
-  # We want opaque dots with non-opaque lines, 'plot' doesn't seem to support that scenario alone
-  ax.plot(x, y, color=color, alpha=0.3, linestyle='dashed')
-  label = 'TinyNF'
-  marker = 'o'
-  if key == 'original':
-    label = 'DPDK'
-    marker = 'P' # filled plus
-  if key == 'original, batching':
-    label = 'DPDK, batching'
-    marker = '^'
-  ax.scatter(x, y, color=color, label=label, marker=marker)
+  lats_perc = lats_at_perc(lats, perc)
+  lats_99th += lats_at_perc(lats, 99)
+
+  numbers[nf] = (lats_perc, lats_99th, tput_zeroloss)
+  max_tput = max(max_tput, tput)
+
+# Figure out a good max Y; if the 99th lat is more stable, use that so the graphs compare better; add some % anyway since we want to show most values
+all_lats_perc = [l for val in numbers.values()
+                 for (t, l) in val[0]
+                 for l in (t, l)]
+all_lats_99th = [l for val in numbers.values()
+                 for (t, l) in val[1]
+                 for l in (t, l)]
+median_lat_perc = statistics.median(all_lats_perc)
+median_lat99th = statistics.median(all_lats_99th)
+lat_lim = max(median_lat_perc, median_lat99th) * 2
+
+plt, ax = common.get_pyplot_ax(title)
+ax.set_ylim(bottom=0, top=lat_lim)
+ax.set_xlim(0, max_tput + 200) # just a lil bit of margin
+
+# We want a straight line up to tput_zeroloss, then a dashed line after that, so we draw 2 lines
+# And we want the lines to be opaque while the dots should be non-opaque, for clarity, so we draw them separately
+for nf, val in numbers.items():
+  (lats, _, tput_zeroloss) = val
+
+  (color, label, marker) = common.get_color_label_marker(nf)
+
+  zeroloss_x = [t for (t, l) in lats if t <= tput_zeroloss]
+  zeroloss_y = [l for (t, l) in lats if t <= tput_zeroloss]
+  if len(zeroloss_x) > 0:
+    ax.plot(zeroloss_x, zeroloss_y, color=color, alpha=0.4, linestyle='solid')
+
+  loss_x = [t for (t, l) in lats if t > tput_zeroloss]
+  loss_y = [l for (t, l) in lats if t > tput_zeroloss]
+  if len(loss_x) > 0:
+    # ensure the line starts from where the other one ends
+    if len(zeroloss_x) > 0:
+      loss_x = [zeroloss_x[-1]] + loss_x
+      loss_y = [zeroloss_y[-1]] + loss_y
+    ax.plot(loss_x, loss_y, color=color, alpha=0.3, linestyle='dashed')
+
+  all_x = [t for (t, l) in lats]
+  all_y = [l for (t, l) in lats]
+  ax.scatter(all_x, all_y, color=color, label=label, marker=marker)
 
 plt.xlabel('Throughput (Mb/s)')
 plt.ylabel(perc_str + ' latency (\u03BCs)')
 plt.legend(loc='upper left', handletextpad=0.3)
-fig.suptitle(get_title(kind, nf), y=0.85)
 
-plt.savefig(get_output_folder(kind, nf) + '/full-' + str(perc) + '.svg', bbox_inches='tight', pad_inches=0.01)
+common.save_plot(plt, 'Full, ' + title + ', ' + perc_str)
