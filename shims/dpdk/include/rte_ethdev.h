@@ -223,20 +223,9 @@ static inline uint16_t rte_eth_tx_burst(uint16_t port_id, uint16_t queue_id, str
 
 	struct tn_dpdk_device* dev = tx_pkts[0]->tn_dpdk_device;
 
-#ifdef VIGOR_SYMBEX
-	// Due to the assumption below, we need to avoid an infinite loop
-	if (!dev->is_processing) {
-		return 0;
-	}
-#endif
-
 #ifdef ASSUME_ONE_WAY
 	tn_net_agent_transmit(dev->agent, tx_pkts[0]->data_len, dev->current_outputs);
 	dev->is_processing = false;
-#  ifdef VIGOR_SYMBEX
-	// Vigor assumes transmitted packets are also freed
-	rte_pktmbuf_free(tx_pkts[0]);
-#  endif
 #else
 	dev->current_outputs[port_id] = true;
 	tx_pkts[0]->refcnt--;
