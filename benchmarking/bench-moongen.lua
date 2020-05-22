@@ -350,7 +350,7 @@ function measureStandard(queuePairs, extraPair, args)
       latencyLabels[i] = "Zero Mb/s" -- so that results are aligned; 'zero' has same width as a 4-digit number
     else
       latencyLabels[i] = "" .. (rate * #queuePairs) .. " Mb/s"
-    fi
+    end
   end
   io.write("[bench] Measuring latency...\n")
   local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, latencyLabels)
