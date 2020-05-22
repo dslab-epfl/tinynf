@@ -519,7 +519,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	// Finally, since we don't want interrupts and certainly not legacy ones, make sure they're disabled
 	IXGBE_PCIREG_SET(pci_device, COMMAND, INTERRUPT_DISABLE);
 
-	// Section 8.2.2 Registers Summary PF — BAR 0: As the section title indicate, registers are at the address pointed to by BAR 0, which is the only one we care about
+	// Section 8.2.2 Registers Summary PF - BAR 0: As the section title indicate, registers are at the address pointed to by BAR 0, which is the only one we care about
 	uint32_t pci_bar0low = IXGBE_PCIREG_READ(pci_device, BAR0_LOW);
 	// Sanity check: a 64-bit BAR must have bit 2 of low as 1 and bit 1 of low as 0 as per Table 9-4 Base Address Registers' Fields
 	if ((pci_bar0low & BIT(2)) == 0 || (pci_bar0low & BIT(1)) != 0) {
@@ -679,7 +679,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	for (uint32_t n = 0; n < IXGBE_MULTICAST_TABLE_ARRAY_SIZE / 32; n++) {
 		IXGBE_REG_CLEAR(device.addr, MTA, n);
 	}
-	//	"Initialize the flexible filters 0...5 — Flexible Host Filter Table registers (FHFT)."
+	//	"Initialize the flexible filters 0...5 - Flexible Host Filter Table registers (FHFT)."
 	//	Section 5.3.3.2 Flexible Filter:
 	//		"The 82599 supports a total of six host flexible filters.
 	//		 Each filter can be configured to recognize any arbitrary pattern within the first 128 bytes of the packet.
@@ -768,7 +768,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//			"- Set MRQE to 0xxxb, with the three least significant bits set according to the RSS mode"
 	// 			Section 8.2.3.7.12 Multiple Receive Queues Command Register (MRQC): "MRQE, Init Val 0x0; 0000b = RSS disabled"
 	// Thus we do not need to modify MRQC.
-	//		(from 4.6.11.3.1) "Queue Drop Enable (PFQDE) — In SR-IO the QDE bit should be set to 1b in the PFQDE register for all queues. In VMDq mode, the QDE bit should be set to 0b for all queues."
+	//		(from 4.6.11.3.1) "Queue Drop Enable (PFQDE) - In SR-IO the QDE bit should be set to 1b in the PFQDE register for all queues. In VMDq mode, the QDE bit should be set to 0b for all queues."
 	// We do not need to change PFQDE by assumption NOWANT
 	//		"- Rx UP to TC (RTRUP2TC), UPnMAP=0b, n=0,...,7"
 	//		Section 8.2.3.10.4 DCB Receive User Priority to Traffic Class (RTRUP2TC): All init vals = 0
@@ -837,7 +837,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	for (uint8_t n = 1; n < IXGBE_TRAFFIC_CLASSES_COUNT; n++) {
 		IXGBE_REG_CLEAR(device.addr, TXPBSIZE, n);
 	}
-	//			"- TXPBTHRESH.THRESH[0]=0xA0 — Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
+	//			"- TXPBTHRESH.THRESH[0]=0xA0 - Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"
 	// INTERPRETATION-TYPO: Typo in the spec; should be TXPBTHRESH[0].THRESH
 	//			Section 8.2.3.9.16 Tx Packet Buffer Threshold (TXPBTHRESH):
 	//				"Default values: 0x96 for TXPBSIZE0, 0x0 for TXPBSIZE1-7."
@@ -853,7 +853,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//				"VT_Ena, Init val 0b"
 	//				"NUM_TC_OR_Q, Init val 00b"
 	// Thus we do not need to modify MTQC.
-	//		"- DMA TX TCP Maximum Allowed Size Requests (DTXMXSZRQ) — set Max_byte_num_req = 0xFFF = 1 MB"
+	//		"- DMA TX TCP Maximum Allowed Size Requests (DTXMXSZRQ) - set Max_byte_num_req = 0xFFF = 1 MB"
 	IXGBE_REG_WRITE(device.addr, DTXMXSZRQ, _, MAX_BYTES_NUM_REQ, 0xFFF);
 	// INTERPRETATION-MISSING: Section 4.6.11.3 does not refer to MNGTXMAP, but since it's a management-related register we can ignore it here.
 	//		"- Clear RTTDCS.ARBDIS to 0b"
@@ -887,12 +887,12 @@ bool tn_net_device_set_promiscuous(struct tn_net_device* const device)
 	if (was_rx_enabled) {
 		IXGBE_REG_CLEAR(device->addr, RXCTRL, _, RXEN);
 	}
-	// "Unicast packet filtering — Promiscuous unicast filtering is enabled (FCTRL.UPE=1b) or the packet passes unicast MAC filters (host or manageability)."
+	// "Unicast packet filtering - Promiscuous unicast filtering is enabled (FCTRL.UPE=1b) or the packet passes unicast MAC filters (host or manageability)."
 	IXGBE_REG_SET(device->addr, FCTRL, _, UPE);
-	// "Multicast packet filtering — Promiscuous multicast filtering is enabled by either the host or manageability (FCTRL.MPE=1b or MANC.MCST_PASS_L2 =1b) or the packet matches one of the multicast filters."
+	// "Multicast packet filtering - Promiscuous multicast filtering is enabled by either the host or manageability (FCTRL.MPE=1b or MANC.MCST_PASS_L2 =1b) or the packet matches one of the multicast filters."
 	IXGBE_REG_SET(device->addr, FCTRL, _, MPE);
-	// "Broadcast packet filtering to host — Promiscuous multicast filtering is enabled (FCTRL.MPE=1b) or Broadcast Accept Mode is enabled (FCTRL.BAM = 1b)."
-	// Nothing to do here, since we just enabled MPE
+	// "Broadcast packet filtering to host - Promiscuous multicast filtering is enabled (FCTRL.MPE=1b) or Broadcast Accept Mode is enabled (FCTRL.BAM = 1b)."
+	// INTERPRETATION-MISSING: Nothing to do here, since we just enabled MPE; but what is BAM for then?
 
 	if (was_rx_enabled) {
 		IXGBE_REG_SET(device->addr, RXCTRL, _, RXEN);
@@ -1233,7 +1233,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 			//  RSV (bit 4) - Reserved
 			//  RS (bit 3) - Report Status: "signals hardware to report the DMA completion status indication"
 			//  IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set.
-			//  IFCS (bit 1) — Insert FCS:
+			//  IFCS (bit 1) - Insert FCS:
 			//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
 			//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
 			//  EOP (bit 0) - End of Packet"
