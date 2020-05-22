@@ -134,13 +134,13 @@ local packetInits = {
 
 -- Helper function, has to be global because it's started as a task
 -- Note that MoonGen doesn't want us to create more than one timestamper, so we do all iterations inside the task
-function _latencyTask(txQueue, rxQueue, layer, direction, count)
+function _latencyTask(txQueue, rxQueue, layer, direction, labels)
   local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
   local rateLimiter = timer:new(1 / LATENCY_PACKETS_PER_SECOND)
   local sendTimer = timer:new(LATENCY_DURATION / 1000)
 
   local results = {}
-  for i = 1, count do
+  for i = 1, #labels do
     mg.sleepMillis(LATENCY_TIME_PADDING)
     sendTimer:reset()
 
@@ -162,16 +162,16 @@ function _latencyTask(txQueue, rxQueue, layer, direction, count)
       rateLimiter:reset()
     end
     results[#results+1] = lats
-    io.write("[bench] " .. summarizeLatencies(lats) .. "\n")
+    io.write("[bench] " .. labels[i] .. ": " .. summarizeLatencies(lats) .. "\n")
     mg.sleepMillis(LATENCY_TIME_PADDING)
   end
 
   return results
 end
 
--- Starts a latency-measuring task, which returns $count histograms, sleeping 100ms inbetween measurements
-function startMeasureLatency(txQueue, rxQueue, layer, direction, count)
-  return mg.startTask("_latencyTask", txQueue, rxQueue, layer, direction, count)
+-- Starts a latency-measuring task, which returns #labels histograms, sleeping 100ms inbetween measurements
+function startMeasureLatency(txQueue, rxQueue, layer, direction, labels)
+  return mg.startTask("_latencyTask", txQueue, rxQueue, layer, direction, labels)
 end
 
 -- Helper function, has to be global because it's started as a task
@@ -344,9 +344,17 @@ function measureStandard(queuePairs, extraPair, args)
     latencyRates = {args.latencyload / #queuePairs}
   end
 
-  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, #latencyRates)
+  local latencyLabels = {}
+  for i, rate in ipairs(latencyRates) do
+    if rate == 0 then
+      latencyLabels[i] = "Zero Mb/s" -- so that results are aligned; 'zero' has same width as a 4-digit number
+    else
+      latencyLabels[i] = "" .. (rate * #queuePairs) .. " Mb/s"
+    fi
+  end
+  io.write("[bench] Measuring latency...\n")
+  local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, latencyLabels)
   for r, rate in ipairs(latencyRates) do
-    io.write("[bench] Measuring latency at rate " .. (rate * #queuePairs) .. "...\n")
     local throughputTasks = {}
     local loss = 0
 
@@ -391,7 +399,9 @@ end
 -- Measure latency without any load
 function measureLatencyAlone(queuePairs, extraPair, args)
   io.write("[bench] Measuring latency without load...\n")
-  local latss = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, 1):wait()
+  local labels = {}
+  labels[1] = 'result'
+  local latss = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, labels):wait()
   dumpLatencies(latss[1], RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/0")
 end
 

@@ -45,6 +45,9 @@ TN_CFLAGS += -Weverything
 endif
 ifneq (,$(findstring gcc,$(TN_CC)))
 TN_CFLAGS += -Wall -Wextra -Wshadow -Wstrict-aliasing -Wunused-macros -pedantic
+# GCC tends to use 'cmov' instructions otherwise, which have utterly terrible tail latency on our machines
+# (this is an optimization copied from Vigor)
+TN_CFLAGS += -fno-if-conversion -fno-if-conversion2
 endif
 endif
 

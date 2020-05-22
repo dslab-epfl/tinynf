@@ -48,6 +48,7 @@ def get_key(nf, kind, env):
 
 def get_env(nf, kind, env):
   result = {}
+  result['TN_DEBUG'] = '0'
   if kind == 'vigor':
     result['TN_NF'] = nf
     # Expiration time default is 10us which is nothing
@@ -120,7 +121,7 @@ def bench_vigor(nf, env):
   move_into(BENCH_RESULTS_PATH, 'results/' + get_key(nf, 'vigor', env))
 
 def bench(path, nf, kind, env):
-  print('[ !!! ] Benchmarking', nf, kind, 'in', path)
+  print('[ !!! ] Benchmarking', kind, nf, 'in', path)
   out_folder = 'results/' + get_key(nf, kind, env)
   bench_core(nf, kind, THIS_DIR + '/../' + path, ['standard'], env)
   move_into(BENCH_RESULTS_PATH, out_folder)
