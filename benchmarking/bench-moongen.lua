@@ -58,22 +58,9 @@ end
 
 -- Helper function to write latencies to a file
 function dumpLatencies(lats, filename)
-  -- Primorac et al., "How to Measure the Killer Microsecond", KBNets'17: NIC timestamps are not reliable beyond the 99.99th percentile.
-  local hist = histo:new()
-  for _, val in ipairs(lats) do
-    hist:update(val)
-  end
-  if #lats < 10000 then
-    max = hist:max()
-  else
-    max = hist:percentile(99.99)
-  end
-
   file = io.open(filename, "w")
   for _, val in ipairs(lats) do
-    if val <= max then
-      file:write(val .. "\n")
-    end
+    file:write(val .. "\n")
   end
   file:close()
 end
