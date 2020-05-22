@@ -9,7 +9,7 @@ def percentile(list, n):
   size = len(list)
   return sorted(list)[int(math.ceil((size * n) / 100)) - 1]
 
-def get_pyplot_ax(title, figsize=None):
+def get_pyplot_ax_fig(title, figsize=None):
   import matplotlib as mpl
   mpl.use('Agg') # avoid the need for an X server
 
@@ -27,7 +27,7 @@ def get_pyplot_ax(title, figsize=None):
   ax.spines['top'].set_visible(False)
   ax.spines['right'].set_visible(False)
 
-  return (plt, ax)
+  return (plt, ax, fig)
 
 def get_color_label_marker(nf):
   # same colors as the figures

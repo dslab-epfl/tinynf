@@ -58,7 +58,7 @@ median_lat_perc = statistics.median(all_lats_perc)
 median_lat99th = statistics.median(all_lats_99th)
 lat_lim = max(median_lat_perc, median_lat99th) * 2
 
-plt, ax = common.get_pyplot_ax(title)
+plt, ax, _ = common.get_pyplot_ax_fig(title)
 ax.set_ylim(bottom=0, top=lat_lim)
 ax.set_xlim(0, max_tput + 200) # just a lil bit of margin
 
