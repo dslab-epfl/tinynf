@@ -97,12 +97,17 @@ static inline void rte_mbuf_refcnt_set(struct rte_mbuf* m, uint16_t new_value)
 	m->refcnt = new_value;
 }
 
-static inline void rte_pktmbuf_free(struct rte_mbuf* m)
+static inline void rte_mbuf_raw_free(struct rte_mbuf* m)
 {
 	// Assume that if freeing, the mbuf is supposed to be dropped
 	bool outputs[TN_DPDK_DEVICES_MAX_COUNT] = {0};
-	tn_net_agent_transmit(m->tn_dpdk_device->agent, m->data_len, outputs);
 	m->tn_dpdk_device->is_processing = false;
+	tn_net_agent_transmit(m->tn_dpdk_device->agent, m->data_len, outputs);
+}
+
+static inline void rte_pktmbuf_free(struct rte_mbuf* m)
+{
+	rte_mbuf_raw_free(m);
 }
 
 static inline uint16_t rte_pktmbuf_tailroom(const struct rte_mbuf* m)

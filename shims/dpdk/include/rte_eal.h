@@ -52,7 +52,7 @@ static inline int rte_eal_init(int argc, char** argv)
 	}
 
 	for (int n = 0; n < devices_count; n++) {
-		if (!tn_net_agent_add_output(tn_dpdk_devices[n].agent, tn_dpdk_devices[1 - n].device, n)) {
+		if (!tn_net_agent_add_output(tn_dpdk_devices[n].agent, tn_dpdk_devices[1 - n].device, 0)) {
 			return -6;
 		}
 	}

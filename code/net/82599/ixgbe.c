@@ -13,6 +13,11 @@
 #define static_assert _Static_assert
 #endif
 
+// For verification with Vigor
+#ifdef VIGOR_SYMBEX
+#include "klee/klee.h"
+#endif
+
 // ===============
 // Interpretations
 // ===============
@@ -174,7 +179,6 @@
 
 // Section 8.2.3.5.9 Extended Interrupt Mask Clear Registers
 #define IXGBE_REG_EIMC(n) (n == 0 ? 0x00888u : (0x00AB0u + 4u*(n - 1)))
-#define IXGBE_REG_EIMC_MASK BITS(0,31)
 
 // Section 8.2.3.3.4 Flow Control Receive Threshold High
 #define IXGBE_REG_FCRTH(n) (0x03260u + 4u*(n))
@@ -234,7 +238,7 @@
 #define IXGBE_REG_RDRXCTL(_) 0x02F00u
 #define IXGBE_REG_RDRXCTL_CRC_STRIP BIT(1)
 #define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
-#define IXGBE_REG_RDRXCTL_RSCFRSTSIZE BITS(17,24)
+#define IXGBE_REG_RDRXCTL_RSCFRSTSIZE BITS(17,21)
 #define IXGBE_REG_RDRXCTL_RSCACKC BIT(25)
 #define IXGBE_REG_RDRXCTL_FCOE_WRFIX BIT(26)
 
@@ -420,7 +424,7 @@ static bool ixgbe_device_reset(const struct tn_net_device* const device)
 	// "Prior to issuing software reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
 	// Section 5.2.5.3.2 Master Disable:
 	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
-	for (uint8_t queue = 0; queue <= IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
+	for (uint8_t queue = 0; queue < IXGBE_RECEIVE_QUEUES_COUNT; queue++) {
 		// Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
 		// "Disable the queue by clearing the RXDCTL.ENABLE bit."
 		IXGBE_REG_CLEAR(device->addr, RXDCTL, queue, ENABLE);
@@ -565,7 +569,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//	Section 8.2.3.5.4 Extended Interrupt Mask Clear Register (EIMC):
 	//	"Writing a 1b to any bit clears its corresponding bit in the EIMS register disabling the corresponding interrupt in the EICR register. Writing 0b has no impact"
 	for (uint8_t n = 0; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
-		IXGBE_REG_SET(device.addr, EIMC, n, MASK);
+		IXGBE_REG_CLEAR(device.addr, EIMC, n);
 	}
 	//	"To enable flow control, program the FCTTV, FCRTL, FCRTH, FCRTV and FCCFG registers.
 	//	 If flow control is not enabled, these registers should be written with 0x0.
@@ -1007,7 +1011,7 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, const struct tn_ne
 		return false;
 	}
 	IXGBE_REG_WRITE(device->addr, RDBAH, queue_index, (uint32_t) (ring_phys_addr >> 32));
-	IXGBE_REG_WRITE(device->addr, RDBAL, queue_index, (uint32_t) (ring_phys_addr & 0xFFFFFFFFu));
+	IXGBE_REG_WRITE(device->addr, RDBAL, queue_index, (uint32_t) ring_phys_addr);
 	// "- Set the length register to the size of the descriptor ring (register RDLEN)."
 	// Section 8.2.3.8.3 Receive DEscriptor Length (RDLEN[n]):
 	// "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer."
@@ -1058,7 +1062,7 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, const struct tn_ne
 	// Section 8.2.3.1.3 Extended Device Control Register (CTRL_EXT): Bit 16 == "NS_DIS, No Snoop Disable"
 	IXGBE_REG_SET(device->addr, CTRLEXT, _, NSDIS);
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
-	IXGBE_REG_SET(device->addr, DCARXCTRL, queue_index, UNKNOWN);
+	IXGBE_REG_CLEAR(device->addr, DCARXCTRL, queue_index, UNKNOWN);
 
 	agent->receive_tail_addr = device->addr + IXGBE_REG_RDT(queue_index);
 	return true;
@@ -1119,7 +1123,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_n
 		return false;
 	}
 	IXGBE_REG_WRITE(device->addr, TDBAH, queue_index, (uint32_t) (ring_phys_addr >> 32));
-	IXGBE_REG_WRITE(device->addr, TDBAL, queue_index, (uint32_t) (ring_phys_addr & 0xFFFFFFFFu));
+	IXGBE_REG_WRITE(device->addr, TDBAL, queue_index, (uint32_t) ring_phys_addr);
 	// "- Set the length register to the size of the descriptor ring (TDLEN)."
 	// 	Section 8.2.3.9.7 Transmit Descriptor Length (TDLEN[n]):
 	// 	"This register sets the number of bytes allocated for descriptors in the circular descriptor buffer."
@@ -1185,6 +1189,12 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_n
 
 bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint16_t* out_packet_length)
 {
+#ifdef VIGOR_SYMBEX
+	// Not great; but less assumptions than Vigor makes in the DPDK driver patches
+	agent->processed_delimiter = 0;
+	agent->flushed_processed_delimiter = (uint64_t) -1;
+#endif
+
 	// Since descriptors are 16 bytes, the index must be doubled
 	volatile uint64_t* main_metadata_addr = agent->rings[0] + 2u*agent->processed_delimiter + 1;
 	uint64_t receive_metadata = *main_metadata_addr;
