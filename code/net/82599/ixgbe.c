@@ -82,7 +82,7 @@
 // Section 7.3.1 Interrupts Registers:
 //	"These registers are extended to 64 bits by an additional set of two registers.
 //	 EICR has an additional two registers EICR(1)... EICR(2) and so on for the EICS, EIMS, EIMC, EIAM and EITR registers."
-#define IXGBE_INTERRUPT_REGISTERS_COUNT 2u
+#define IXGBE_INTERRUPT_REGISTERS_COUNT 3u
 // Section 7.10.3.10 Switch Control:
 //	"Multicast Table Array (MTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address."
 #define IXGBE_MULTICAST_TABLE_ARRAY_SIZE (4u * 1024u)
@@ -173,7 +173,7 @@
 #define IXGBE_REG_EEC_AUTO_RD BIT(9)
 
 // Section 8.2.3.5.9 Extended Interrupt Mask Clear Registers
-#define IXGBE_REG_EIMC(n) (0x00AB0u + 4u*(n))
+#define IXGBE_REG_EIMC(n) (n == 0 ? 0x00888u : (0x00AB0u + 4u*(n - 1)))
 #define IXGBE_REG_EIMC_MASK BITS(0,31)
 
 // Section 8.2.3.3.4 Flow Control Receive Threshold High
