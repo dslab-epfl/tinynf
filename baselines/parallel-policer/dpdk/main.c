@@ -28,7 +28,7 @@ static const uint16_t RX_QUEUES_COUNT = 1;
 static const uint16_t TX_QUEUES_COUNT = 1;
 
 // Queue sizes for receiving/transmitting packets
-#if VIGOR_BATCH_SIZE == 1
+#if VIGOR_BATCH_SIZE != 1
 static const uint16_t RX_QUEUE_SIZE = 128;
 static const uint16_t TX_QUEUE_SIZE = 128;
 #else

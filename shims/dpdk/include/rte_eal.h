@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <string.h>
 
 #include <tn_dpdk.h>
 #include "net/network.h"
@@ -24,6 +25,11 @@ static inline int rte_eal_init(int argc, char** argv)
 				continue;
 			}
 		}
+		if (strlen(argv[n]) < 7) { // clearly not a PCI address, but e.g. '-n' or '2'
+			other_count++;
+			continue;
+		}
+		// for now the above simple checks work to distinguish between DPDK things we ignore and the PCI addrs we get...
 		devices_args[devices_count] = argv[n];
 		devices_count++;
 	}

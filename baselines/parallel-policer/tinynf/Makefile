@@ -55,4 +55,4 @@ _IGNORED := $(shell cat $(VIGOR_DIR)/vigpol/Makefile | grep -v 'include.*Makefil
 include $(VIGOR_MAKEFILE)
 
 run:
-	sudo ./tinynf $(TN_ARGS) -- $(NF_ARGS)
+	@sudo ./tinynf $(TN_ARGS) -- $(NF_ARGS)

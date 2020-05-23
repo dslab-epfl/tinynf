@@ -17,7 +17,7 @@ SHELL := /bin/bash -O extglob -O globstar -c
 
 TN_BATCH_SIZE ?= 1
 
-SRCS-y := $(THIS_DIR)/vigor.c
+SRCS-y := $(THIS_DIR)/main.c
 SRCS-y += $(VIGOR_DIR)/nf-util.c
 SRCS-y += $(shell echo $(VIGOR_DIR)/libvig/verified/*.c)
 SRCS-y += $(shell echo $(THIS_DIR)/../*.c)
@@ -37,6 +37,12 @@ _IGNORED := $(shell cat $(VIGOR_DIR)/vigpol/Makefile | grep -v 'include.*Makefil
 include $(VIGOR_MAKEFILE)
 
 run:
-	sudo ./build/app/$(APP) --no-shconf -n 2 -- $(NF_ARGS)
+	@sudo ./build/app/$(APP) --no-shconf -n 2 -- $(NF_ARGS)
 
 all: clean
+
+is-dpdk:
+	@# yes
+
+print-nf-name:
+	@echo nf
