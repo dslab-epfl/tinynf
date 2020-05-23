@@ -44,12 +44,14 @@ TN_CFLAGS += -w
 # Use Vigor's fast power-of-2-capacity map
 TN_CFLAGS += -DCAPACITY_POW2
 
+#TN_DEBUG := 2
+
 # Include the TinyNF makefile
 include $(THIS_DIR)/../../../code/Makefile
 
 # Include the Vigor NF's makefile, minus the other makefiles, so we can get the NF's args
 VIGOR_MAKEFILE := $(shell mktemp)
-_IGNORED := $(shell cat $(VIGOR_DIR)/vignat/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
+_IGNORED := $(shell cat $(VIGOR_DIR)/vigpol/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
 include $(VIGOR_MAKEFILE)
 
 run:

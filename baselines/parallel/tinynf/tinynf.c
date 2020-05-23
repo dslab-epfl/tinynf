@@ -13,22 +13,21 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-//#include <stdio.h>
 #include <pthread.h>
 
 #define DEVICES_MAX_COUNT 2u
 
+// if we made a proper parallel version of TinyNF, we'd need a 'state' param to pass to the agent function... oh well, let's manually unroll
+
 static uint16_t packet_handler0(uint8_t* packet, uint16_t packet_length, bool* outputs)
 {
-//		printf("got packet thread 0\n");fflush(stdout);
-	int vigor_output = nf_process(0, packet, packet_length, 123); //current_time());
+	int vigor_output = nf_process(0, packet, packet_length, current_time());
 	outputs[0] = vigor_output != 0;
 	return packet_length;
 }
 static uint16_t packet_handler1(uint8_t* packet, uint16_t packet_length, bool* outputs)
 {
-//		printf("got packet thread 1\n");fflush(stdout);
-	int vigor_output = 0; //nf_process(1, packet, packet_length, current_time());
+	int vigor_output = nf_process(1, packet, packet_length, current_time());
 	outputs[0] = vigor_output != 1;
 	return packet_length;
 }
