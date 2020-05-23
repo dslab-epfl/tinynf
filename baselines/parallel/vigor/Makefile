@@ -33,10 +33,10 @@ include $(RTE_SDK)/mk/rte.extapp.mk
 
 # Include the Vigor NF's makefile, minus the other makefiles, so we can get the NF's args
 VIGOR_MAKEFILE := $(shell mktemp)
-_IGNORED := $(shell cat $(VIGOR_DIR)/vignat/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
+_IGNORED := $(shell cat $(VIGOR_DIR)/vigpol/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
 include $(VIGOR_MAKEFILE)
 
 run:
-	sudo ./build/app/$(APP) --no-shconf -- $(NF_ARGS)
+	sudo ./build/app/$(APP) --no-shconf -n 2 -- $(NF_ARGS)
 
 all: clean

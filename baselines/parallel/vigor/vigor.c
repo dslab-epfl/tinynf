@@ -1,3 +1,11 @@
+// changed from original:
+// Added 2-core support
+// Remove ifdef-ed stuff that wouldn't be included, for clarity
+// Removed special-cased code for TN_BATCH_SIZE=1, since this is not gonna be verified anyway
+// Set MEMPOOL_BUFFER_COUNT to 1024
+// Set a per-lcore cache size for the mbuf pool, of 128
+// (The two values above were empirically determined as providing higher perf)
+
 #include <inttypes.h>
 
 #include <rte_common.h>
@@ -32,7 +40,7 @@ static const uint16_t TX_QUEUE_SIZE = 96;
 #endif
 
 // Buffer count for mempools
-static const unsigned MEMPOOL_BUFFER_COUNT = 256;
+static const unsigned MEMPOOL_BUFFER_COUNT = 1024;
 
 // --- Initialization ---
 static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
@@ -126,6 +134,10 @@ int main(int argc, char *argv[]) {
   argc -= ret;
   argv += ret;
 
+  if (rte_lcore_count() != 2) {
+    rte_exit(EXIT_FAILURE, "Expected exactly 2 lcores.\n");
+  }
+
   // NF-specific config
   nf_config_init(argc, argv);
   nf_config_print();
@@ -139,7 +151,7 @@ int main(int argc, char *argv[]) {
   struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create(
       "MEMPOOL",                         // name
       MEMPOOL_BUFFER_COUNT * nb_devices, // #elements
-      128, // cache size (per-lcore, not useful in a single-threaded app)
+      128,
       0, // application private area size
       RTE_MBUF_DEFAULT_BUF_SIZE, // data buffer size
       rte_socket_id()            // socket ID
