@@ -34,9 +34,15 @@ def get_color_label_marker(nf):
     return ('#4472C4', 'Ixy', 'x')
   if 'dpdk' in nf:
     if 'batched' in nf:
+      if 'parallel' in nf:
+        return ('#682E0A', 'DPDK, parallel, batched', 'X')
       return ('#843C0C', 'DPDK, batched', '^')
+    if 'parallel' in nf:
+      return ('#D16D2B', 'DPDK, parallel', 'x')
     return ('#ED7D31', 'DPDK', 'v')
-  return ('#70AD47', 'TinyNF', 'P') # P == filled plus
+  if 'parallel' in nf:
+    return ('#60913D', 'TinyNF, parallel', 'P')   # P == filled plus
+  return ('#70AD47', 'TinyNF', '+')
 
 def save_plot(plt, name):
   plot_dir = THIS_DIR + '/plots/'

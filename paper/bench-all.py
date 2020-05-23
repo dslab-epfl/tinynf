@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 from distutils.dir_util import copy_tree
 import os
+import shutil
 import subprocess
 import time
 
@@ -29,6 +30,14 @@ def move_into(src, dst):
     copy_tree(src, dst + '/')
   else:
     os.rename(src, dst + '/' + os.path.basename(src))
+
+def remove(file_or_folder):
+  if not os.path.exists(file_or_folder):
+    return # ok, it's not there
+  if os.path.isdir(file_or_folder):
+    shutil.rmtree(file_or_folder)
+  else:
+    os.remove(file_or_folder)
 
 def has_dpdk(env):
   return 'RTE_SDK' in env
@@ -113,6 +122,7 @@ def bench_core(nf, nf_dir, benchflags, additional_env):
 def bench_vigor(nf, env):
   print('[ !!! ] Benchmarking', nf, 'in the Vigor way')
   bench_core(nf, THIS_DIR + '/../baselines/vigor', ['--latencyload=1000', 'standard-single'], env)
+  remove(out_folder + '/latencies-single') # don't keep old latencies around
   add_suffix(BENCH_RESULT_TPUT_PATH, '-single')
   add_suffix(BENCH_RESULT_LATS_PATH, '-single')
   move_into(BENCH_RESULTS_PATH, 'results/vigor-' + get_key(nf, env))
@@ -121,6 +131,7 @@ def bench(path, nf, kind, env):
   print('[ !!! ] Benchmarking', kind, nf, 'in', path)
   out_folder = 'results/' + kind + '-' + get_key(nf, env)
   bench_core(nf, THIS_DIR + '/../' + path, ['standard'], env)
+  remove(out_folder + '/latencies') # don't keep old latencies around
   move_into(BENCH_RESULTS_PATH, out_folder)
   bench_core(nf, THIS_DIR + '/../' + path, ['--acceptableloss=0', '--latencyload=-1', 'standard'], env)
   add_suffix(BENCH_RESULT_TPUT_PATH, '-zeroloss')
@@ -138,12 +149,12 @@ if 0:
 # Second comparison: VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
 if 1:
   #bench('baselines/vigor', 'pol', 'vigor', {})
-  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_FAKE_SDK, 'RTE_TARGET': RTE_FAKE_TARGET})
-  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
-  #bench('baselines/parallel-policer/tinynf', 'pol', 'tinynf-parallel', {})
-  bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  #bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_FAKE_SDK, 'RTE_TARGET': RTE_FAKE_TARGET})
+  #bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+  #bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  bench('baselines/parallel-policer/tinynf', 'pol', 'tinynf-parallel', {})
+  #bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+  #bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Third comparison: Vigor NFs
 if 0:

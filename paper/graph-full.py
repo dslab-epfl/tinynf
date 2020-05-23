@@ -10,10 +10,10 @@ import sys
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
 if len(sys.argv) < 4:
-  print('Args: <title> <latency percentile> <nf folder name>*')
+  print('Args: <name> <latency percentile> <nf folder name>*')
   sys.exit(1)
 
-title = sys.argv[1]
+name = sys.argv[1]
 
 perc = int(sys.argv[2])
 perc_str = str(perc) + 'th percentile'
@@ -56,9 +56,9 @@ all_lats_99th = [l for val in numbers.values()
                  for l in (t, l)]
 median_lat_perc = statistics.median(all_lats_perc)
 median_lat99th = statistics.median(all_lats_99th)
-lat_lim = max(median_lat_perc, median_lat99th) * 2
+lat_lim = max(median_lat_perc, median_lat99th) * 1.7
 
-plt, ax, _ = common.get_pyplot_ax_fig(title)
+plt, ax, _ = common.get_pyplot_ax_fig()
 ax.set_ylim(bottom=0, top=lat_lim)
 ax.set_xlim(0, max_tput + 200) # just a lil bit of margin
 
@@ -91,4 +91,4 @@ plt.xlabel('Throughput (Mb/s)')
 plt.ylabel(perc_str + ' latency (\u03BCs)')
 plt.legend(loc='upper left', handletextpad=0.3)
 
-common.save_plot(plt, 'Full, ' + title + ', ' + perc_str)
+common.save_plot(plt, 'Full ' + name)
