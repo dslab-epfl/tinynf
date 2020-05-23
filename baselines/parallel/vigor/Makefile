@@ -1,0 +1,42 @@
+# get current dir, see https://stackoverflow.com/a/8080530
+THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
+# Vigor dir
+VIGOR_DIR := $(THIS_DIR)/../../vigor/vigor
+
+# Vigor baseline setup script if needed
+_IGNORED := $(shell $(VIGOR_DIR)/../setup.sh 2>/dev/null)
+
+# DPDK stuff
+include $(RTE_SDK)/mk/rte.vars.mk
+
+# Same name for everyone, makes it easier to run them all with the same script
+APP := nf
+# allow the use of advanced globs in paths
+SHELL := /bin/bash -O extglob -O globstar -c
+
+TN_BATCH_SIZE ?= 1
+
+SRCS-y := $(THIS_DIR)/vigor.c
+SRCS-y += $(VIGOR_DIR)/nf-util.c
+SRCS-y += $(shell echo $(VIGOR_DIR)/libvig/verified/*.c)
+SRCS-y += $(shell echo $(THIS_DIR)/../*.c)
+CFLAGS += -I $(VIGOR_DIR)
+CFLAGS += -std=gnu11
+CFLAGS += -DCAPACITY_POW2
+CFLAGS += -O3
+CFLAGS += -DVIGOR_BATCH_SIZE=$(TN_BATCH_SIZE)
+
+CFLAGS += -fno-if-conversion -fno-if-conversion2
+
+include $(RTE_SDK)/mk/rte.extapp.mk
+
+# Include the Vigor NF's makefile, minus the other makefiles, so we can get the NF's args
+VIGOR_MAKEFILE := $(shell mktemp)
+_IGNORED := $(shell cat $(VIGOR_DIR)/vignat/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
+include $(VIGOR_MAKEFILE)
+
+run:
+	sudo ./build/app/$(APP) --no-shconf -- $(NF_ARGS)
+
+all: clean

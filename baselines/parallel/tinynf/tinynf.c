@@ -5,7 +5,6 @@
 
 // Vigor
 #include "nf.h"
-#include "nf-util.h"
 
 // DPDK devices count and args parsing
 #include <tn_dpdk.h>
@@ -14,21 +13,22 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-
+//#include <stdio.h>
+#include <pthread.h>
 
 #define DEVICES_MAX_COUNT 2u
 
 static uint16_t packet_handler0(uint8_t* packet, uint16_t packet_length, bool* outputs)
 {
-	int vigor_output = nf_process(0, packet, packet_length, current_time());
-	nf_return_all_chunks(packet);
+//		printf("got packet thread 0\n");fflush(stdout);
+	int vigor_output = nf_process(0, packet, packet_length, 123); //current_time());
 	outputs[0] = vigor_output != 0;
 	return packet_length;
 }
 static uint16_t packet_handler1(uint8_t* packet, uint16_t packet_length, bool* outputs)
 {
-	int vigor_output = nf_process(1, packet, packet_length, current_time());
-	nf_return_all_chunks(packet);
+//		printf("got packet thread 1\n");fflush(stdout);
+	int vigor_output = 0; //nf_process(1, packet, packet_length, current_time());
 	outputs[0] = vigor_output != 1;
 	return packet_length;
 }
@@ -44,7 +44,7 @@ void* thread0(void* arg)
 void* thread1(void* arg)
 {
 	while(true) {
-		tn_net_agent_process(agents[1], packet_handler0);
+		tn_net_agent_process(agents[1], packet_handler1);
 	}
 }
 
@@ -55,8 +55,8 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	argc -= consumed;
-	argv += consumed;
+	argc -= 3;
+	argv += 3;
 
 	uint16_t devices_count = rte_eth_dev_count();
 
@@ -103,5 +103,19 @@ int main(int argc, char** argv)
 	if (ret0 != 0 || ret1 != 0) {
 		return 4;
 	}
+
+        cpu_set_t s0, s1;
+        CPU_ZERO(&s0);
+        CPU_ZERO(&s1);
+        CPU_SET(8, &s0);
+        CPU_SET(9, &s1);
+        ret0 = pthread_setaffinity_np(t0, sizeof(cpu_set_t), &s0);
+        ret1 = pthread_setaffinity_np(t1, sizeof(cpu_set_t), &s1);
+	if (ret0 != 0 || ret1 != 0) {
+		return 5;
+	}
+
+	pthread_join(t0, NULL);
+	pthread_join(t1, NULL);
 	return 0;
 }

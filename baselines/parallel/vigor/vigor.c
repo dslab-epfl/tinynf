@@ -7,10 +7,8 @@
 #include <rte_lcore.h>
 #include <rte_mbuf.h>
 
-#include "libvig/verified/boilerplate-util.h"
-#include "libvig/verified/packet-io.h"
-#include "nf-log.h"
-#include "nf-util.h"
+#include <stdio.h>
+
 #include "nf.h"
 
 #ifndef VIGOR_BATCH_SIZE
@@ -88,11 +86,10 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
 
 // --- Per-core work ---
 
-static void lcore_main() {
+static int lcore_main(void* arg) {
   unsigned lcore = rte_lcore_id();
-  NF_INFO("Core %u forwarding packets.", lcore);
-  uint16_t rx_id = lcore == 0 ? 0 : 1;
-  uint16_t tx_id = lcore == 0 ? 1 : 0;
+  uint16_t rx_id = lcore & 1;
+  uint16_t tx_id = 1 - rx_id;
   while(1) {
     struct rte_mbuf *mbufs[VIGOR_BATCH_SIZE];
     struct rte_mbuf *mbufs_to_send[VIGOR_BATCH_SIZE];
@@ -100,11 +97,9 @@ static void lcore_main() {
     uint16_t received_count = rte_eth_rx_burst(rx_id, 0, mbufs, VIGOR_BATCH_SIZE);
     for (uint16_t n = 0; n < received_count; n++) {
       uint8_t* packet = rte_pktmbuf_mtod(mbufs[n], uint8_t*);
-      packet_state_total_length(packet, &(mbufs[n]->pkt_len));
       uint16_t dst_device = nf_process(mbufs[n]->port, packet, mbufs[n]->data_len, current_time());
-      nf_return_all_chunks(packet);
 
-      if (dst_device == VIGOR_DEVICE) {
+      if (dst_device == rx_id) {
         rte_pktmbuf_free(mbufs[n]);
       } else {
         mbufs_to_send[mbuf_send_index] = mbufs[n];
@@ -117,11 +112,12 @@ static void lcore_main() {
       rte_pktmbuf_free(mbufs[n]);
     }
   }
+  return 0;
 }
 
 // --- Main ---
 
-int MAIN(int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
   // Initialize the Environment Abstraction Layer (EAL)
   int ret = rte_eal_init(argc, argv);
   if (ret < 0) {
@@ -157,7 +153,6 @@ int MAIN(int argc, char *argv[]) {
   for (uint16_t device = 0; device < nb_devices; device++) {
     ret = nf_init_device(device, mbuf_pool);
     if (ret == 0) {
-      NF_INFO("Initialized device %" PRIu16 ".", device);
     } else {
       rte_exit(EXIT_FAILURE, "Cannot init device %" PRIu16 ", ret=%d", device,
                ret);
