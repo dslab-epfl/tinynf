@@ -916,8 +916,9 @@ struct tn_net_agent
 	uintptr_t receive_tail_addr;
 	uint64_t processed_delimiter;
 	uint64_t outputs_count;
-	uint64_t flushed_processed_delimiter; // -1 if there was no packet last time, otherwise last flushed processed_delimiter
-	uint8_t _padding[3*8];
+	uint64_t flush_counter;
+	uint64_t flush_target;
+	uint8_t _padding[2*8];
 	// transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
 	// plus, we want each head on its own cache line to avoid conflicts
@@ -967,8 +968,6 @@ bool tn_net_agent_init(struct tn_net_agent** out_agent)
 		agent->transmit_tail_addrs[n] = (uintptr_t) &(agent->_padding[0]);
 	}
 
-	// Start in "no packet" state
-	agent->flushed_processed_delimiter = (uint64_t) -1;
 	*out_agent = agent;
 	return true;
 }
@@ -1203,13 +1202,15 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	if ((receive_metadata & BITL(32)) == 0) {
 		// No packet; flush if we need to, i.e., 2nd part of the processor
 		// Done here since we must eventually flush after processing a packet even if no more packets are received
-		if ((agent->flushed_processed_delimiter != (uint64_t) -1) & (agent->flushed_processed_delimiter != agent->processed_delimiter)) {
+		// (which will definitely happen eventually since flush_target will become zero)
+		if (agent->flush_counter > agent->flush_target) {
 			for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
 				ixgbe_reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 			}
+			agent->flush_counter = 0;
+		} else {
+			agent->flush_target = agent->flush_target >> 1;
 		}
-		// Record that there was no packet
-		agent->flushed_processed_delimiter = (uint64_t) -1;
 
 		return false;
 	}
@@ -1219,7 +1220,6 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
 	*out_packet_length = receive_metadata & 0xFFu;
 
-	// Note that the out_ parameters have no meaning if this is false, but it's fine, their value will still make sense
 	return true;
 }
 
@@ -1269,12 +1269,14 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	agent->processed_delimiter = (agent->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
 
 	// Flush if we need to, i.e., 2nd part of the processor
-	// Done here so that latency is minimal in low-load cases
-	if ((agent->flushed_processed_delimiter == (uint64_t) -1) | (agent->processed_delimiter == ((agent->flushed_processed_delimiter + IXGBE_AGENT_PROCESS_PERIOD) & (IXGBE_RING_SIZE - 1)))) {
+	// If target is 0 then we always send immediately, so we get low latency at low loads
+	agent->flush_counter = agent->flush_counter + 1;
+	if (agent->flush_counter > agent->flush_target) {
 		for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
 			ixgbe_reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
-		agent->flushed_processed_delimiter = agent->processed_delimiter;
+		agent->flush_counter = 0;
+		agent->flush_target = agent->flush_target + (agent->flush_target != 7); // i.e., min(target+1, 7)
 	}
 
 	// Transmitter 2nd part, moving descriptors to the receive pool
