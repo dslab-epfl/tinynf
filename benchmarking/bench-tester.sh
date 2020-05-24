@@ -31,7 +31,7 @@ fi
 
 echo '[bench] Running benchmark...'
 # Ignore pointless output (this is why this script needs -o pipefail)
-sudo ./moongen/build/MoonGen bench-moongen.lua $CROSS_OPT "$@" 2>&1 \
+taskset -c $TESTER_CPUS sudo ./moongen/build/MoonGen bench-moongen.lua $CROSS_OPT "$@" 2>&1 \
   | grep -Fv --line-buffered 'EAL: Detected' \
   | grep -Fv --line-buffered 'EAL: No free hugepages reported in hugepages-1048576kB' \
   | grep -Fv --line-buffered 'EAL: Probing VFIO support...' \
