@@ -12,7 +12,7 @@
 static int papi_events[] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_L1_DCM, PAPI_L1_ICM, PAPI_L2_TCM, PAPI_L3_TCM};
 #define papi_events_count sizeof(papi_events)/sizeof(papi_events[0])
 static uint64_t papi_counter;
-static uint64_t papi_batches[TN_DEBUG_PERF];
+static uint8_t papi_batches[TN_DEBUG_PERF];
 static long long papi_values[TN_DEBUG_PERF][papi_events_count];
 
 // PAPI functions: call START(), then RESET() before your event and RECORD() immediately after
@@ -45,5 +45,5 @@ static long long papi_values[TN_DEBUG_PERF][papi_events_count];
 #else
 #define TN_PERF_PAPI_START()
 #define TN_PERF_PAPI_RESET()
-#define TN_PERF_PAPI_RECORD()
+#define TN_PERF_PAPI_RECORD(...)
 #endif
