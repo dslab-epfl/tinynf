@@ -121,11 +121,13 @@ def bench_core(nf, nf_dir, benchflags, additional_env):
 
 def bench_vigor(nf, env):
   print('[ !!! ] Benchmarking', nf, 'in the Vigor way')
-  bench_core(nf, THIS_DIR + '/../baselines/vigor', ['--latencyload=1000', 'standard-single'], env)
+  suffix = '/with-dpdk' if has_dpdk(env) else ''
+  bench_core(nf, THIS_DIR + '/../baselines/vigor' + suffix, ['--latencyload=1000', 'standard-single'], env)
+  out_folder = 'results/vigor-' + get_key(nf, env)
   remove(out_folder + '/latencies-single') # don't keep old latencies around
   add_suffix(BENCH_RESULT_TPUT_PATH, '-single')
   add_suffix(BENCH_RESULT_LATS_PATH, '-single')
-  move_into(BENCH_RESULTS_PATH, 'results/vigor-' + get_key(nf, env))
+  move_into(BENCH_RESULTS_PATH, out_folder)
 
 def bench(path, nf, kind, env):
   print('[ !!! ] Benchmarking', kind, nf, 'in', path)
@@ -139,7 +141,7 @@ def bench(path, nf, kind, env):
 
 
 # First comparison: DPDK's testpmd no-op, batched or not, vs TinyNF no-op vs Ixy no-op (throughput, zero-loss throughput, detailed latency)
-if 1:
+if 0:
   bench('code', 'nop', 'tinynf', {})
   bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
   bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
@@ -156,11 +158,12 @@ if 0:
   bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
   bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
-# Third comparison: Vigor NFs
-if 0:
+# Third comparison: Vigor NFs (but switch between drivers only once, to avoid potential issues)
+if 1:
+  #for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
+  #  bench_vigor(nf, {})
   for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
-    bench_vigor(nf, {})
-    bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+    if nf != 'nat': bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
 
 # Fourth comparison: Click no-op with TinyNF vs DPDK vs DPDK batch
 if 0:

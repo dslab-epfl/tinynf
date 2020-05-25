@@ -10,11 +10,10 @@
 #include <stdlib.h>
 
 static int papi_events[] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_L1_DCM, PAPI_L1_ICM, PAPI_L2_TCM, PAPI_L3_TCM};
-static uint64_t papi_counter;
-static uint64_t papi_batch_counter;
 #define papi_events_count sizeof(papi_events)/sizeof(papi_events[0])
-#define TN_PERF_PAPI_BATCH_SIZE 10000
-static long long papi_values[TN_PERF_PAPI_BATCH_SIZE][papi_events_count];
+static uint64_t papi_counter;
+static uint64_t papi_batches[TN_DEBUG_PERF];
+static long long papi_values[TN_DEBUG_PERF][papi_events_count];
 
 // PAPI functions: call START(), then RESET() before your event and RECORD() immediately after
 #define TN_PERF_PAPI_START() do { \
@@ -25,21 +24,22 @@ static long long papi_values[TN_PERF_PAPI_BATCH_SIZE][papi_events_count];
 		} \
 	} while(0)
 #define TN_PERF_PAPI_RESET() do { PAPI_read_counters(papi_values[papi_counter], papi_events_count); } while(0)
-#define TN_PERF_PAPI_RECORD() do { \
+#define TN_PERF_PAPI_RECORD(batch_count) do { \
 		PAPI_read_counters(papi_values[papi_counter], papi_events_count); \
-		papi_counter++; \
-		if (papi_counter == TN_PERF_PAPI_BATCH_SIZE) { \
-			for (uint64_t n = 0; n < TN_PERF_PAPI_BATCH_SIZE; n++) { \
-				for (uint64_t e = 0; e < papi_events_count; e++) { \
-					printf("%lld ", papi_values[n][e]); \
+		papi_batches[papi_counter] = batch_count; \
+		papi_counter += batch_count; \
+		if (papi_counter >= TN_DEBUG_PERF) { \
+			for (uint64_t n = 0; n < TN_DEBUG_PERF; n++) { \
+				uint64_t m; \
+				for (m = 0; m < papi_batches[n] && n + m < TN_DEBUG_PERF; m++) { \
+					for (uint64_t e = 0; e < papi_events_count; e++) { \
+						printf("%lf ", (double) papi_values[n][e] / (double) papi_batches[n]); \
+					} \
+					printf("\n"); \
 				} \
-				printf("\n"); \
+				n += m - 1; \
 			} \
-			papi_counter = 0; \
-			papi_batch_counter++; \
-			if (papi_batch_counter == TN_DEBUG_PERF) { \
-				exit(0); \
-			} \
+			exit(0); \
 		} \
 	} while(0)
 #else

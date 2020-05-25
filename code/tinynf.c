@@ -73,7 +73,7 @@ int main(int argc, char** argv)
 		for (uint64_t p = 0; p < 2; p++) {
 			TN_PERF_PAPI_RESET();
 			tn_net_agent_process(agents[p], tinynf_packet_handler);
-			TN_PERF_PAPI_RECORD();
+			TN_PERF_PAPI_RECORD(1);
 		}
 	}
 }
