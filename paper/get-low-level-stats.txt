@@ -9,13 +9,17 @@ echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
 
 # for tinynf
 TN_CFLAGS='-DTN_DEBUG_PERF=10001000 -flto -DIXGBE_AGENT_OUTPUTS_MAX=1 -DTRUE_NOP' TN_LDFLAGS='-lpapi -flto' TN_DEBUG=0 make
-sudo taskset -c 8 ./tinynf 83:00.0 85:00.0 >loglog 2>&1
+for i in $(seq 1 10); do sudo taskset -c 8 ./tinynf 83:00.0 85:00.0 >log$i 2>&1 ; done
 
 # for DPDK
 # - bind the right dpdk interfaces on s3
 EXTRA_CFLAGS='-DTN_DEBUG_PERF=10001000 -DBATCH_SIZE=1' EXTRA_LDFLAGS='-lpapi' make
 EXTRA_CFLAGS='-DTN_DEBUG_PERF=10001000 -DBATCH_SIZE=32' EXTRA_LDFLAGS='-lpapi' make
-sudo taskset -c 8 ./build/app/nf --no-shconf -n 2 -- >loglog 2>&1
+for i in $(seq 1 10); do sudo taskset -c 8 ./build/app/nf --no-shconf -n 2 -- >log$i 2>&1 ; done
 
 # analyzing the log: ignore the worst 0.01% in terms of cycles because they're weird outliers
-sed -e '0,/Counters:/d' loglog | sort -n | head -n+10000000 > logsorted && for i in $(seq 1 6); do ministat -A -C $i logsorted; done
+rm -f logsorted ; for i in $(seq 1 10); do sed -e '0,/Counters:/d' log$i | sort -n | head -n+10000000 >> logsorted ; done
+for i in $(seq 1 6); do ministat -A -C $i logsorted; done
+
+
+

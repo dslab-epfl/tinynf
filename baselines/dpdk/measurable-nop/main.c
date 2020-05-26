@@ -71,30 +71,42 @@ int main(int argc, char* argv[]) {
     rte_exit(EXIT_FAILURE, "Cannot create mbuf pool, ret=%d\n", rte_errno);
   }
 
-  unsigned nb_devices = rte_eth_dev_count_avail();
-  if (nb_devices != 2) {
-    rte_exit(EXIT_FAILURE, "Expected 2 devices, but was %u\n", nb_devices);
-  }
-
-  for (uint16_t device = 0; device < nb_devices; device++) {
+  uint16_t devices_count = 0;
+  uint16_t device;
+  uint16_t device0;
+  uint16_t device1;
+  RTE_ETH_FOREACH_DEV(device) {
     ret = init_device(device, mbuf_pool);
     if (ret != 0) {
       rte_exit(EXIT_FAILURE, "Cannot init device %u, ret=%d\n", (unsigned) device, ret);
     }
+    if (devices_count == 0) { device0 = device; }
+    else { device1 = device; }
+    devices_count++;
+  }
+  if (devices_count != 2) {
+    rte_exit(EXIT_FAILURE, "Expected 2 devices, but was %u\n", devices_count);
   }
 
+  struct rte_mbuf* bufs[BATCH_SIZE];
+  uint16_t nb_rx;
+  uint16_t nb_tx;
   TN_PERF_PAPI_START();
   while(1) {
-    for (uint64_t d = 0; d < 2; d++) {
-      TN_PERF_PAPI_RESET();
-      struct rte_mbuf* bufs[BATCH_SIZE];
-      uint16_t nb_rx = rte_eth_rx_burst(d, 0, bufs, BATCH_SIZE);
-      uint16_t nb_tx = rte_eth_tx_burst(1-d, 0, bufs, BATCH_SIZE);
-      for (uint16_t n = nb_tx; n < nb_rx; n++) {
-        rte_pktmbuf_free(bufs[n]);
-      }
-      TN_PERF_PAPI_RECORD(nb_rx);
+    TN_PERF_PAPI_RESET();
+    nb_rx = rte_eth_rx_burst(device0, 0, bufs, BATCH_SIZE);
+    nb_tx = rte_eth_tx_burst(device1, 0, bufs, BATCH_SIZE);
+    for (uint16_t n = nb_tx; n < nb_rx; n++) {
+      rte_pktmbuf_free(bufs[n]);
     }
+    TN_PERF_PAPI_RECORD(nb_rx);
+    TN_PERF_PAPI_RESET();
+    nb_rx = rte_eth_rx_burst(device0, 0, bufs, BATCH_SIZE);
+    nb_tx = rte_eth_tx_burst(device1, 0, bufs, BATCH_SIZE);
+    for (uint16_t n = nb_tx; n < nb_rx; n++) {
+      rte_pktmbuf_free(bufs[n]);
+    }
+    TN_PERF_PAPI_RECORD(nb_rx);
   }
 
   return 0;
