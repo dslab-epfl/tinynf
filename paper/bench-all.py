@@ -122,7 +122,7 @@ def bench_core(nf, nf_dir, benchflags, additional_env):
 def bench_vigor(nf, env):
   print('[ !!! ] Benchmarking', nf, 'in the Vigor way')
   suffix = '/with-dpdk' if has_dpdk(env) else ''
-  bench_core(nf, THIS_DIR + '/../baselines/vigor' + suffix, ['--latencyload=1000', 'standard-single'], env)
+  bench_core(nf, THIS_DIR + '/../baselines/vigor' + suffix, ['--acceptableloss=0.001', '--latencyload=1000', 'standard-single'], env)
   out_folder = 'results/vigor-' + get_key(nf, env)
   remove(out_folder + '/latencies-single') # don't keep old latencies around
   add_suffix(BENCH_RESULT_TPUT_PATH, '-single')
@@ -149,21 +149,21 @@ if 0:
   bench('baselines/ixy', 'nop', 'ixy', {'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Second comparison: VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
-if 0:
+if 1:
   bench('baselines/vigor', 'pol', 'vigor', {})
-  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_FAKE_SDK, 'RTE_TARGET': RTE_FAKE_TARGET})
-  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  #bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_FAKE_SDK, 'RTE_TARGET': RTE_FAKE_TARGET})
+  #bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+  #bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
   bench('baselines/parallel-policer/tinynf', 'pol', 'tinynf-parallel', {})
-  bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  #bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+  #bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Third comparison: Vigor NFs (but switch between drivers only once, to avoid potential issues)
-if 1:
-  #for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
-  #  bench_vigor(nf, {})
+if 0:
   for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
-    if nf != 'nat': bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+    bench_vigor(nf, {})
+  for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
+    bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
 
 # Fourth comparison: Click no-op with TinyNF vs DPDK vs DPDK batch
 if 0:

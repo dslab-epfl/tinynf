@@ -1205,7 +1205,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 		// No packet; flush if we need to, i.e., 2nd part of the processor
 		// Done here since we must eventually flush after processing a packet even if no more packets are received
 		// (which will definitely happen eventually since flush_target will become zero)
-		if (agent->flush_counter > agent->flush_target) {
+		if ((agent->flush_counter << 2) > agent->flush_target) {
 			for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
 				ixgbe_reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 			}
@@ -1273,12 +1273,12 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// Flush if we need to, i.e., 2nd part of the processor
 	// If target is 0 then we always send immediately, so we get low latency at low loads
 	agent->flush_counter = agent->flush_counter + 1;
-	if (agent->flush_counter > agent->flush_target) {
+	if ((agent->flush_counter << 2) > agent->flush_target) {
 		for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
 			ixgbe_reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
 		agent->flush_counter = 0;
-		agent->flush_target = agent->flush_target + (agent->flush_target != 7); // i.e., min(target+1, 7)
+		agent->flush_target = agent->flush_target + (agent->flush_target != 31); // i.e., min(target+1, 7)
 	}
 
 	// Transmitter 2nd part, moving descriptors to the receive pool
