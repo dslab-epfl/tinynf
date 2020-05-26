@@ -83,11 +83,8 @@ def get_cflags(nf, env):
   result = []
   if not has_dpdk(env) or env['RTE_TARGET'] == '.':
     result.append('-flto')
-    if nf == 'bridge':
-      result.append('-DIXGBE_AGENT_OUTPUTS_MAX=2')
-    else:
-      result.append('-DIXGBE_AGENT_OUTPUTS_MAX=1')
-      result.append('-DASSUME_ONE_WAY')
+    result.append('-DIXGBE_AGENT_OUTPUTS_MAX=1')
+    result.append('-DASSUME_ONE_WAY')
   return result
 
 def get_layer(nf, env):
@@ -151,12 +148,12 @@ if 0:
 # Second comparison: VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
 if 1:
   bench('baselines/vigor', 'pol', 'vigor', {})
-  #bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_FAKE_SDK, 'RTE_TARGET': RTE_FAKE_TARGET})
-  #bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  #bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_FAKE_SDK, 'RTE_TARGET': RTE_FAKE_TARGET})
+  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
   bench('baselines/parallel-policer/tinynf', 'pol', 'tinynf-parallel', {})
-  #bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  #bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+  bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Third comparison: Vigor NFs (but switch between drivers only once, to avoid potential issues)
 if 0:

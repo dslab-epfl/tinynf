@@ -1278,7 +1278,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 			ixgbe_reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
 		agent->flush_counter = 0;
-		agent->flush_target = agent->flush_target + (agent->flush_target != 31); // i.e., min(target+1, 7)
+		agent->flush_target = agent->flush_target + (agent->flush_target != 31); // i.e., min(target+1, 31)
 	}
 
 	// Transmitter 2nd part, moving descriptors to the receive pool
