@@ -4,7 +4,7 @@
 #include "net/network.h"
 
 
-#define TN_DPDK_DEVICES_MAX_COUNT 2
+#define TN_DPDK_DEVICES_MAX_COUNT 3
 
 struct tn_dpdk_device
 {

@@ -1109,6 +1109,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_n
 		uintptr_t packet_phys_addr;
 		if (!tn_mem_virt_to_phys(packet, &packet_phys_addr)) {
 			TN_DEBUG("Could not get a packet's physical address");
+			return false;
 		}
 		ring[n * 2u] = packet_phys_addr;
 	}
