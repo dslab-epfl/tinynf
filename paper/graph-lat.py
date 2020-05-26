@@ -23,7 +23,7 @@ for file in files:
   lat_9999th = max(lat_9999th, lats[int(0.0001*len(lats))])
   values[file] = lats
 
-plt, ax, fig = common.get_pyplot_ax_fig(figsize=[6.2, 2.4]) # half usual height
+plt, ax, fig = common.get_pyplot_ax_fig(figsize=[6.2, 3.6]) # 3/4ths usual height
 ax.grid(True, color='xkcd:light grey')
 ax.set_axisbelow(True) # ensure grid is below data
 

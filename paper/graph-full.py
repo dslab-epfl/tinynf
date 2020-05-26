@@ -15,7 +15,10 @@ if len(sys.argv) < 5:
 
 name = sys.argv[1]
 
-perc = float(sys.argv[2])
+if '.' in sys.argv[2]:
+  perc = float(sys.argv[2])
+else:
+  perc = int(sys.argv[2]) # ensure the str doesn't contain a .0
 perc_str = str(perc) + 'th percentile'
 if perc == 50:
   perc_str = 'Median'
@@ -56,8 +59,7 @@ median_lat_comp = statistics.median(all_lats_comp)
 
 plt, ax, _ = common.get_pyplot_ax_fig()
 ax.set_ylim(bottom=0, top=median_lat_comp * 3)
-ax.set_xlim(0, 20)
-#max_tput + 200) # just a lil bit of margin
+ax.set_xlim(0, 20.2) # just a little bit of margin to not hide the right side of the markers
 
 # We want a straight line up to tput_zeroloss, then a dashed line after that, so we draw 2 lines
 # And we want the lines to be opaque while the dots should be non-opaque, for clarity, so we draw them separately
