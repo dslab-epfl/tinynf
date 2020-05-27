@@ -61,12 +61,15 @@ plt, ax, _ = common.get_pyplot_ax_fig()
 ax.set_ylim(bottom=0, top=median_lat_comp * 3)
 ax.set_xlim(0, 20.2) # just a little bit of margin to not hide the right side of the markers
 
+# if any of the NFs are parallel, be clear the others are not
+explicit_one_core = any('parallel' in nf for nf in nfs)
+
 # We want a straight line up to tput_zeroloss, then a dashed line after that, so we draw 2 lines
 # And we want the lines to be opaque while the dots should be non-opaque, for clarity, so we draw them separately
 for nf, val in numbers.items():
   (lats, _, tput_zeroloss) = val
 
-  (color, label, marker) = common.get_color_label_marker(nf)
+  (color, label, marker) = common.get_color_label_marker(nf, explicit_one_core=explicit_one_core)
 
   zeroloss_x = [t for (t, l) in lats if t <= tput_zeroloss]
   zeroloss_y = [l for (t, l) in lats if t <= tput_zeroloss]

@@ -26,23 +26,24 @@ def get_pyplot_ax_fig(title=None, figsize=None):
 
   return (plt, ax, fig)
 
-def get_color_label_marker(nf):
+def get_color_label_marker(nf, explicit_one_core=False):
+  suffix = ', 1 core' if explicit_one_core else ''
   # same colors as the figures
   if 'ixy' in nf:
     if 'batched' in nf:
-      return ('#203864', 'Ixy, batched', 'X')
-    return ('#4472C4', 'Ixy', 'x')
+      return ('#203864', 'Ixy, batched' + suffix, 'X')
+    return ('#4472C4', 'Ixy' + suffix, 'x')
   if 'dpdk' in nf:
     if 'batched' in nf:
       if 'parallel' in nf:
-        return ('#682E0A', 'DPDK, parallel, batched', 'X')
-      return ('#843C0C', 'DPDK, batched', '^')
+        return ('#682E0A', 'DPDK, batched, 2 cores', 'X')
+      return ('#843C0C', 'DPDK, batched' + suffix, '^')
     if 'parallel' in nf:
-      return ('#D16D2B', 'DPDK, parallel', 'x')
-    return ('#ED7D31', 'DPDK', 'v')
+      return ('#D16D2B', 'DPDK, 2 cores', 'x')
+    return ('#ED7D31', 'DPDK' + suffix, 'v')
   if 'parallel' in nf:
-    return ('#60913D', 'TinyNF, parallel', 'P')   # P == filled plus
-  return ('#70AD47', 'TinyNF', '+')
+    return ('#60913D', 'TinyNF, 2 cores', 'P')   # P == filled plus
+  return ('#70AD47', 'TinyNF' + suffix, '+')
 
 def save_plot(plt, name):
   plot_dir = THIS_DIR + '/plots/'

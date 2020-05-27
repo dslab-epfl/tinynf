@@ -149,7 +149,7 @@ if 0:
   bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
-if 0:
+if 1:
   bench('baselines/vigor', 'pol', 'vigor', {})
   bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_FAKE_SDK, 'RTE_TARGET': RTE_FAKE_TARGET})
   bench('baselines/parallel-policer/tinynf', 'pol', 'tinynf-parallel', {})
@@ -160,7 +160,7 @@ if 0:
 
 # Vigor NFs, as well as batched NAT for latency
 if 0:
-  for nf in ['nat', 'bridge', 'fw']: #['nat', 'bridge', 'fw', 'pol', 'lb']:
+  for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
     bench_vigor(nf, {})
   for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
     bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
