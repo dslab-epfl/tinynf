@@ -8,9 +8,6 @@
 
 static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, bool* outputs)
 {
-#ifdef TRUE_NOP
-	(void) packet;
-#else
 	// SRC MAC
 	packet[0] = 0;
 	packet[1] = 0;
@@ -25,7 +22,7 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, b
 	packet[9] = 0;
 	packet[10] = 0;
 	packet[11] = 0;
-#endif
+
 	outputs[0] = true;
 	return packet_length;
 }
@@ -69,11 +66,19 @@ int main(int argc, char** argv)
 	TN_INFO("TinyNF initialized successfully!");
 	TN_PERF_PAPI_START();
 
+#ifdef TRUE_NOP
+	uint8_t* packet;
+	uint16_t packet_length;
 	while(true) {
 		for (uint64_t p = 0; p < 2; p++) {
 			TN_PERF_PAPI_RESET();
-			tn_net_agent_process(agents[p], tinynf_packet_handler);
+			tn_net_agent_receive(agents[p], &packet, &packet_length);
+			tn_net_agent_transmit(agents[p], packet_length, &true);
 			TN_PERF_PAPI_RECORD(1);
 		}
 	}
+#else
+	tn_net_packet_handler* handlers[2] = { tinynf_packet_handler, tinynf_packet_handler };
+	tn_net_run(2, agents, handlers);
+#endif
 }

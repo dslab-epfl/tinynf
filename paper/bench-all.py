@@ -145,8 +145,8 @@ if 1:
   bench('code', 'nop', 'tinynf', {})
   #bench('baselines/ixy', 'nop', 'ixy', {})
   #bench('baselines/ixy', 'nop', 'ixy', {'TN_BATCH_SIZE': BATCH_SIZE})
-  bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  #bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+  #bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
 if 0:

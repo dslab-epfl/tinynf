@@ -917,8 +917,7 @@ struct tn_net_agent
 	uint64_t processed_delimiter;
 	uint64_t outputs_count;
 	uint64_t flush_counter;
-	uint64_t flush_target;
-	uint8_t _padding[2*8];
+	uint8_t _padding[3*8];
 	// transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
 	// plus, we want each head on its own cache line to avoid conflicts
@@ -1193,7 +1192,6 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// Not great; but less assumptions than Vigor makes in the DPDK driver patches
 	agent->processed_delimiter = 0;
 	agent->flush_counter = 0;
-	agent->flush_target = 0;
 #endif
 
 	// Since descriptors are 16 bytes, the index must be doubled
@@ -1204,14 +1202,11 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	if ((receive_metadata & BITL(32)) == 0) {
 		// No packet; flush if we need to, i.e., 2nd part of the processor
 		// Done here since we must eventually flush after processing a packet even if no more packets are received
-		// (which will definitely happen eventually since flush_target will become zero)
-		if ((agent->flush_counter << 2) > agent->flush_target) {
+		if (agent->flush_counter != 0) {
 			for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
 				ixgbe_reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 			}
 			agent->flush_counter = 0;
-		} else {
-			agent->flush_target = agent->flush_target >> 1;
 		}
 
 		return false;
@@ -1273,12 +1268,11 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// Flush if we need to, i.e., 2nd part of the processor
 	// If target is 0 then we always send immediately, so we get low latency at low loads
 	agent->flush_counter = agent->flush_counter + 1;
-	if ((agent->flush_counter << 2) > agent->flush_target) {
+	if (agent->flush_counter == 8) {
 		for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
 			ixgbe_reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
 		agent->flush_counter = 0;
-		agent->flush_target = agent->flush_target + (agent->flush_target != 31); // i.e., min(target+1, 31)
 	}
 
 	// Transmitter 2nd part, moving descriptors to the receive pool
@@ -1306,16 +1300,22 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 // High-level API
 // --------------
 
-void tn_net_agent_process(struct tn_net_agent* agent, tn_net_packet_handler* handler)
+void tn_net_run(uint64_t agents_count, struct tn_net_agent** agents, tn_net_packet_handler** handlers)
 {
-	uint8_t* packet;
-	uint16_t receive_packet_length;
-	if (!tn_net_agent_receive(agent, &packet, &receive_packet_length)) {
-		return;
+	while (true) {
+		for (uint64_t n = 0; n < agents_count; n++) {
+			for (uint64_t p = 0; p < 8; p++) {
+				uint8_t* packet;
+				uint16_t receive_packet_length;
+				if (!tn_net_agent_receive(agents[n], &packet, &receive_packet_length)) {
+					break;
+				}
+
+				bool outputs[IXGBE_AGENT_OUTPUTS_MAX] = {0};
+				uint16_t transmit_packet_length = handlers[n](packet, receive_packet_length, outputs);
+
+				tn_net_agent_transmit(agents[n], transmit_packet_length, outputs);
+			}
+		}
 	}
-
-	bool outputs[IXGBE_AGENT_OUTPUTS_MAX] = {0};
-	uint16_t transmit_packet_length = handler(packet, receive_packet_length, outputs);
-
-	tn_net_agent_transmit(agent, transmit_packet_length, outputs);
 }
