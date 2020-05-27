@@ -17,18 +17,11 @@
 
 #define DEVICES_MAX_COUNT 2u
 
-// if we made a proper parallel version of TinyNF, we'd need a 'state' param to pass to the agent function... oh well, let's manually unroll
-
-static uint16_t packet_handler0(uint8_t* packet, uint16_t packet_length, bool* outputs)
+static uint16_t packet_handler(uint8_t* packet, uint16_t packet_length, void* state, bool* outputs)
 {
-	int vigor_output = nf_process(0, packet, packet_length, current_time());
-	outputs[0] = vigor_output != 0;
-	return packet_length;
-}
-static uint16_t packet_handler1(uint8_t* packet, uint16_t packet_length, bool* outputs)
-{
-	int vigor_output = nf_process(1, packet, packet_length, current_time());
-	outputs[0] = vigor_output != 1;
+	uint16_t device = (uint16_t) state;
+	int vigor_output = nf_process(device, packet, packet_length, current_time());
+	outputs[0] = vigor_output != device;
 	return packet_length;
 }
 
@@ -36,15 +29,15 @@ static struct tn_net_agent* agents[DEVICES_MAX_COUNT];
 
 void* thread0(void* arg)
 {
-	while(true) {
-		tn_net_agent_process(agents[0], packet_handler0);
-	}
+	void* state = (uint16_t) 0;
+	tn_net_packet_handler* handlers[1] = { packet_handler };
+	tn_net_run(1, &(agents[0]), handlers, &state);
 }
 void* thread1(void* arg)
 {
-	while(true) {
-		tn_net_agent_process(agents[1], packet_handler1);
-	}
+	void* state = (uint16_t) 1;
+	tn_net_packet_handler* handlers[1] = { packet_handler };
+	tn_net_run(1, &(agents[1]), handlers, &state);
 }
 
 int main(int argc, char** argv)

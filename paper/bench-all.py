@@ -159,12 +159,12 @@ if 0:
   bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Vigor NFs, as well as batched NAT for latency
-if 1:
-  for nf in ['pol', 'lb']: #['nat', 'bridge', 'fw', 'pol', 'lb']:
+if 0:
+  for nf in ['nat', 'bridge', 'fw']: #['nat', 'bridge', 'fw', 'pol', 'lb']:
     bench_vigor(nf, {})
-  #for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
-  #  bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  #bench_vigor('nat', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
+    bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+  bench_vigor('nat', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Click no-op with TinyNF vs DPDK vs DPDK batch
 if 0:

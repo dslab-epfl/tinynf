@@ -18,17 +18,11 @@
 
 #define DEVICES_MAX_COUNT 2u
 
-static uint16_t current_device = (uint16_t) -1;
 static uint16_t devices_count;
-static vigor_time_t vigor_now;
 static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, void* state, bool* outputs)
 {
 	uint16_t device = (uint16_t) state;
-	if (device != current_device && device == 0) {
-		// Only get the time in the very outer loop, like Vigor does
-		vigor_now = current_time();
-	}
-	current_device = device;
+	vigor_time_t vigor_now = current_time();
 
 	int vigor_output = nf_process(device, packet, packet_length, vigor_now);
 	// Vigor needs this to be called after nf_process
