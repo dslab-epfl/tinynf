@@ -94,13 +94,14 @@ local packetConfigs = {
   }
 }
 -- Per-direction functions to initialize a packet
+-- Those IPs are chosen to be compatible with DPDK's l3fwd defaults, anyway we have to choose something, might as well be convenient
 local packetInits = {
   [0] = function(buf, packetSize)
     buf:getUdpPacket():fill{
       ethSrc = "FF:FF:FF:FF:FF:FF",
       ethDst = "00:00:00:00:00:00",
-      ip4Src = "255.255.255.255",
-      ip4Dst = "0.0.0.0",
+      ip4Src = "198.18.0.0",
+      ip4Dst = "198.18.1.0",
       udpSrc = 65535,
       udpDst = 0,
       pktLength = packetSize
@@ -110,8 +111,8 @@ local packetInits = {
     buf:getUdpPacket():fill{
       ethSrc = "00:00:00:00:00:00",
       ethDst = "FF:FF:FF:FF:FF:FF",
-      ip4Src = "0.0.0.0",
-      ip4Dst = "255.255.255.255",
+      ip4Src = "198.18.1.0",
+      ip4Dst = "198.18.0.0",
       udpSrc = 0,
       udpDst = 65535,
       pktLength = packetSize

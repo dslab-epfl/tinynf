@@ -4,16 +4,18 @@
 
 # 0-based index of the CPU(s) on which the NF will run
 # If you plan on benchmarking with DPDK's testpmd, put at least 2, it'll use one for its main loop
-DUT_CPU=8,9
+export DUT_CPUS=8,9
+# Number of memory channels the DUT has... good luck figuring this out
+export DUT_MEMORY_CHANNELS=2
 # PCI BDF addresses of the DUT's NICs
-DUT_DEVS='83:00.0 85:00.0'
+export DUT_DEVS='83:00.0 85:00.0'
 
 # Hostname of the tester, such that the DUT can SSH to it
-TESTER_HOST='icnalsp3s4'
+export TESTER_HOST='icnalsp3s4'
 # 0-based index of the CPUs on which the packet generator can run
 # As many as possible, but should be on the same socket as the NICs
-TESTER_CPUS=8,9,10,11,12,13,14,15
+export TESTER_CPUS=8,9,10,11,12,13,14,15
 # PCI BDF addresses of the tester's NICs
-TESTER_DEVS='83:00.0 85:00.0'
+export TESTER_DEVS='83:00.0 85:00.0'
 # 1 if you messed up your wiring and crossed the cables, 0 otherwise
-TESTER_CABLES_CROSSED=1
+export TESTER_CABLES_CROSSED=1

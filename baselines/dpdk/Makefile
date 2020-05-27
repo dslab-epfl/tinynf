@@ -8,6 +8,7 @@ RTE_SDK := $(THIS_DIR)/dpdk
 RTE_TARGET := x86_64-native-linuxapp-gcc
 
 TN_BATCH_SIZE ?= 1
+DUT_MEMORY_CHANNELS ?= 1
 
 # Burst sizes less than 4 need non-power-of-2 ring sizes, but they still need to be multiples of 32, so we add 32 to the defaults
 ifeq (1,$(shell echo '$(TN_BATCH_SIZE) < 4' | bc))
@@ -18,7 +19,7 @@ compile:
 	@# nothing
 
 run:
-	@sudo $(RTE_SDK)/$(RTE_TARGET)/build/app/test-pmd/testpmd -n 2 -- \
+	@sudo $(RTE_SDK)/$(RTE_TARGET)/build/app/test-pmd/testpmd -n $(DUT_MEMORY_CHANNELS) -- \
 	      --auto-start --port-topology=chained --forward-mode=mac --disable-link-check \
 	      --eth-peer=0,00:00:00:00:00:00 --eth-peer=1,00:00:00:00:00:01 \
 	      --burst=$(TN_BATCH_SIZE) $(ADDITIONAL_PARAMS)

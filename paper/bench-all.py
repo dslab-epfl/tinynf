@@ -140,15 +140,15 @@ def bench(path, nf, kind, env):
 # Overall, because binding DPDK's igb_uio driver has a slight chance of hanging the machine for some reason,
 # each step performs all non-DPDK stuff first then all DPDK stuff
 
-# First comparison: DPDK's testpmd no-op, batched or not, vs TinyNF no-op vs Ixy no-op (throughput, zero-loss throughput, detailed latency)
-if 0:
+# DPDK's testpmd no-op, batched or not, vs TinyNF no-op vs Ixy no-op (throughput, zero-loss throughput, detailed latency)
+if 1:
   bench('code', 'nop', 'tinynf', {})
-  bench('baselines/ixy', 'nop', 'ixy', {})
-  bench('baselines/ixy', 'nop', 'ixy', {'TN_BATCH_SIZE': BATCH_SIZE})
+  #bench('baselines/ixy', 'nop', 'ixy', {})
+  #bench('baselines/ixy', 'nop', 'ixy', {'TN_BATCH_SIZE': BATCH_SIZE})
   bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
   bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
-# Second comparison: VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
+# VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
 if 0:
   bench('baselines/vigor', 'pol', 'vigor', {})
   bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_FAKE_SDK, 'RTE_TARGET': RTE_FAKE_TARGET})
@@ -158,7 +158,7 @@ if 0:
   bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
   bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
-# Third comparison: Vigor NFs + batched NAT for latency
+# Vigor NFs, as well as batched NAT for latency
 if 0:
   for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
     bench_vigor(nf, {})
@@ -166,8 +166,12 @@ if 0:
     bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
   bench_vigor('nat', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
-# Fourth comparison: Click no-op with TinyNF vs DPDK vs DPDK batch
+# Click no-op with TinyNF vs DPDK vs DPDK batch
 if 0:
   bench('baselines/click', 'nop', 'click', {})
   bench('baselines/click/with-dpdk', 'nop', 'click', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
   bench('baselines/click/with-dpdk', 'nop', 'click', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+
+# DPDK l3fwd, which should reach 2x10 Gb/s line rate, as indicated in the DPDK perf reports
+if 0:
+  bench('baselines/dpdk/l3fwd', 'l3fwd', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})

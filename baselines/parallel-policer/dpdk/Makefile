@@ -36,8 +36,10 @@ VIGOR_MAKEFILE := $(shell mktemp)
 _IGNORED := $(shell cat $(VIGOR_DIR)/vigpol/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
 include $(VIGOR_MAKEFILE)
 
+DUT_MEMORY_CHANNELS ?= 2
+
 run:
-	@sudo ./build/app/$(APP) --no-shconf -n 2 -- $(NF_ARGS)
+	@sudo ./build/app/$(APP) --no-shconf -n $(DUT_MEMORY_CHANNELS) -- $(NF_ARGS)
 
 all: clean
 
