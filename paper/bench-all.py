@@ -66,8 +66,8 @@ def get_env(nf, env):
     result['CAPACITY'] = '131072'
   # Policer needs large maximums so as to not really police, since we measure throughput
   if nf == 'pol':
-    result['POLICER_BURST'] = '10000000000'
-    result['POLICER_RATE'] = '10000000000'
+    result['POLICER_BURST'] = '1000000000000'
+    result['POLICER_RATE'] = '1000000000000'
   if nf == 'lb':
     # Device from which the load balancer will receive packets (and not heartbeats)
     result['WAN_DEVICE'] = '0'
@@ -141,12 +141,12 @@ def bench(path, nf, kind, env):
 # each step performs all non-DPDK stuff first then all DPDK stuff
 
 # DPDK's testpmd no-op, batched or not, vs TinyNF no-op vs Ixy no-op (throughput, zero-loss throughput, detailed latency)
-if 1:
+if 0:
   bench('code', 'nop', 'tinynf', {})
-  #bench('baselines/ixy', 'nop', 'ixy', {})
-  #bench('baselines/ixy', 'nop', 'ixy', {'TN_BATCH_SIZE': BATCH_SIZE})
-  #bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  #bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  bench('baselines/ixy', 'nop', 'ixy', {})
+  bench('baselines/ixy', 'nop', 'ixy', {'TN_BATCH_SIZE': BATCH_SIZE})
+  bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+  bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
 if 0:
@@ -159,12 +159,12 @@ if 0:
   bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Vigor NFs, as well as batched NAT for latency
-if 0:
-  for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
+if 1:
+  for nf in ['pol', 'lb']: #['nat', 'bridge', 'fw', 'pol', 'lb']:
     bench_vigor(nf, {})
-  for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
-    bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  bench_vigor('nat', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  #for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
+  #  bench_vigor(nf, {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+  #bench_vigor('nat', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Click no-op with TinyNF vs DPDK vs DPDK batch
 if 0:

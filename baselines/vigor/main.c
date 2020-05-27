@@ -30,18 +30,18 @@ static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, v
 	}
 	current_device = device;
 
-	int vigor_output = nf_process(current_device, packet, packet_length, vigor_now);
+	int vigor_output = nf_process(device, packet, packet_length, vigor_now);
 	// Vigor needs this to be called after nf_process
 	nf_return_all_chunks(packet);
 
 #ifdef ASSUME_ONE_WAY
-	outputs[0] = vigor_output != current_device;
+	outputs[0] = vigor_output != device;
 #else
 	if (vigor_output == FLOOD_FRAME) {
 		for (uint16_t n = 0; n < devices_count; n++) {
-			outputs[n] = n != current_device;
+			outputs[n] = n != device;
 		}
-	} else if (vigor_output == current_device) {
+	} else if (vigor_output == device) {
 		// Nothing; this means "drop", Vigor has no notion of sending back to the same device
 	} else {
 		outputs[vigor_output] = true;
