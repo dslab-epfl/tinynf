@@ -18,11 +18,18 @@
 
 #define DEVICES_MAX_COUNT 2u
 
-static uint16_t current_device;
+static uint16_t current_device = (uint16_t) -1;
 static uint16_t devices_count;
 static vigor_time_t vigor_now;
-static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, bool* outputs)
+static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, void* state, bool* outputs)
 {
+	uint16_t device = (uint16_t) state;
+	if (device != current_device && device == 0) {
+		// Only get the time in the very outer loop, like Vigor does
+		vigor_now = current_time();
+	}
+	current_device = device;
+
 	int vigor_output = nf_process(current_device, packet, packet_length, vigor_now);
 	// Vigor needs this to be called after nf_process
 	nf_return_all_chunks(packet);
@@ -107,10 +114,11 @@ int main(int argc, char** argv)
 #ifdef ASSUME_ONE_WAY
 	TN_INFO("Assuming the NF only needs one-way agents, hope you know what you're doing...");
 #endif
-	while(true) {
-		vigor_now = current_time();
-		for (current_device = 0; current_device < devices_count; current_device++) {
-			tn_net_agent_process(agents[current_device], compat_packet_handler);
-		}
+	void* states[DEVICES_MAX_COUNT];
+	tn_net_packet_handler* handlers[DEVICES_MAX_COUNT];
+	for (uint16_t n = 0; n < DEVICES_MAX_COUNT; n++) {
+		states[n] = n;
+		handlers[n] = compat_packet_handler;
 	}
+	tn_net_run(devices_count, agents, handlers, states);
 }

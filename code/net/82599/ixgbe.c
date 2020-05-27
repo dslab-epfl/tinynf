@@ -1300,7 +1300,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 // High-level API
 // --------------
 
-void tn_net_run(uint64_t agents_count, struct tn_net_agent** agents, tn_net_packet_handler** handlers)
+void tn_net_run(uint64_t agents_count, struct tn_net_agent** agents, tn_net_packet_handler** handlers, void** states)
 {
 	while (true) {
 		for (uint64_t n = 0; n < agents_count; n++) {
@@ -1312,7 +1312,7 @@ void tn_net_run(uint64_t agents_count, struct tn_net_agent** agents, tn_net_pack
 				}
 
 				bool outputs[IXGBE_AGENT_OUTPUTS_MAX] = {0};
-				uint16_t transmit_packet_length = handlers[n](packet, receive_packet_length, outputs);
+				uint16_t transmit_packet_length = handlers[n](packet, receive_packet_length, states[n], outputs);
 
 				tn_net_agent_transmit(agents[n], transmit_packet_length, outputs);
 			}
