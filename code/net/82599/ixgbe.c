@@ -328,15 +328,15 @@ static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be
 #ifndef IXGBE_AGENT_OUTPUTS_MAX
 #define IXGBE_AGENT_OUTPUTS_MAX 4u
 #endif
-// Updating period for the transmit tail
+// Max number of packets before updating the transmit tail
 #define IXGBE_AGENT_PROCESS_PERIOD 8
 static_assert(IXGBE_AGENT_PROCESS_PERIOD >= 1, "Process period must be at least 1");
 static_assert(IXGBE_AGENT_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
-#define IXGBE_AGENT_TRANSMIT_PERIOD 64
-static_assert(IXGBE_AGENT_TRANSMIT_PERIOD >= 1, "Transmit period must be at least 1");
-static_assert(IXGBE_AGENT_TRANSMIT_PERIOD < IXGBE_RING_SIZE, "Transmit period must be less than the ring size");
-static_assert((IXGBE_AGENT_TRANSMIT_PERIOD & (IXGBE_AGENT_TRANSMIT_PERIOD - 1)) == 0, "Transmit period must be a power of 2 for fast modulo");
+#define IXGBE_AGENT_SYNC_PERIOD 64
+static_assert(IXGBE_AGENT_SYNC_PERIOD >= 1, "Sync period must be at least 1");
+static_assert(IXGBE_AGENT_SYNC_PERIOD < IXGBE_RING_SIZE, "Sync period must be less than the ring size");
+static_assert((IXGBE_AGENT_SYNC_PERIOD & (IXGBE_AGENT_SYNC_PERIOD - 1)) == 0, "Sync period must be a power of 2 for fast modulo");
 
 
 // ---------
@@ -1257,7 +1257,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor
 	// If not all transmit rings are used, we will write into an unused (but allocated!) ring, that's fine
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
-	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_TRANSMIT_PERIOD - 1)) == (IXGBE_AGENT_TRANSMIT_PERIOD - 1)) << (24+3);
+	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
 		*(agent->rings[n] + 2u*agent->processed_delimiter + 1) = (outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24);
 	}
@@ -1268,7 +1268,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// Flush if we need to, i.e., 2nd part of the processor
 	// If target is 0 then we always send immediately, so we get low latency at low loads
 	agent->flush_counter = agent->flush_counter + 1;
-	if (agent->flush_counter == 8) {
+	if (agent->flush_counter == IXGBE_AGENT_PROCESS_PERIOD) {
 		for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
 			ixgbe_reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
@@ -1304,7 +1304,7 @@ void tn_net_run(uint64_t agents_count, struct tn_net_agent** agents, tn_net_pack
 {
 	while (true) {
 		for (uint64_t n = 0; n < agents_count; n++) {
-			for (uint64_t p = 0; p < 8; p++) {
+			for (uint64_t p = 0; p < IXGBE_AGENT_PROCESS_PERIOD; p++) {
 				uint8_t* packet;
 				uint16_t receive_packet_length;
 				if (!tn_net_agent_receive(agents[n], &packet, &receive_packet_length)) {
