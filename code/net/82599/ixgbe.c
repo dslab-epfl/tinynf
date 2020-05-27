@@ -1190,8 +1190,10 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 {
 #ifdef VIGOR_SYMBEX
 	// Not great; but less assumptions than Vigor makes in the DPDK driver patches
-	agent->processed_delimiter = 0;
-	agent->flush_counter = 0;
+	if (klee_is_symbolic(agent->processed_delimiter)) {
+		agent->processed_delimiter = 0;
+		agent->flush_counter = 0;
+	}
 #endif
 
 	// Since descriptors are 16 bytes, the index must be doubled
