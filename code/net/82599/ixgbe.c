@@ -231,7 +231,7 @@
 #define IXGBE_REG_RDBAL(n) ((n) <= 63u ? (0x01000u + 0x40u*(n)) : (0x0D000u + 0x40u*((n)-64u)))
 
 // Section 8.2.3.8.3 Receive Descriptor Length
-#define IXGBE_REG_RDLEN(n) ((n) <= 63u ? (0x01008u + 0x40u*(n)) : (0x0D008 + 0x40u*((n)-64u)))
+#define IXGBE_REG_RDLEN(n) ((n) <= 63u ? (0x01008u + 0x40u*(n)) : (0x0D008u + 0x40u*((n)-64u)))
 
 // Section 8.2.3.8.8 Receive DMA Control Register
 // INTERPRETATION-MISSING: Bit 0, which is not mentioned in the table, is reserved
