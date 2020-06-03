@@ -1159,7 +1159,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_n
 	//	"Head_WB_En, bit 0 [...] 1b = Head write-back is enabled."
 	//	"Reserved, bit 1"
 	IXGBE_REG_WRITE(device->addr, TDWBAH, queue_index, (uint32_t) (head_phys_addr >> 32));
-	IXGBE_REG_WRITE(device->addr, TDWBAL, queue_index, (uint32_t) ((head_phys_addr & 0xFFFFFFFFu) | 1));
+	IXGBE_REG_WRITE(device->addr, TDWBAL, queue_index, (uint32_t) head_phys_addr | 1u);
 	// INTERPRETATION-MISSING: We must disable relaxed ordering of head pointer write-back, since it could cause the head pointer to be updated backwards
 	IXGBE_REG_CLEAR(device->addr, DCATXCTRL, queue_index, TX_DESC_WB_RO_EN);
 	// "- Enable transmit path by setting DMATXCTL.TE.
