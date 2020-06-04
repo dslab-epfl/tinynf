@@ -3,7 +3,6 @@
 
 #include "env/time.h"
 
-#include <errno.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -25,14 +24,10 @@ void tn_sleep_us(uint64_t microseconds)
 		if (ret == 0) {
 			return;
 		}
-		if (errno == EINTR) {
-			// Got interrupted; try again.
-			request.tv_sec = remain.tv_sec;
-			request.tv_nsec = remain.tv_nsec;
-			continue;
-		}
-		// Other codes should not happen according to the documentation (memory issue or invalid sec/nsec).
-		abort();
+		// Got interrupted; try again.
+		// Other codes cannot happen according to the documentation (memory issue or invalid sec/nsec).
+		request.tv_sec = remain.tv_sec;
+		request.tv_nsec = remain.tv_nsec;
 	}
 	// Something went terribly wrong
 	abort();
