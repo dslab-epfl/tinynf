@@ -573,7 +573,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//	Section 8.2.3.5.4 Extended Interrupt Mask Clear Register (EIMC):
 	//	"Writing a 1b to any bit clears its corresponding bit in the EIMS register disabling the corresponding interrupt in the EICR register. Writing 0b has no impact"
 	//	Note that the first register has its bit 31 reserved.
-	IXGBE_REG_WRITE(device.addr, EIMC, 0, 0x7FFFFFFFu);
+	IXGBE_REG_WRITE(device.addr, EIMC, 0u, 0x7FFFFFFFu);
 	for (uint8_t n = 1; n < IXGBE_INTERRUPT_REGISTERS_COUNT; n++) {
 		IXGBE_REG_WRITE(device.addr, EIMC, n, 0xFFFFFFFFu);
 	}
