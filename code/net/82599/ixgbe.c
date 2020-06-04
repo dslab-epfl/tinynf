@@ -112,9 +112,13 @@
 // 	"64 shared VLAN filters"
 #define IXGBE_VLAN_FILTER_COUNT 64u
 
-// -------------
-// PCI registers
-// -------------
+// ---------------------
+// PCI and NIC registers
+// ---------------------
+
+// The PCIREG_ values are register indexes.
+// The REG_ values are register indexes, which take as argument an index; the index is sometimes unnecessary.
+// The sub-values are fields, which are either a single bit number or a start,end tuple. Macro magic takes care of the rest.
 
 // Section 9.3.2 PCIe Configuration Space Summary: "0x10 Base Address Register 0" (32 bit), "0x14 Base Address Register 1" (32 bit)
 #define IXGBE_PCIREG_BAR0_LOW 0x10u
@@ -123,14 +127,14 @@
 // Section 9.3.3.3 Command Register (16 bit)
 // Section 9.3.3.4 Status Register (16 bit, unused)
 #define IXGBE_PCIREG_COMMAND 0x04u
-#define IXGBE_PCIREG_COMMAND_MEMORY_ACCESS_ENABLE BIT(1)
-#define IXGBE_PCIREG_COMMAND_BUS_MASTER_ENABLE BIT(2)
-#define IXGBE_PCIREG_COMMAND_INTERRUPT_DISABLE BIT(10)
+#define IXGBE_PCIREG_COMMAND_MEMORY_ACCESS_ENABLE 1
+#define IXGBE_PCIREG_COMMAND_BUS_MASTER_ENABLE 2
+#define IXGBE_PCIREG_COMMAND_INTERRUPT_DISABLE 10
 
 // Section 9.3.10.6 Device Status Register (16 bit)
 // Section 9.3.10.7 Link Capabilities Register (16 bit, unused)
 #define IXGBE_PCIREG_DEVICESTATUS 0xAAu
-#define IXGBE_PCIREG_DEVICESTATUS_TRANSACTIONPENDING BIT(5)
+#define IXGBE_PCIREG_DEVICESTATUS_TRANSACTIONPENDING 5
 
 // Section 9.3.3.1 Vendor ID Register (16 bit)
 // Section 9.3.3.2 Device ID Register (16 bit)
@@ -140,74 +144,71 @@
 // Section 9.3.7.1.5 PMCSR_BSE Bridge Support Extensions Register (8 bit, hardwired to 0)
 // Section 9.3.7.1.6 Data Register (8 bit, unused)
 #define IXGBE_PCIREG_PMCSR 0x44u
-#define IXGBE_PCIREG_PMCSR_POWER_STATE BITS(0,1)
+#define IXGBE_PCIREG_PMCSR_POWER_STATE 0,1
 
-// -------------
-// NIC registers
-// -------------
 
 // Section 8.2.3.1.1 Device Control Register
 #define IXGBE_REG_CTRL(_) 0x00000u
-#define IXGBE_REG_CTRL_MASTER_DISABLE BIT(2)
-#define IXGBE_REG_CTRL_RST BIT(26)
+#define IXGBE_REG_CTRL_MASTER_DISABLE 2
+#define IXGBE_REG_CTRL_RST 26
 
 // Section 8.2.3.1.3 Extended Device Control Register
 #define IXGBE_REG_CTRLEXT(_) 0x00018u
-#define IXGBE_REG_CTRLEXT_NSDIS BIT(16)
+#define IXGBE_REG_CTRLEXT_NSDIS 16
 
 // Section 8.2.3.11.1 Rx DCA Control Register
 #define IXGBE_REG_DCARXCTRL(n) ((n) <= 63u ? (0x0100Cu + 0x40u*(n)) : (0x0D00Cu + 0x40u*((n)-64u)))
 // This bit is reserved, has no name, but must be used anyway
-#define IXGBE_REG_DCARXCTRL_UNKNOWN BIT(12)
+#define IXGBE_REG_DCARXCTRL_UNKNOWN 12
 
 // Section 8.2.3.11.2 Tx DCA Control Registers
 #define IXGBE_REG_DCATXCTRL(n) (0x0600Cu + 0x40u*(n))
-#define IXGBE_REG_DCATXCTRL_TX_DESC_WB_RO_EN BIT(11)
+#define IXGBE_REG_DCATXCTRL_TX_DESC_WB_RO_EN 11
 
 // Section 8.2.3.9.2 DMA Tx Control
 #define IXGBE_REG_DMATXCTL(_) 0x04A80u
-#define IXGBE_REG_DMATXCTL_TE BIT(0)
+#define IXGBE_REG_DMATXCTL_TE 0
 
 // Section 8.2.3.9.1 DMA Tx TCP Max Allow Size Requests
 #define IXGBE_REG_DTXMXSZRQ(_) 0x08100u
-#define IXGBE_REG_DTXMXSZRQ_MAX_BYTES_NUM_REQ BITS(0,11)
+#define IXGBE_REG_DTXMXSZRQ_MAX_BYTES_NUM_REQ 0,11
 
 // Section 8.2.3.2.1 EEPROM/Flash Control Register
 #define IXGBE_REG_EEC(_) 0x10010u
-#define IXGBE_REG_EEC_EE_PRES BIT(8)
-#define IXGBE_REG_EEC_AUTO_RD BIT(9)
+#define IXGBE_REG_EEC_EE_PRES 8
+#define IXGBE_REG_EEC_AUTO_RD 9
 
 // Section 8.2.3.5.9 Extended Interrupt Mask Clear Registers
 #define IXGBE_REG_EIMC(n) (n == 0 ? 0x00888u : (0x00AB0u + 4u*(n - 1)))
 
 // Section 8.2.3.3.4 Flow Control Receive Threshold High
 #define IXGBE_REG_FCRTH(n) (0x03260u + 4u*(n))
-#define IXGBE_REG_FCRTH_RTH BITS(5,18)
+#define IXGBE_REG_FCRTH_RTH 5,18
 
 // Section 8.2.3.7.1 Filter Control Register (FCTRL)
 #define IXGBE_REG_FCTRL(_) 0x05080u
-#define IXGBE_REG_FCTRL_MPE BIT(8)
-#define IXGBE_REG_FCTRL_UPE BIT(9)
+#define IXGBE_REG_FCTRL_MPE 8
+#define IXGBE_REG_FCTRL_UPE 9
 
 // Section 8.2.3.7.19 Five tuple Queue Filter
 #define IXGBE_REG_FTQF(n) (0x0E600u + 4u*(n))
-#define IXGBE_REG_FTQF_QUEUE_ENABLE BIT(31)
+#define IXGBE_REG_FTQF_QUEUE_ENABLE 31
 
 // Section 8.2.3.4.10 Firmware Semaphore Register
 #define IXGBE_REG_FWSM(_) 0x10148u
-#define IXGBE_REG_FWSM_EXT_ERR_IND BITS(19,24)
+#define IXGBE_REG_FWSM_EXT_ERR_IND 19,24
 
 // Section 8.2.3.4.12 PCIe Control Extended Register
 #define IXGBE_REG_GCREXT(_) 0x11050u
-#define IXGBE_REG_GCREXT_BUFFERS_CLEAR_FUNC BIT(30)
+#define IXGBE_REG_GCREXT_BUFFERS_CLEAR_FUNC 30
 
 // Section 8.2.3.22.8 MAC Core Control 0 Register
 #define IXGBE_REG_HLREG0(_) 0x04240u
-#define IXGBE_REG_HLREG0_LPBK BIT(15)
+#define IXGBE_REG_HLREG0_LPBK 15
 
 // Section 8.2.3.22.34 MAC Flow Control Register
 #define IXGBE_REG_MFLCN(_) 0x04294u
-#define IXGBE_REG_MFLCN_RFCE BIT(3)
+#define IXGBE_REG_MFLCN_RFCE 3
 
 // Section 8.2.3.7.10 MAC Pool Select Array
 #define IXGBE_REG_MPSAR(n) (0x0A600u + 4u*(n))
@@ -236,46 +237,46 @@
 // Section 8.2.3.8.8 Receive DMA Control Register
 // INTERPRETATION-MISSING: Bit 0, which is not mentioned in the table, is reserved
 #define IXGBE_REG_RDRXCTL(_) 0x02F00u
-#define IXGBE_REG_RDRXCTL_CRC_STRIP BIT(1)
-#define IXGBE_REG_RDRXCTL_DMAIDONE BIT(3)
-#define IXGBE_REG_RDRXCTL_RSCFRSTSIZE BITS(17,21)
-#define IXGBE_REG_RDRXCTL_RSCACKC BIT(25)
-#define IXGBE_REG_RDRXCTL_FCOE_WRFIX BIT(26)
+#define IXGBE_REG_RDRXCTL_CRC_STRIP 1
+#define IXGBE_REG_RDRXCTL_DMAIDONE 3
+#define IXGBE_REG_RDRXCTL_RSCFRSTSIZE 17,21
+#define IXGBE_REG_RDRXCTL_RSCACKC 25
+#define IXGBE_REG_RDRXCTL_FCOE_WRFIX 26
 
 // Section 8.2.3.8.5 Receive Descriptor Tail
 #define IXGBE_REG_RDT(n) ((n) <= 63u ? (0x01018u + 0x40u*(n)) : (0x0D018u + 0x40u*((n)-64u)))
 
 // Section 8.2.3.10.2 DCB Transmit Descriptor Plane Control and Status
 #define IXGBE_REG_RTTDCS(_) 0x04900u
-#define IXGBE_REG_RTTDCS_ARBDIS BIT(6)
+#define IXGBE_REG_RTTDCS_ARBDIS 6
 
 // Section 8.2.3.8.10 Receive Control Register
 #define IXGBE_REG_RXCTRL(_) 0x03000u
-#define IXGBE_REG_RXCTRL_RXEN BIT(0)
+#define IXGBE_REG_RXCTRL_RXEN 0
 
 // Section 8.2.3.8.6 Receive Descriptor Control
 #define IXGBE_REG_RXDCTL(n) ((n) <= 63u ? (0x01028u + 0x40u*(n)) : (0x0D028u + 0x40u*((n)-64u)))
-#define IXGBE_REG_RXDCTL_ENABLE BIT(25)
+#define IXGBE_REG_RXDCTL_ENABLE 25
 
 // Section 8.2.3.8.9 Receive Packet Buffer Size
 #define IXGBE_REG_RXPBSIZE(n) (0x03C00u + 4u*(n))
 
 // Section 8.2.3.12.5 Security Rx Control
 #define IXGBE_REG_SECRXCTRL(_) 0x08D00u
-#define IXGBE_REG_SECRXCTRL_RX_DIS BIT(1)
+#define IXGBE_REG_SECRXCTRL_RX_DIS 1
 
 // Section 8.2.3.12.6 Security Rx Status
 #define IXGBE_REG_SECRXSTAT(_) 0x08D04u
-#define IXGBE_REG_SECRXSTAT_SECRX_RDY BIT(0)
+#define IXGBE_REG_SECRXSTAT_SECRX_RDY 0
 
 // Section 8.2.3.8.7 Split Receive Control Registers
 #define IXGBE_REG_SRRCTL(n) ((n) <= 63u ? (0x01014u + 0x40u*(n)) : (0x0D014u + 0x40u*((n)-64u)))
-#define IXGBE_REG_SRRCTL_BSIZEPACKET BITS(0,4)
-#define IXGBE_REG_SRRCTL_DROP_EN BIT(28)
+#define IXGBE_REG_SRRCTL_BSIZEPACKET 0,4
+#define IXGBE_REG_SRRCTL_DROP_EN 28
 
 // Section 8.2.3.1.2 Device Status Register
 #define IXGBE_REG_STATUS(_) 0x00008u
-#define IXGBE_REG_STATUS_PCIE_MASTER_ENABLE_STATUS BIT(19)
+#define IXGBE_REG_STATUS_PCIE_MASTER_ENABLE_STATUS 19
 
 // Section 8.2.3.9.6 Transmit Descriptor Base Address High
 #define IXGBE_REG_TDBAH(n) (0x06004u + 0x40u*(n))
@@ -297,16 +298,16 @@
 
 // Section 8.2.3.9.10 Transmit Descriptor Control
 #define IXGBE_REG_TXDCTL(n) (0x06028u + 0x40u*(n))
-#define IXGBE_REG_TXDCTL_PTHRESH BITS(0,6)
-#define IXGBE_REG_TXDCTL_HTHRESH BITS(8,14)
-#define IXGBE_REG_TXDCTL_ENABLE BIT(25)
+#define IXGBE_REG_TXDCTL_PTHRESH 0,6
+#define IXGBE_REG_TXDCTL_HTHRESH 8,14
+#define IXGBE_REG_TXDCTL_ENABLE 25
 
 // Section 8.2.3.9.13 Transmit Packet Buffer Size
 #define IXGBE_REG_TXPBSIZE(n) (0x0CC00u + 4u*(n))
 
 // Section 8.2.3.9.16 Tx Packet Buffer Threshold
 #define IXGBE_REG_TXPBTHRESH(n) (0x04950u + 4u*(n))
-#define IXGBE_REG_TXPBTHRESH_THRESH BITS(0,9)
+#define IXGBE_REG_TXPBTHRESH_THRESH 0,9
 
 
 // ====
@@ -350,7 +351,6 @@ static_assert((IXGBE_AGENT_SYNC_PERIOD & (IXGBE_AGENT_SYNC_PERIOD - 1)) == 0, "S
 #define BIT(n) (1u << (n))
 #define BITL(n) (1ull << (n))
 #define BITS(start, end) (((end) == 31 ? 0u : (0xFFFFFFFFu << ((end) + 1))) ^ (0xFFFFFFFFu << (start)))
-#define TRAILING_ZEROES(n) __builtin_ctzll(n)
 
 // Like if(...) but polls with a timeout, and executes the body only if the condition is still true after the timeout
 static bool timed_out;
@@ -371,7 +371,6 @@ static bool timed_out;
 // Operations on the NIC
 // ---------------------
 
-// Register primitives
 static uint32_t ixgbe_reg_read(const uintptr_t addr, const uint32_t reg)
 {
 	uint32_t val_le = *((volatile uint32_t*)(addr + reg));
@@ -389,21 +388,26 @@ static void ixgbe_reg_write(const uintptr_t addr, const uint32_t reg, const uint
 	TN_VERBOSE("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
 
+#define FST1(a) a
+#define FST2(a, b) a
+#define FST(...) GET_MACRO(__VA_ARGS__, UNUSED, UNUSED, UNUSED, FST2, FST1, UNUSED)(__VA_ARGS__)
+#define BITV(...) GET_MACRO(__VA_ARGS__, UNUSED, UNUSED, UNUSED, BITS, BIT, UNUSED)(__VA_ARGS__)
+
 #define IXGBE_REG_READ3(addr, reg, idx) ixgbe_reg_read(addr, IXGBE_REG_##reg(idx))
-#define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & IXGBE_REG_##reg##_##field) >> TRAILING_ZEROES(IXGBE_REG_##reg##_##field))
+#define IXGBE_REG_READ4(addr, reg, idx, field) ((IXGBE_REG_READ3(addr, reg, idx) & BITV(IXGBE_REG_##reg##_##field)) >> FST(IXGBE_REG_##reg##_##field))
 #define IXGBE_REG_READ(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_READ4, IXGBE_REG_READ3, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_WRITE4(addr, reg, idx, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), value)
-#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field) | (((value) << TRAILING_ZEROES(IXGBE_REG_##reg##_##field)) & IXGBE_REG_##reg##_##field)))
+#define IXGBE_REG_WRITE5(addr, reg, idx, field, value) ixgbe_reg_write(addr, IXGBE_REG_##reg(idx), ((IXGBE_REG_READ(addr, reg, idx) & ~BITV(IXGBE_REG_##reg##_##field)) | (((value) << FST(IXGBE_REG_##reg##_##field)) & BITV(IXGBE_REG_##reg##_##field))))
 #define IXGBE_REG_WRITE(...) GET_MACRO(__VA_ARGS__, IXGBE_REG_WRITE5, IXGBE_REG_WRITE4, _UNUSED)(__VA_ARGS__)
 #define IXGBE_REG_CLEARED(addr, reg, idx, field) (IXGBE_REG_READ(addr, reg, idx, field) == 0u)
 #define IXGBE_REG_CLEAR3(addr, reg, idx) IXGBE_REG_WRITE(addr, reg, idx, 0U)
-#define IXGBE_REG_CLEAR4(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) & ~IXGBE_REG_##reg##_##field))
+#define IXGBE_REG_CLEAR4(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) & ~BITV(IXGBE_REG_##reg##_##field)))
 #define IXGBE_REG_CLEAR(...) GET_MACRO(__VA_ARGS__, _UNUSED, IXGBE_REG_CLEAR4, IXGBE_REG_CLEAR3, _UNUSED)(__VA_ARGS__)
-#define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) | IXGBE_REG_##reg##_##field))
+#define IXGBE_REG_SET(addr, reg, idx, field) IXGBE_REG_WRITE(addr, reg, idx, (IXGBE_REG_READ(addr, reg, idx) | BITV(IXGBE_REG_##reg##_##field)))
 
 #define IXGBE_PCIREG_READ(pci_dev, reg) tn_pci_read(pci_dev, IXGBE_PCIREG_##reg)
-#define IXGBE_PCIREG_CLEARED(pci_dev, reg, field) ((IXGBE_PCIREG_READ(pci_dev, reg) & IXGBE_PCIREG_##reg##_##field) == 0u)
-#define IXGBE_PCIREG_SET(pci_dev, reg, field) tn_pci_write(pci_dev, IXGBE_PCIREG_##reg, (IXGBE_PCIREG_READ(pci_dev, reg) | IXGBE_PCIREG_##reg##_##field))
+#define IXGBE_PCIREG_CLEARED(pci_dev, reg, field) ((IXGBE_PCIREG_READ(pci_dev, reg) & BITV(IXGBE_PCIREG_##reg##_##field)) == 0u)
+#define IXGBE_PCIREG_SET(pci_dev, reg, field) tn_pci_write(pci_dev, IXGBE_PCIREG_##reg, (IXGBE_PCIREG_READ(pci_dev, reg) | BITV(IXGBE_PCIREG_##reg##_##field)))
 
 // -----------------
 // Device definition
