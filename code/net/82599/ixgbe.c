@@ -96,8 +96,8 @@
 #define MULTICAST_TABLE_ARRAY_SIZE (4u * 1024u)
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
 // Section 7.2.3.2.2 Legacy Transmit Descriptor Format: "The maximum length associated with a single descriptor is 15.5 KB"
-// Ethernet maximum transfer unit is 1512 bytes, so let's use that
-#define PACKET_BUFFER_SIZE 1512u
+// Ethernet maximum transfer unit is 1518 bytes, so let's use 2048 as a nice round number
+#define PACKET_BUFFER_SIZE 2048u
 // Section 7.1.1.1.1 Unicast Filter:
 // 	"The Ethernet MAC address is checked against the 128 host unicast addresses"
 #define RECEIVE_ADDRS_COUNT 128u
@@ -124,9 +124,10 @@
 // The REG_ values are register indexes, some of which take as argument an index.
 // The sub-values are fields, which can be one or multiple bits.
 // The following two macros make defining fields easier; note that bit indices start at 0.
-#define BIT(n) (1ull << (n))
+#define BIT(n) (1u << (n))
 #define BITS(start, end) (((end) == 31 ? 0u : (0xFFFFFFFFu << ((end) + 1))) ^ (0xFFFFFFFFu << (start)))
-
+// This is for bits when we need 64-bit numbers
+#define BITL(n) (1ull << (n))
 
 // Section 9.3.2 PCIe Configuration Space Summary: "0x10 Base Address Register 0" (32 bit), "0x14 Base Address Register 1" (32 bit)
 #define PCIREG_BAR0_LOW 0x10u
@@ -423,7 +424,9 @@ static void reg_clear_field(uintptr_t addr, uint32_t reg, uint32_t field)
 
 static void reg_set_field(uintptr_t addr, uint32_t reg, uint32_t field)
 {
-	reg_write_field(addr, reg, field, field);
+	uint32_t old_value = reg_read(addr, reg);
+	uint32_t new_value = old_value | field;
+	reg_write(addr, reg, new_value);
 }
 
 static bool reg_is_field_cleared(uintptr_t addr, uint32_t reg, uint32_t field)
@@ -434,7 +437,9 @@ static bool reg_is_field_cleared(uintptr_t addr, uint32_t reg, uint32_t field)
 
 static uint32_t pcireg_read(struct tn_pci_device dev, uint8_t reg)
 {
-	return tn_pci_read(dev, reg);
+	uint32_t value = tn_pci_read(dev, reg);
+	TN_VERBOSE("IXGBE PCI write: 0x%02" PRIx8 " -> 0x%08" PRIx32, reg, value);
+	return value;
 }
 
 static bool pcireg_is_field_cleared(struct tn_pci_device dev, uint8_t reg, uint32_t field)
@@ -447,6 +452,7 @@ static void pcireg_set_field(struct tn_pci_device dev, uint8_t reg, uint32_t fie
 	uint32_t old_value = pcireg_read(dev, reg);
 	uint32_t new_value = old_value | field;
 	tn_pci_write(dev, reg, new_value);
+	TN_VERBOSE("IXGBE PCI write: 0x%02" PRIx8 " := 0x%08" PRIx32, reg, new_value);
 }
 
 // -----------------
@@ -1247,7 +1253,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	uint64_t receive_metadata = *main_metadata_addr;
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
-	if ((receive_metadata & BIT(32)) == 0) {
+	if ((receive_metadata & BITL(32)) == 0) {
 		// No packet; flush if we need to, i.e., 2nd part of the processor
 		// Done here since we must eventually flush after processing a packet even if no more packets are received
 		if (agent->flush_counter != 0) {
@@ -1307,7 +1313,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
 	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
-		*(agent->rings[n] + 2u*agent->processed_delimiter + 1) = (outputs[n] * (uint64_t) packet_length) | rs_bit | BIT(24+1) | BIT(24);
+		*(agent->rings[n] + 2u*agent->processed_delimiter + 1) = (outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24);
 	}
 
 	// Increment the processed delimiter, modulo the ring size
