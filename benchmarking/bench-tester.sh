@@ -19,7 +19,7 @@ echo '[bench] Setting up tester...'
 sudo pkill -x -9 MoonGen >/dev/null 2>&1 # in case it crashed previously
 sudo rm -rf /dev/hugepages/* # make sure there are no leftovers from a previous run
 
-RTE_SDK='moongen/libmoon/deps/dpdk' RTE_TARGET='x86_64-native-linuxapp-gcc' ./setup-dpdk.sh $TESTER_DEVS
+./bind-devices-to-uio.sh $TESTER_DEVS
 
 # Remove the output to avoid a stale one if the script fails
 rm -f bench.result
