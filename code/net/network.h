@@ -30,7 +30,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* agent, const struct tn_net_dev
 // Packet processing API
 // ---------------------
 
-// Returns the new length of the packet, and sets outputs[N] = true if and only if the packet should be sent on queue N (queues are in the order they were added)
+// Returns the new length of the packet, and sets outputs[N] = whether the packet should be sent on queue N (queues are in the order they were added)
 typedef uint16_t tn_net_packet_handler(uint8_t* packet, uint16_t packet_length, void* state, bool* outputs);
 // Runs the agents forever using the given handlers
 __attribute__((noreturn))

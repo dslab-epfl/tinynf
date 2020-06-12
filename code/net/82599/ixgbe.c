@@ -339,9 +339,8 @@ static_assert(IXGBE_RING_SIZE % 128 == 0, "Ring size must be 0 modulo 128");
 static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2 for fast modulo");
 
 // Maximum number of transmit queues assigned to an agent.
-#ifndef IXGBE_AGENT_OUTPUTS_MAX
+// No constraints here... can be basically anything, the agent struct is allocated as a hugepage so taking up space is not a problem
 #define IXGBE_AGENT_OUTPUTS_MAX 4u
-#endif
 
 // Max number of packets before updating the transmit tail
 #define IXGBE_AGENT_PROCESS_PERIOD 8
@@ -1036,9 +1035,6 @@ bool tn_net_agent_init(struct tn_net_agent** out_agent)
 		}
 
 		agent->rings[n] = (volatile uint64_t*) ring_addr;
-		// Initialize to an existing but meaningless address so that writing to it is not an issue later
-		// TODO: Benchmark with the loop replaced by a proper for loop up to outputs_count...
-		agent->transmit_tail_addrs[n] = (uintptr_t) &(agent->_padding[0]);
 	}
 
 	*out_agent = agent;
@@ -1145,13 +1141,7 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, const struct tn_ne
 
 bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_net_device* const device, const uint64_t long_queue_index)
 {
-	uint64_t outputs_count = 0;
-	for (; outputs_count < IXGBE_AGENT_OUTPUTS_MAX; outputs_count++) {
-		if (agent->transmit_tail_addrs[outputs_count] == (uintptr_t) &(agent->_padding[0])) {
-			break;
-		}
-	}
-	if (outputs_count == IXGBE_AGENT_OUTPUTS_MAX) {
+	if (agent->outputs_count == IXGBE_AGENT_OUTPUTS_MAX) {
 		TN_DEBUG("The agent is already using the maximum amount of transmit queues");
 		return false;
 	}
@@ -1172,7 +1162,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_n
 	// "The following steps should be done once per transmit queue:"
 	// "- Allocate a region of memory for the transmit descriptor list."
 	// This is already done in agent initialization as agent->rings[*]
-	volatile uint64_t* ring = agent->rings[outputs_count];
+	volatile uint64_t* ring = agent->rings[agent->outputs_count];
 	// Program all descriptors' buffer address now
 	for (uintptr_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
@@ -1212,7 +1202,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_n
 	reg_write_field(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	uintptr_t head_phys_addr;
-	if (!tn_mem_virt_to_phys((uintptr_t) &(agent->transmit_heads[outputs_count * TRANSMIT_HEAD_MULTIPLIER]), &head_phys_addr)) {
+	if (!tn_mem_virt_to_phys((uintptr_t) &(agent->transmit_heads[agent->outputs_count * TRANSMIT_HEAD_MULTIPLIER]), &head_phys_addr)) {
 		TN_DEBUG("Could not get the physical address of the transmit head");
 		return false;
 	}
@@ -1250,7 +1240,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_n
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
 	// Nothing to transmit yet, so leave TDT alone.
 
-	agent->transmit_tail_addrs[outputs_count] = device->addr + REG_TDT(queue_index);
+	agent->transmit_tail_addrs[agent->outputs_count] = device->addr + REG_TDT(queue_index);
 	agent->outputs_count = agent->outputs_count + 1;
 	return true;
 }
@@ -1278,7 +1268,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 		// No packet; flush if we need to, i.e., 2nd part of the processor
 		// Done here since we must eventually flush after processing a packet even if no more packets are received
 		if (agent->flush_counter != 0) {
-			for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
+			for (uint64_t n = 0; n < agent->outputs_count; n++) {
 				reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 			}
 			agent->flush_counter = 0;
@@ -1333,7 +1323,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// If not all transmit rings are used, we will write into an unused (but allocated!) ring, that's fine
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
 	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
-	for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
+	for (uint64_t n = 0; n < agent->outputs_count; n++) {
 		*(agent->rings[n] + 2u*agent->processed_delimiter + 1) = (outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24);
 	}
 
@@ -1344,7 +1334,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// If target is 0 then we always send immediately, so we get low latency at low loads
 	agent->flush_counter = agent->flush_counter + 1;
 	if (agent->flush_counter == IXGBE_AGENT_PROCESS_PERIOD) {
-		for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
+		for (uint64_t n = 0; n < agent->outputs_count; n++) {
 			reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
 		agent->flush_counter = 0;
@@ -1377,6 +1367,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 
 void tn_net_run(uint64_t agents_count, struct tn_net_agent** agents, tn_net_packet_handler** handlers, void** states)
 {
+	bool outputs[IXGBE_AGENT_OUTPUTS_MAX] = {0};
 	while (true) {
 		for (uint64_t n = 0; n < agents_count; n++) {
 			for (uint64_t p = 0; p < IXGBE_AGENT_PROCESS_PERIOD; p++) {
@@ -1386,7 +1377,6 @@ void tn_net_run(uint64_t agents_count, struct tn_net_agent** agents, tn_net_pack
 					break;
 				}
 
-				bool outputs[IXGBE_AGENT_OUTPUTS_MAX] = {0};
 				uint16_t transmit_packet_length = handlers[n](packet, receive_packet_length, states[n], outputs);
 
 				tn_net_agent_transmit(agents[n], transmit_packet_length, outputs);
