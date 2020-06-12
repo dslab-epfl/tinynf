@@ -9,11 +9,11 @@
 #include "util/log.h"
 
 #ifndef __cplusplus
-// Don't include assert.h since that's not allowed in freestanding implementations
+// Don't include <assert.h> since that's not allowed in freestanding implementations
 #define static_assert _Static_assert
 #endif
 
-// For verification with Vigor
+// Unfortunate requirement of verification with Vigor
 #ifdef VIGOR_SYMBEX
 #include "klee/klee.h"
 #endif
@@ -94,10 +94,6 @@
 // Section 7.10.3.10 Switch Control:
 //	"Multicast Table Array (MTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address."
 #define MULTICAST_TABLE_ARRAY_SIZE (4u * 1024u)
-// Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
-// Section 7.2.3.2.2 Legacy Transmit Descriptor Format: "The maximum length associated with a single descriptor is 15.5 KB"
-// Ethernet maximum transfer unit is 1518 bytes, so let's use 2048 as a nice round number
-#define PACKET_BUFFER_SIZE 2048u
 // Section 7.1.1.1.1 Unicast Filter:
 // 	"The Ethernet MAC address is checked against the 128 host unicast addresses"
 #define RECEIVE_ADDRS_COUNT 128u
@@ -327,19 +323,31 @@
 // Parameters
 // ----------
 
+// These are the values that could be changed (but you shouldn't have to)
+
+// Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
+// Section 7.2.3.2.2 Legacy Transmit Descriptor Format: "The maximum length associated with a single descriptor is 15.5 KB"
+// Ethernet maximum transfer unit is 1518 bytes, so let's use 2048 as a nice round number
+#define PACKET_BUFFER_SIZE 2048u
+static_assert(PACKET_BUFFER_SIZE % 1024u == 0, "Packet buffer size should be a round number of kilobytes for simplicity");
+static_assert(PACKET_BUFFER_SIZE < 16 * 1024u, "Packet buffer size cannot be more than 15.5 KB");
+
 // Section 7.2.3.3 Transmit Descriptor Ring:
 // "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
 #define IXGBE_RING_SIZE 1024u
 static_assert(IXGBE_RING_SIZE % 128 == 0, "Ring size must be 0 modulo 128");
 static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2 for fast modulo");
+
 // Maximum number of transmit queues assigned to an agent.
 #ifndef IXGBE_AGENT_OUTPUTS_MAX
 #define IXGBE_AGENT_OUTPUTS_MAX 4u
 #endif
+
 // Max number of packets before updating the transmit tail
 #define IXGBE_AGENT_PROCESS_PERIOD 8
 static_assert(IXGBE_AGENT_PROCESS_PERIOD >= 1, "Process period must be at least 1");
 static_assert(IXGBE_AGENT_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
+
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
 #define IXGBE_AGENT_SYNC_PERIOD 64
 static_assert(IXGBE_AGENT_SYNC_PERIOD >= 1, "Sync period must be at least 1");
@@ -352,6 +360,7 @@ static_assert((IXGBE_AGENT_SYNC_PERIOD & (IXGBE_AGENT_SYNC_PERIOD - 1)) == 0, "S
 // ---------
 
 // Like if(...) but polls with a timeout, and executes the body only if the condition is still true after the timeout
+// This is basically a way to emulate anonymous lambda functions in C (for 'condition')
 static bool timed_out;
 #define IF_AFTER_TIMEOUT(timeout_in_us, condition) \
 		timed_out = true; \
@@ -365,6 +374,7 @@ static bool timed_out;
 		} \
 		if (timed_out)
 
+// https://en.wikipedia.org/wiki/Find_first_set
 static uint32_t find_first_set(uint32_t value)
 {
 	if (value == 0) {
@@ -382,6 +392,7 @@ static uint32_t find_first_set(uint32_t value)
 // Operations on the NIC
 // ---------------------
 
+// Get the value of register 'reg' on NIC at address 'addr'
 static uint32_t reg_read(uintptr_t addr, uint32_t reg)
 {
 	uint32_t val_le = *((volatile uint32_t*)(addr + reg));
@@ -389,6 +400,7 @@ static uint32_t reg_read(uintptr_t addr, uint32_t reg)
 	TN_VERBOSE("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;
 }
+// Get the value of field 'field' (from the REG_... macros) of register 'reg' on NIC at address 'addr'
 static uint32_t reg_read_field(uintptr_t addr, uint32_t reg, uint32_t field)
 {
 	uint32_t value = reg_read(addr, reg);
@@ -396,15 +408,19 @@ static uint32_t reg_read_field(uintptr_t addr, uint32_t reg, uint32_t field)
 	return (value >> shift) & (field >> shift);
 }
 
+// Write 'value' to the given register address 'reg_addr'; this is the sum of a NIC address and a register offset
 static void reg_write_raw(uintptr_t reg_addr, uint32_t value)
 {
 	*((volatile uint32_t*)reg_addr) = tn_cpu_to_le(value);
 }
+
+// Write 'value' to register 'reg' on NIC at address 'addr'
 static void reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
 {
 	reg_write_raw(addr + reg, value);
 	TN_VERBOSE("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
+// Write 'value' to the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
 static void reg_write_field(uintptr_t addr, uint32_t reg, uint32_t field, uint32_t field_value)
 {
 	uint32_t old_value = reg_read(addr, reg);
@@ -413,15 +429,18 @@ static void reg_write_field(uintptr_t addr, uint32_t reg, uint32_t field, uint32
 	reg_write(addr, reg, new_value);
 }
 
+// Clear (i.e., write all 0s) register 'reg' on NIC at address 'addr'
 static void reg_clear(uintptr_t addr, uint32_t reg)
 {
 	reg_write(addr, reg, 0);
 }
+// Clear (i.e., write all 0s) the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
 static void reg_clear_field(uintptr_t addr, uint32_t reg, uint32_t field)
 {
 	reg_write_field(addr, reg, field, 0);
 }
 
+// Set (i.e., write all 1s) the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
 static void reg_set_field(uintptr_t addr, uint32_t reg, uint32_t field)
 {
 	uint32_t old_value = reg_read(addr, reg);
@@ -429,12 +448,13 @@ static void reg_set_field(uintptr_t addr, uint32_t reg, uint32_t field)
 	reg_write(addr, reg, new_value);
 }
 
+// Check if the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr' is cleared (i.e., reads as all 0s)
 static bool reg_is_field_cleared(uintptr_t addr, uint32_t reg, uint32_t field)
 {
 	return reg_read_field(addr, reg, field) == 0;
 }
 
-
+// Get the value of PCI register 'reg' on device 'dev'
 static uint32_t pcireg_read(struct tn_pci_device dev, uint8_t reg)
 {
 	uint32_t value = tn_pci_read(dev, reg);
@@ -442,11 +462,13 @@ static uint32_t pcireg_read(struct tn_pci_device dev, uint8_t reg)
 	return value;
 }
 
+// Check if the field 'field' (from the PCIREG_... #defines) of register 'reg' on device 'dev' is cleared (i.e., reads as all 0s)
 static bool pcireg_is_field_cleared(struct tn_pci_device dev, uint8_t reg, uint32_t field)
 {
 	return (pcireg_read(dev, reg) & field) == 0;
 }
 
+// Set (i.e., write all 1s) the field 'field' (from the PCIREG_... #defines) of register 'reg' on device 'dev'
 static void pcireg_set_field(struct tn_pci_device dev, uint8_t reg, uint32_t field)
 {
 	uint32_t old_value = pcireg_read(dev, reg);
@@ -899,8 +921,8 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//				"Default values: 0x96 for TXPBSIZE0, 0x0 for TXPBSIZE1-7."
 	// INTERPRETATION-TYPO: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
 	// Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
-	// Note that TXPBTHRESH is in kilobytes, so we should convert the packet buffer size accordingly (and round up)
-	reg_write_field(device.addr, REG_TXPBTHRESH(0), REG_TXPBTHRESH_THRESH, 0xA0u - ((PACKET_BUFFER_SIZE + 1023u) / 1024u));
+	// Note that TXPBTHRESH is in kilobytes, so we should convert the packet buffer size accordingly
+	reg_write_field(device.addr, REG_TXPBTHRESH(0), REG_TXPBTHRESH_THRESH, 0xA0u - (PACKET_BUFFER_SIZE / 1024u));
 	//		"- MTQC"
 	//			"- Clear both RT_Ena and VT_Ena bits in the MTQC register."
 	//			"- Set MTQC.NUM_TC_OR_Q to 00b."
@@ -1070,8 +1092,7 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, const struct tn_ne
 	// "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
 	//	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
 	//		"BSIZEPACKET, Receive Buffer Size for Packet Buffer. The value is in 1 KB resolution. Value can be from 1 KB to 16 KB."
-	// Set it to the ceiling of the packet size in KB.
-	reg_write_field(device->addr, REG_SRRCTL(queue_index), REG_SRRCTL_BSIZEPACKET, (PACKET_BUFFER_SIZE + 1023u) / 1024u);
+	reg_write_field(device->addr, REG_SRRCTL(queue_index), REG_SRRCTL_BSIZEPACKET, PACKET_BUFFER_SIZE / 1024u);
 	//		"DESCTYPE, Define the descriptor type in Rx: Init Val 000b [...] 000b = Legacy."
 	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
 	// Enable this because of assumption DROP
