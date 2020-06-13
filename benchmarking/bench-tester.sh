@@ -10,7 +10,8 @@ fi
 
 if [ ! -f moongen/build/MoonGen ]; then
   echo '[bench] Building MoonGen...'
-  ./moongen/build.sh
+  ./moongen/libmoon/build.sh --moongen
+  echo '[bench] Ignore Git reporting bad submodule paths, the script initializes submodules beforehand so this is irrelevant'
   echo '[bench] Ignore errors after "Trying to bind interfaces" above, the binding is not supposed to work at that point'
 fi
 

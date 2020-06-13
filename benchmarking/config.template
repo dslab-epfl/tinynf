@@ -1,12 +1,9 @@
 # Notes:
 # If using multiple ports on the same NIC, ensure PCIe bandwidth doesn't become the bottleneck
-# PCI addresses must be listed in ascending order so that their order matches in TinyNF and DPDK
+# PCI addresses should be listed in ascending order so that their order matches in programs that do not sort them, e.g. TinyNF
 
 # 0-based index of the CPU(s) on which the NF will run
-# If you plan on benchmarking with DPDK's testpmd, put at least 2, it'll use one for its main loop
 export DUT_CPUS=8,9
-# Number of memory channels the DUT has... good luck figuring this out
-export DUT_MEMORY_CHANNELS=2
 # PCI BDF addresses of the DUT's NICs
 export DUT_DEVS='83:00.0 85:00.0'
 

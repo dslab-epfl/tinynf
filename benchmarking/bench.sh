@@ -2,6 +2,7 @@
 # See ReadMe.md in this directory for documentation.
 
 LOG_FILE='bench.log'
+BENCH_MAKEFILE_NAME='Makefile.benchmarking'
 REMOTE_FOLDER_NAME='nf-benchmarking-scripts'
 
 if [ -z "$1" ]; then
@@ -9,6 +10,11 @@ if [ -z "$1" ]; then
   exit 1
 fi
 NF_DIR="$1"
+
+if [ ! -f "$NF_DIR/$BENCH_MAKEFILE_NAME" ]; then
+  echo "[ERROR] Please create a $BENCH_MAKEFILE_NAME file in $NF_DIR according to the documentation"
+  exit 1
+fi
 
 shift
 if [ $# -lt 2 ]; then
@@ -30,7 +36,7 @@ echo '[bench] Setting up the benchmark...'
 rm -rf results *.log
 
 # Get NF name
-NF_NAME="$(make -C "$NF_DIR" -s print-nf-name)" # -s to not print 'Entering directory...'
+NF_NAME="$(make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" -s print-nf-name)" # -s to not print 'Entering directory...'
 
 # Convenience function, now that we know what to clean up
 cleanup() { sudo pkill -x -9 "$NF_NAME" >/dev/null 2>&1; }
@@ -41,8 +47,8 @@ cleanup
 # Delete any hugepages in case some program left them around
 sudo rm -f "$(grep hugetlbfs /proc/mounts  | awk '{print $2}')"/*
 
-# Initialize DPDK if needed, as explained in the script header
-make -C "$NF_DIR" -q is-dpdk >/dev/null 2>&1
+# Initialize DPDK if needed
+make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" -q is-dpdk >/dev/null 2>&1
 if [ $? -eq 2 ]; then
   ./unbind-devices.sh $DUT_DEVS
 else
@@ -63,7 +69,7 @@ fi
 
 echo '[bench] Building and running the NF...'
 
-TN_ARGS="$DUT_DEVS" make -C "$NF_DIR" >"$LOG_FILE" 2>&1
+TN_ARGS="$DUT_DEVS" make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" build >"$LOG_FILE" 2>&1
 if [ $? -ne 0 ]; then
   echo "[FATAL] Could not build; the $LOG_FILE file in the same directory as $0 may be useful"
   exit 1
@@ -78,7 +84,7 @@ trap_cleanup()
 }
 trap 'trap_cleanup' 2
 
-TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPUS" make -C "$NF_DIR" run >>"$LOG_FILE" 2>&1 &
+TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPUS" make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" run >>"$LOG_FILE" 2>&1 &
 # Sleep (as little as possible) if the NF needs a while to start
 for i in $(seq 1 30); do
   sleep 1
