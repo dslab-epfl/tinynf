@@ -26,3 +26,8 @@ The second machine is the "tester" machine, which runs the MoonGen packet genera
 - Run `./bench.sh ../your/nf/folder bench-type layer`, where:
   - `bench-type` is one of `standard` (2-way throughput + latency) or `standard-single` (1-way throughput + latency)
   - `layer` is `2`, `3` or `4` depending the network layer your NF operates at, so that throughput is measured with different packet flows
+  - You can add the following before `bench-type`:
+    - `--latencyload X` where `X` is either a number of MBits/s to use as the only latency measurement or `-1` to disable latency measurement entirely.
+      (By default, the script measures latency from 0 to max throughput in 1 Gb/s increments)
+    - `--acceptableloss X` where `X` is the fraction of loss that is acceptable in the throughput benchmark, `0.003` by default.
+    - `--reverseheatup` for `standard-single` to also heat up in the other direction, useful for some NFs like a load balancer that gets heartbeat packets from backends
