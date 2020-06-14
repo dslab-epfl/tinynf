@@ -72,7 +72,7 @@ int main(int argc, char** argv)
 
 #ifdef TRUE_NOP
 	uint8_t* packet;
-	uint16_t packet_length;
+	uint16_t packet_length = 0;
 	while(true) {
 		for (uint64_t p = 0; p < 2; p++) {
 			TN_PERF_PAPI_RESET();
@@ -84,7 +84,7 @@ int main(int argc, char** argv)
 	}
 #else
 	tn_net_packet_handler* handlers[2] = { tinynf_packet_handler, tinynf_packet_handler };
-	void* states[2]; // unused
+	void* states[2] = {0}; // unused
 	tn_net_run(2, agents, handlers, states);
 #endif
 }
