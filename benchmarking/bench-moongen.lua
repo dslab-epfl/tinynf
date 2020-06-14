@@ -36,7 +36,7 @@ local RESULTS_LATENCIES_FOLDER_NAME = 'latencies'
 
 -- Arguments for the script
 function configure(parser)
-  parser:argument("type", "Benchmark type: standard, standard-single, flood, or debug ones (see source).")
+  parser:argument("type", "Benchmark type: 'standard', 'standard-single', or 'flood'.")
   parser:argument("layer", "Layer at which the flows are meaningful."):convert(tonumber)
   parser:option("-l --latencyload", "Specific total background load for standard latency, or -1 to not measure it; if not set, script does from 0 to max tput"):default(-2):convert(tonumber)
   parser:option("-a --acceptableloss", "Acceptable loss for the throughput test, defaults to 0.003 or .3%"):default(0.003):convert(tonumber)
@@ -375,24 +375,6 @@ function measureStandard(queuePairs, extraPair, args)
   end
 end
 
--- Measure throughput on a single queue pair, only at 10G
-function measureThroughputSingle(queuePairs, _, args)
-  io.write("[bench] Measuring loss at 10G single direction...")
-
-  local loss = startMeasureThroughput(queuePairs[1].tx, queuePairs[1].rx, 10 * 1000, args.layer, THROUGHPUT_STEPS_DURATION, queuePairs[1].direction, 1):wait()
-
-  io.write(" loss: " .. (loss * 100) .. "%\n")
-end
-
--- Measure latency without any load
-function measureLatencyAlone(queuePairs, extraPair, args)
-  io.write("[bench] Measuring latency without load...\n")
-  local labels = {}
-  labels[1] = 'result'
-  local latss = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, labels):wait()
-  dumpLatencies(latss[1], RESULTS_FOLDER_NAME .. "/" .. RESULTS_LATENCIES_FOLDER_NAME .. "/0")
-end
-
 function flood(queuePairs, extraPair, args)
   io.write("[bench] Flooding. Stop with Ctrl+C.\n")
 
@@ -432,28 +414,22 @@ function master(args)
 
   measureFunc = nil
   -- Standard benchmark: tput + lats
-  if args.type == 'standard' then
+  if args.type == "standard" then
     measureFunc = measureStandard
   -- Same, but on 1 link
-  elseif args.type == 'standard-single' then
+  elseif args.type == "standard-single" then
     queuePairs[99] = queuePairs[2] -- stupid hack, pass a 2nd pair but hide it from iteration
     queuePairs[2] = nil
     measureFunc = measureStandard
   -- Flood forever, useful to inspect client behavior
-  elseif args.type == 'flood' then
+  elseif args.type == "flood" then
     measureFunc = flood
-  -- Just check loss rate at 10G one-way
-  elseif args.type == 'debug-throughput-single' then
-    measureFunc = measureThroughputSingle
-  -- Just check latency without background load
-  elseif args.type == 'debug-latency-alone' then
-    measureFunc = measureLatencyAlone
   else
     print("Unknown type.")
     os.exit(1)
   end
 
-  if args.reverseheatup and args.type ~= 'standard-single' then
+  if args.reverseheatup and args.type ~= "standard-single" then
     print("Reverse heatup is only for standard-single")
     os.exit(1)
   end
