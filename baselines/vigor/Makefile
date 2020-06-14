@@ -5,17 +5,16 @@ endif
 # Get this directory
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-# Use our own DPDK shim, don't include the default TinyNF run target, and do all that also for sub-commands
+# Get the Vigor directory
+VIGOR_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/vigor
+
+# Use our own DPDK shim, and do that also for sub-commands
 RTE_SDK := $(THIS_DIR)/../../shims/dpdk
 RTE_TARGET := .
-TN_NO_RUN_TARGET := true
-SHELL :=  RTE_SDK='$(RTE_SDK)' RTE_TARGET='$(RTE_TARGET)' TN_NO_RUN_TARGET='$(TN_NO_RUN_TARGET)' /bin/bash -O extglob -c
+SHELL := RTE_SDK='$(RTE_SDK)' RTE_TARGET='$(RTE_TARGET)' /bin/bash -O extglob -c
 
 # Run the setup script, in case it hasn't been run yet
 _IGNORED := $(shell $(THIS_DIR)/setup.sh 2>/dev/null)
-
-# Get the Vigor directory
-VIGOR_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/vigor
 
 # Force the auto-generation of Vigor files; pretend we have VeriFast so the auto-generation doesn't fail
 _IGNORED := $(shell cd $(VIGOR_DIR)/vig$(TN_NF); dir=$$(mktemp -d); ln -s /bin/true "$$dir/verifast"; PATH="$$dir:$$PATH" make autogen; rm -rf "$$dir")
@@ -26,8 +25,8 @@ TN_FILES += main.c
 TN_FILES += $(VIGOR_DIR)/nf-util.c
 # Vigor NF files; don't include the loop file, Vigor only uses it during verification
 TN_FILES += $(shell echo $(VIGOR_DIR)/vig$(TN_NF)/!(loop).c)
-# Vigor's libVig; boilerplate-assumptions is a stub file for builtins
-TN_FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/!(boilerplate-assumptions).c)
+# Vigor's libVig
+TN_FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/*.c)
 
 # Vigor expects its root dir to be an include path
 TN_CFLAGS += -I $(VIGOR_DIR)
@@ -44,12 +43,4 @@ TN_CFLAGS += -w
 TN_CFLAGS += -DCAPACITY_POW2
 
 # Include the TinyNF makefile
-include ../../code/Makefile
-
-# Include the Vigor NF's makefile, minus the other makefiles, so we can get the NF's args
-VIGOR_MAKEFILE := $(shell mktemp)
-_IGNORED := $(shell cat $(VIGOR_DIR)/vig$(TN_NF)/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
-include $(VIGOR_MAKEFILE)
-
-run:
-	@sudo ./tinynf $(TN_ARGS) -- $(NF_ARGS)
+include $(THIS_DIR)/../../code/Makefile

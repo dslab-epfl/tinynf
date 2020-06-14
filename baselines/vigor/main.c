@@ -31,14 +31,14 @@ static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, v
 #ifdef ASSUME_ONE_WAY
 	outputs[0] = vigor_output != device;
 #else
-	if (vigor_output == FLOOD_FRAME) {
+	if (vigor_output == device) {
+		for (uint16_t n = 0; n < devices_count; n++) {
+			outputs[n] = false;
+		}
+	} else { // flood or send, same thing with 2 devices...
 		for (uint16_t n = 0; n < devices_count; n++) {
 			outputs[n] = n != device;
 		}
-	} else if (vigor_output == device) {
-		// Nothing; this means "drop", Vigor has no notion of sending back to the same device
-	} else {
-		outputs[vigor_output] = true;
 	}
 #endif
 
