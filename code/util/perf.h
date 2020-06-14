@@ -1,5 +1,5 @@
 // Performance debugging utilities.
-// Only enabled if `TN_DEBUG_PERF` is defined; if so, it acts as the number of 10K packet batches to record before shutting down.
+// Only enabled if `TN_DEBUG_PERF` is defined; if so, it acts as the number of packets to record before shutting down.
 // If enabled, link with libPAPI: https://icl.utk.edu/papi/
 
 #pragma once
