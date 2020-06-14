@@ -2,6 +2,5 @@
 *.log
 results/
 
-# Configuration (and alternates)
+# Configuration
 config
-config-*
