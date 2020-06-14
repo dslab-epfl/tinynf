@@ -615,7 +615,6 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	}
 
 	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, device.pci.bus, device.pci.device, device.pci.function, device.addr);
-	// TODO can we validate that the device address is correct before doing any writes? e.g. there might be a register with a fixed and special value somewhere...
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
