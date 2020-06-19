@@ -1264,8 +1264,8 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
 	if ((receive_metadata & BITL(32)) == 0) {
-		// No packet; flush if we need to, i.e., 2nd part of the processor
-		// Done here since we must eventually flush after processing a packet even if no more packets are received
+		// No packet; flush if we need to.
+		// This is technically a part of transmission, but we must eventually flush after processing a packet even if no more packets are received
 		if (agent->flush_counter != 0) {
 			for (uint64_t n = 0; n < agent->outputs_count; n++) {
 				reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
@@ -1319,7 +1319,6 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// INTERPRETATION-INCORRECT: Despite being marked as "reserved", the buffer address does not get clobbered by write-back, so no need to set it again
 	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want to get updated
 	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor
-	// If not all transmit rings are used, we will write into an unused (but allocated!) ring, that's fine
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
 	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < agent->outputs_count; n++) {
@@ -1329,8 +1328,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// Increment the processed delimiter, modulo the ring size
 	agent->processed_delimiter = (agent->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
 
-	// Flush if we need to, i.e., 2nd part of the processor
-	// If target is 0 then we always send immediately, so we get low latency at low loads
+	// Flush if we need to; not doing so every time is a huge performance win
 	agent->flush_counter = agent->flush_counter + 1;
 	if (agent->flush_counter == IXGBE_AGENT_PROCESS_PERIOD) {
 		for (uint64_t n = 0; n < agent->outputs_count; n++) {
@@ -1339,14 +1337,13 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 		agent->flush_counter = 0;
 	}
 
-	// Transmitter 2nd part, moving descriptors to the receive pool
+	// Move transmitted descriptors back to receiving
 	// This should happen as rarely as the update period since that's the period controlling transmit head updates from the NIC
-	// Doing it here allows us to (1) reuse rs_bit and (2) make less divergent paths for symbolic execution (as opposed to doing it in receive)
 	if (rs_bit != 0) {
-		// In case there are no transmit queues, the "earliest" transmit head is the processed delimiter
 		uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
 		uint64_t min_diff = (uint64_t) -1;
-		// Race conditions are possible here, but all they can do is make our "earliest transmit head" value too low, which is fine
+		// There is an implicit race condition with the hardware: a transmit head could be updated just after we've read it
+		// but before we write to the receive tail. This is fine; it just means our "earliest transmit head" is not as high as it could be.
 		for (uint64_t n = 0; n < agent->outputs_count; n++) {
 			uint32_t head = agent->transmit_heads[n * TRANSMIT_HEAD_MULTIPLIER];
 			uint64_t diff = head - agent->processed_delimiter;
