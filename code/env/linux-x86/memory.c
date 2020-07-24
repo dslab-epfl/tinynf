@@ -119,6 +119,10 @@ bool tn_mem_phys_to_virt(const uintptr_t addr, const uint64_t size, uintptr_t* o
 		// Offset is the address (cast OK because we checked above)
 		(off_t) addr
 	);
+
+	// nothing we can do if this fail, since we didn't write don't even bother checking
+	close(mem_fd);
+
 	if (mapped == MAP_FAILED) {
 		TN_DEBUG("Phys-to-virt mmap failed");
 		return false;
