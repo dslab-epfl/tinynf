@@ -1019,9 +1019,6 @@ bool tn_net_agent_init(struct tn_net_agent** out_agent)
 	}
 
 	for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
-		// Rings need to be 128-byte aligned, as seen later
-		static_assert(IXGBE_RING_SIZE * 16 >= 128, "The ring address should be 128-byte aligned");
-
 		uintptr_t ring_addr;
 		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring_addr)) { // 16 bytes per descriptor, i.e. 2x64bits
 			TN_DEBUG("Could not allocate ring");
