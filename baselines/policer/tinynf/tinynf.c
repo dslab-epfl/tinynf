@@ -111,7 +111,7 @@ int main(int argc, char** argv)
 	pthread_join(t0, NULL);
 	pthread_join(t1, NULL);
 #else
-	void** states = { 0, 1 };
+	void* states[2] = { 0, 1 };
 	tn_net_packet_handler* handlers[2] = { packet_handler, packet_handler };
 	tn_net_run(2, agents, handlers, states);
 #endif
