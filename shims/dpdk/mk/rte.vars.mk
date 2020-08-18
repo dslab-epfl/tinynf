@@ -21,7 +21,7 @@ _IGNORED := $(shell mkdir -p "$(TN_DPDK_DIR)/lib"; \
 RTE_SDK_BIN := $(RTE_SDK)/$(RTE_TARGET)
 
 # Statically link our libdpdk so we don't have to mess with LD_LIBRARY_PATH
-EXTRA_LDLIBS += "$(TN_DPDK_LIB_SO)" $(TN_LDFLAGS)
+EXTRA_LDLIBS += "$(TN_DPDK_LIB_SO)"
 
 # Define constants such that Click won't try to include any object files whatsoever
 # These should be 'y' or 'n'; but for COMBINE_LIBS, we set it to 'x' so that it's completely ignored

@@ -98,11 +98,10 @@ static int lcore_main(void* arg) {
 #ifdef TN_2CORE
   unsigned lcore = rte_lcore_id();
   uint16_t rx_id = lcore & 1;
-  uint16_t tx_id = 1 - rx_id;
+  uint16_t tx_id = rx_id ^ 1;
   while(1) {
 #else
-  for (uint16_t rx_id = 0; rx_id < 2; rx_id++) {
-    uint16_t tx_id = 1 - rx_id;
+  for (uint16_t rx_id = 0, tx_id = 1; 1; tx_id = rx_id, rx_id ^= 1) {
 #endif
     struct rte_mbuf *mbufs[VIGOR_BATCH_SIZE];
     struct rte_mbuf *mbufs_to_send[VIGOR_BATCH_SIZE];

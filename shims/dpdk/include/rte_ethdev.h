@@ -221,6 +221,10 @@ static inline uint16_t rte_eth_tx_burst(uint16_t port_id, uint16_t queue_id, str
 	(void) nb_pkts;
 	(void) queue_id;
 
+	if (nb_pkts == 0) {
+		return 0;
+	}
+
 	struct tn_dpdk_device* dev = tx_pkts[0]->tn_dpdk_device;
 
 #ifdef ASSUME_ONE_WAY
