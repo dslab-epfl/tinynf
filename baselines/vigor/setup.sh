@@ -10,16 +10,16 @@ sudo apt-get install -y libnuma-dev
 RTE_TARGET='x86_64-native-linuxapp-gcc'
 
 cd dpdk
-if [ ! -d "$RTE_TARGET" ]; then
-  make install -j$(nproc) T=x86_64-native-linuxapp-gcc DESTDIR=.
+if [ ! -d $RTE_TARGET ]; then
+  make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
 fi
 cd ..
 
 cd dpdk-verified
-if [ ! -d "$RTE_TARGET" ]; then
+if [ ! -d $RTE_TARGET ]; then
   for p in ../vigor/setup/dpdk.*.patch; do
     patch -p1 < "$p"
   done
 
-  make install -j$(nproc) T=x86_64-native-linuxapp-gcc DESTDIR=.
+  EXTRA_CFLAGS='-Wno-unused-variable' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
 fi

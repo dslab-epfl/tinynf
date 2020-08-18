@@ -19,3 +19,4 @@
 [submodule "baselines/vigor/dpdk"]
 	path = baselines/vigor/dpdk
 	url = http://dpdk.org/git/dpdk-stable
+	ignore = dirty
