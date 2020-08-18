@@ -164,13 +164,6 @@ if 1:
 
 
 
-
-# OLD: Click no-op with TinyNF vs DPDK vs DPDK batch
-if 0:
-  bench('baselines/click', 'nop', 'click', {})
-  bench('baselines/click/with-dpdk', 'nop', 'click', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/click/with-dpdk', 'nop', 'click', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
-
 # SANITY CHECK: DPDK l3fwd, which should reach 2x10 Gb/s line rate, as indicated in the DPDK perf reports
 if 0:
   bench('baselines/dpdk/l3fwd', 'l3fwd', 'dpdk', {'RTE_SDK': RTE_SDK, 'RTE_TARGET': RTE_TARGET})
