@@ -13,10 +13,12 @@
 #define static_assert _Static_assert
 #endif
 
+
 // Unfortunate requirement of verification with Vigor
 #ifdef VIGOR_SYMBEX
 #include "klee/klee.h"
 #endif
+
 
 // ===============
 // Interpretations
@@ -24,10 +26,10 @@
 
 // Unfortunately, we sometimes have to interpret the specification; these are categorized as follows.
 
+// CONTRADICTION: The data sheet contradicts itself, forcing us to make a guess.
 // INCORRECT: The data sheet is plain wrong given how the hardware actually behaves.
 // MISSING: Data is missing, forcing us to make a guess.
-// CONTRADICTION: The data sheet contradicts itself, forcing us to make a guess.
-// POINTLESS: The data sheet asks to do something pointless, such as writing 0 to a register already initialized to 0 or writing to an unused register, and thus we do not need to do it.
+// POINTLESS: The data sheet asks to do something unambiguously pointless, such as writing 0 to a register already initialized.
 // TYPO: Obvious typo in the spec that is very unlikely to be ambiguous.
 
 
@@ -40,7 +42,7 @@
 // CACHE: The cache line size is 64 bytes
 // CRC: We want CRC stripped when receiving and generated on the entire packet when transmitting
 // DROP: We want to drop packets if we can't process them fast enough, for predictable behavior
-// NOMEMERRORS: The internal memory of the card does not get corrupted beyond repairs, as Section 7.14.1 refers to.
+// NOMEMERRORS: The internal memory of the card does not get corrupted beyond repair, as Section 7.14.1 refers to.
 // NOCARE: We do not care about the following:
 //         - Statistics
 //         - Receive Side Coalescing (RSC)
