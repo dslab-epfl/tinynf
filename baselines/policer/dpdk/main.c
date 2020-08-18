@@ -1,5 +1,5 @@
 // changed from original:
-// Added 2-core support
+// Added 2-core support via TN_2CORE define
 // Remove ifdef-ed stuff that wouldn't be included, for clarity
 // Removed special-cased code for TN_BATCH_SIZE=1, since this is not gonna be verified anyway
 // Set MEMPOOL_BUFFER_COUNT to 1024
@@ -95,10 +95,15 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
 // --- Per-core work ---
 
 static int lcore_main(void* arg) {
+#ifdef TN_2CORE
   unsigned lcore = rte_lcore_id();
   uint16_t rx_id = lcore & 1;
   uint16_t tx_id = 1 - rx_id;
   while(1) {
+#else
+  for (uint16_t rx_id = 0; rx_id < 2; rx_id++) {
+    uint16_t tx_id = 1 - rx_id;
+#endif
     struct rte_mbuf *mbufs[VIGOR_BATCH_SIZE];
     struct rte_mbuf *mbufs_to_send[VIGOR_BATCH_SIZE];
     int mbuf_send_index = 0;
@@ -134,9 +139,11 @@ int main(int argc, char *argv[]) {
   argc -= ret;
   argv += ret;
 
+#ifdef TN_2CORE
   if (rte_lcore_count() != 2) {
-    rte_exit(EXIT_FAILURE, "Expected exactly 2 lcores.\n");
+    rte_exit(EXIT_FAILURE, "Expected exactly 2 lcores due to TN_2CORE define.\n");
   }
+#endif
 
   // NF-specific config
   nf_config_init(argc, argv);
@@ -175,7 +182,11 @@ int main(int argc, char *argv[]) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
   }
 
+#ifdef TN_2CORE
   rte_eal_mp_remote_launch(lcore_main, NULL, CALL_MASTER);
+#else
+  lcore_main(NULL);
+#endif
 
   return 0;
 }

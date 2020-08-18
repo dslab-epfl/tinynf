@@ -19,11 +19,8 @@ TN_FILES += $(VIGOR_DIR)/nf-util.c
 # Vigor's libVig; boilerplate-assumptions is a stub file for builtins
 TN_FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/!(boilerplate-assumptions).c)
 
-# parallel needs pthread
-TN_LDFLAGS += -lpthread
 # cpu_zero and friends
 TN_CFLAGS += -D_GNU_SOURCE
-#TN_DEBUG := 2
 # Vigor expects its root dir to be an include path
 TN_CFLAGS += -I $(VIGOR_DIR)
 
@@ -44,7 +41,10 @@ TN_CFLAGS += -w
 # Use Vigor's fast power-of-2-capacity map
 TN_CFLAGS += -DCAPACITY_POW2
 
-#TN_DEBUG := 2
+ifdef TN_2CORE
+TN_CFLAGS += -DTN_2CORE
+TN_CFLAGS += -lpthread
+endif
 
 # Include the TinyNF makefile
 include $(THIS_DIR)/../../../code/Makefile

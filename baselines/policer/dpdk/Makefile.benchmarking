@@ -29,6 +29,10 @@ CFLAGS += -DVIGOR_BATCH_SIZE=$(TN_BATCH_SIZE)
 
 CFLAGS += -fno-if-conversion -fno-if-conversion2
 
+ifdef TN_2CORE
+CFLAGS += -DTN_2CORE
+endif
+
 include $(RTE_SDK)/mk/rte.extapp.mk
 
 # Include the Vigor NF's makefile, minus the other makefiles, so we can get the NF's args

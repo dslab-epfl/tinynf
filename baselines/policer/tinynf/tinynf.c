@@ -86,8 +86,9 @@ int main(int argc, char** argv)
 		return 3;
 	}
 
-	TN_INFO("Running Vigor NF on top of TinyNF... IN PARALLEL!");
-	TN_INFO("Assuming the NF only needs one-way agents, hope you know what you're doing...");
+	TN_INFO("Running Vigor NF on top of TinyNF...");
+#ifdef TN_2CORE
+	TN_INFO("...on 2 cores!");
 
 	pthread_t t0, t1;
 	int ret0 = pthread_create(&t0, NULL, thread0, NULL);
@@ -109,5 +110,10 @@ int main(int argc, char** argv)
 
 	pthread_join(t0, NULL);
 	pthread_join(t1, NULL);
+#else
+	void** states = { 0, 1 };
+	tn_net_packet_handler* handlers[2] = { packet_handler, packet_handler };
+	tn_net_run(2, agents, handlers, states);
+#endif
 	return 0;
 }
