@@ -12,3 +12,7 @@
 	path = baselines/dpdk/dpdk
 	url = https://github.com/DPDK/dpdk
 	ignore = dirty
+[submodule "baselines/vigor/dpdk"]
+	path = baselines/vigor/dpdk
+	url = https://github.com/DPDK/dpdk
+	ignore = dirty
