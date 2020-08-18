@@ -1,3 +1,0 @@
-- uniformize "/" or "p" for units with paper (e.g. Gb/s vs Gbps)
-- remove the whole 'param' folder nonsense, just have keys... and also remove the ", simple" nonsense, makes dealing with the bridge harder
-- Generalize filtering from Primorac2017 KBNets: anything above 99.99% in latency is inaccurate
