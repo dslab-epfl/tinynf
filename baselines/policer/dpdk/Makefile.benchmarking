@@ -42,10 +42,10 @@ include $(VIGOR_MAKEFILE)
 
 DUT_MEMORY_CHANNELS ?= 2
 
+build: clean all
+
 run:
 	@sudo ./build/app/$(APP) --no-shconf -n $(DUT_MEMORY_CHANNELS) -- $(NF_ARGS)
-
-all: clean
 
 is-dpdk:
 	@# yes

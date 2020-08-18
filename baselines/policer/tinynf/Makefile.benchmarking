@@ -54,5 +54,10 @@ VIGOR_MAKEFILE := $(shell mktemp)
 _IGNORED := $(shell cat $(VIGOR_DIR)/vigpol/Makefile | grep -v 'include.*Makefile' > $(VIGOR_MAKEFILE))
 include $(VIGOR_MAKEFILE)
 
+build: tn_default
+
 run:
 	@sudo ./tinynf $(TN_ARGS) -- $(NF_ARGS)
+
+print-nf-name:
+	@echo tinynf

@@ -10,9 +10,11 @@ THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 DPDK_RTE_SDK = THIS_DIR + '/../baselines/dpdk/dpdk'
 VIGOR_RTE_SDK = THIS_DIR + '/../baselines/vigor/dpdk'
 VIGOR_RTE_SDK_VERIFIED = THIS_DIR + '/../baselines/vigor/dpdk-verified'
+SHIM_RTE_SDK = THIS_DIR + '/../shims/dpdk'
+
 RTE_TARGET = 'x86_64-native-linuxapp-gcc'
-RTE_FAKE_SDK = THIS_DIR + '/../shims/dpdk'
-RTE_FAKE_TARGET = '.'
+SHIM_RTE_TARGET = '.'
+
 BATCH_SIZE = '32'
 
 BENCH_PATH = THIS_DIR + '/../benchmarking/'
@@ -49,7 +51,7 @@ def has_dpdk(env):
 def get_key(nf, env):
   suffix = ''
   if has_dpdk(env):
-    if env['RTE_TARGET'] == '.':
+    if env['RTE_TARGET'] == SHIM_RTE_TARGET:
       suffix += '-shimmed'
     else:
       suffix += '-dpdk'
@@ -83,7 +85,7 @@ def get_benchflags(nf, env):
 
 def get_cflags(nf, env):
   result = []
-  if not has_dpdk(env) or env['RTE_TARGET'] == '.':
+  if not has_dpdk(env) or env['RTE_TARGET'] == SHIM_RTE_TARGET:
     result.append('-flto') # LTO
     result.append('-s') # strip
     result.append('-DASSUME_ONE_WAY') # no unnecessary agents
@@ -148,13 +150,13 @@ if 1:
 
 # VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
 if 1:
-  bench('baselines/vigor', 'pol', 'vigor', {})
-  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': RTE_FAKE_SDK, 'RTE_TARGET': RTE_FAKE_TARGET})
-  bench('baselines/parallel-policer/tinynf', 'pol', 'tinynf-parallel', {})
-  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/vigor/with-dpdk', 'pol', 'vigor', {'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
-  bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/parallel-policer/dpdk', 'pol', 'dpdk-parallel', {'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  bench('baselines/policer/tinynf', 'pol', 'tinynf', {})
+  bench('baselines/policer/dpdk', 'pol', 'tinynf', {'RTE_SDK': SHIM_RTE_SDK, 'RTE_TARGET': SHIM_RTE_TARGET})
+  bench('baselines/policer/tinynf', 'pol', 'tinynf-parallel', {'TN_2CORE': '1'})
+  bench('baselines/policer/dpdk', 'pol', 'vigor', {'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
+  bench('baselines/policer/dpdk', 'pol', 'vigor', {'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+  bench('baselines/policer/dpdk', 'pol', 'vigor-parallel', {'TN_2CORE': '1', 'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
+  bench('baselines/policer/dpdk', 'pol', 'vigor-parallel', {'TN_2CORE': '1', 'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Vigor NFs, as well as batched NAT for latency
 if 1:

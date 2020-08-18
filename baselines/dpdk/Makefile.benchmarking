@@ -15,7 +15,7 @@ ifeq (1,$(shell echo '$(TN_BATCH_SIZE) < 4' | bc))
 ADDITIONAL_PARAMS=--rxd=160 --txd=544
 endif
 
-compile:
+build:
 	@# nothing
 
 run:

@@ -6,7 +6,7 @@ _IGNORED := $(shell $(THIS_DIR)/setup.sh 2>/dev/null)
 
 TN_BATCH_SIZE ?= 1
 
-compile:
+build:
 	@cd '$(THIS_DIR)/ixy'; cmake -D CMAKE_C_FLAGS='-DIXY_BATCH_SIZE=$(TN_BATCH_SIZE)' .; make clean; make
 
 run:
