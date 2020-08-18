@@ -397,7 +397,7 @@ static uint32_t find_first_set(uint32_t value)
 static uint32_t reg_read(uintptr_t addr, uint32_t reg)
 {
 	uint32_t val_le = *((volatile uint32_t*)(addr + reg));
-	uint32_t result = tn_le_to_cpu(val_le);
+	uint32_t result = tn_le_to_cpu32(val_le);
 	TN_VERBOSE("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;
 }
@@ -412,7 +412,7 @@ static uint32_t reg_read_field(uintptr_t addr, uint32_t reg, uint32_t field)
 // Write 'value' to the given register address 'reg_addr'; this is the sum of a NIC address and a register offset
 static void reg_write_raw(uintptr_t reg_addr, uint32_t value)
 {
-	*((volatile uint32_t*)reg_addr) = tn_cpu_to_le(value);
+	*((volatile uint32_t*)reg_addr) = tn_cpu_to_le32(value);
 }
 
 // Write 'value' to register 'reg' on NIC at address 'addr'
@@ -1171,7 +1171,10 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_n
 			TN_DEBUG("Could not get a packet's physical address");
 			return false;
 		}
-		ring[n * 2u] = packet_phys_addr;
+
+		// INTERPRETATION-MISSING: The data sheet does not specify the endianness of descriptor buffer addresses..
+		// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
+		ring[n * 2u] = tn_cpu_to_le64(packet_phys_addr);
 	}
 	// "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
 	// 	Section 8.2.3.9.5 Transmit Descriptor Base Address Low (TDBAL[n]):
@@ -1257,6 +1260,9 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	}
 #endif
 
+	// INTERPRETATION-MISSING: The data sheet does not specify the endianness of receive descriptor metadata fields.
+	// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
+
 	// Since descriptors are 16 bytes, the index must be doubled
 	volatile uint64_t* main_metadata_addr = agent->rings[0] + 2u*agent->processed_delimiter + 1;
 	uint64_t receive_metadata = *main_metadata_addr;
@@ -1278,7 +1284,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// This cannot overflow because the packet is by definition in an allocated block of memory
 	*out_packet = (uint8_t*) agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
-	*out_packet_length = receive_metadata & 0xFFFFu;
+	*out_packet_length = tn_le_to_cpu16(receive_metadata & 0xFFFFu);
 
 	return true;
 }
@@ -1289,6 +1295,9 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 
 void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, bool* outputs)
 {
+	// INTERPRETATION-MISSING: The data sheet does not specify the endianness of transmit descriptor metadata fields, nor of the written-back head pointer.
+	// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
+
 	// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 	// "Buffer Address (64)", 1st line
 	// 2nd line:
@@ -1321,7 +1330,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
 	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < agent->outputs_count; n++) {
-		*(agent->rings[n] + 2u*agent->processed_delimiter + 1) = (outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24);
+		*(agent->rings[n] + 2u*agent->processed_delimiter + 1) = (outputs[n] * (uint64_t) tn_cpu_to_le16(packet_length)) | rs_bit | BITL(24+1) | BITL(24);
 	}
 
 	// Increment the processed delimiter, modulo the ring size
@@ -1344,7 +1353,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 		// There is an implicit race condition with the hardware: a transmit head could be updated just after we've read it
 		// but before we write to the receive tail. This is fine; it just means our "earliest transmit head" is not as high as it could be.
 		for (uint64_t n = 0; n < agent->outputs_count; n++) {
-			uint32_t head = agent->transmit_heads[n * TRANSMIT_HEAD_MULTIPLIER];
+			uint32_t head = tn_le_to_cpu32(agent->transmit_heads[n * TRANSMIT_HEAD_MULTIPLIER]);
 			uint64_t diff = head - agent->processed_delimiter;
 			if (diff <= min_diff) {
 				earliest_transmit_head = head;
