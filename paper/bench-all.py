@@ -141,7 +141,7 @@ def bench(path, nf, kind, env):
 # each step performs all non-DPDK stuff first then all DPDK stuff
 
 # DPDK's testpmd no-op, batched or not, vs TinyNF no-op vs Ixy no-op (throughput, zero-loss throughput, detailed latency)
-if 1:
+if 0:
   bench('code', 'nop', 'tinynf', {})
   bench('baselines/ixy', 'nop', 'ixy', {})
   bench('baselines/ixy', 'nop', 'ixy', {'TN_BATCH_SIZE': BATCH_SIZE})
@@ -150,7 +150,7 @@ if 1:
 
 # VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
 if 1:
-  bench('baselines/policer/tinynf', 'pol', 'tinynf', {})
+  #bench('baselines/policer/tinynf', 'pol', 'tinynf', {})
   bench('baselines/policer/dpdk', 'pol', 'tinynf', {'RTE_SDK': SHIM_RTE_SDK, 'RTE_TARGET': SHIM_RTE_TARGET})
   bench('baselines/policer/tinynf', 'pol', 'tinynf-parallel', {'TN_2CORE': '1'})
   bench('baselines/policer/dpdk', 'pol', 'vigor', {'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})

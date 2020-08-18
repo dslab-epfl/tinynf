@@ -42,13 +42,19 @@ include $(VIGOR_MAKEFILE)
 
 DUT_MEMORY_CHANNELS ?= 2
 
-build: clean all
+build: all
 
+ifeq ($(RTE_TARGET),.)
+run:
+	@sudo ./build/app/$(APP) $(TN_ARGS) -- $(NF_ARGS)
+else
 run:
 	@sudo ./build/app/$(APP) --no-shconf -n $(DUT_MEMORY_CHANNELS) -- $(NF_ARGS)
 
 is-dpdk:
 	@# yes
+endif
+
 
 print-nf-name:
 	@echo nf
