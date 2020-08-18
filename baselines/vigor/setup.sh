@@ -14,3 +14,10 @@ if ! grep -q opam "$HOME/.profile"; then
   echo ". $HOME/.opam/opam-init/init.sh" >> "$HOME/.profile"
   . "$HOME/.profile"
 fi
+
+cd dpdk
+for p in ../vigor/setup/dpdk.*.patch; do
+  patch -p1 < "$p"
+done
+
+make install -j$(nproc) T=x86_64-native-linuxapp-gcc DESTDIR=.
