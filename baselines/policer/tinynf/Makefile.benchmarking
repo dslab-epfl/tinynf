@@ -11,7 +11,7 @@ VIGOR_DIR := $(THIS_DIR)/../../vigor/vigor
 _IGNORED := $(shell $(VIGOR_DIR)/../setup.sh 2>/dev/null)
 
 # Our main file
-TN_FILES += $(THIS_DIR)/tinynf.c
+TN_FILES += $(THIS_DIR)/main.c
 # Other NAT files
 TN_FILES += $(shell echo $(THIS_DIR)/../*.c)
 # Vigor utility file (but not nf.c, since we have our own main!)
@@ -21,6 +21,8 @@ TN_FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/!(boilerplate-assumptions)
 
 # cpu_zero and friends
 TN_CFLAGS += -D_GNU_SOURCE
+# For policer_main.h
+TN_CFLAGS += -I $(THIS_DIR)/..
 # Vigor expects its root dir to be an include path
 TN_CFLAGS += -I $(VIGOR_DIR)
 
@@ -31,9 +33,6 @@ TN_NO_RUN_TARGET := true
 DPDK_DIR := $(RTE_SDK)/$(RTE_TARGET)
 TN_CFLAGS += -isystem $(DPDK_DIR)/include
 TN_FILES += $(DPDK_DIR)/tn_dpdk.c
-
-# but don't really use DPDK
-TN_CFLAGS += -DTN_DPDK_PARSE_ONLY
 
 # Vigor compiles with DPDK makefiles, which do not care about extremely many warnings, so let's not even bother
 TN_CFLAGS += -w

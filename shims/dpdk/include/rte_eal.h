@@ -38,7 +38,6 @@ static inline int rte_eal_init(int argc, char** argv)
 		return -1;
 	}
 
-#ifndef TN_DPDK_PARSE_ONLY
 	for (int n = 0; n < devices_count; n++) {
 		if (!tn_net_device_init(tn_dpdk_pci_devices[n], &(tn_dpdk_devices[n].device))) {
 			return -2;
@@ -71,7 +70,6 @@ static inline int rte_eal_init(int argc, char** argv)
 			}
 		}
 	}
-#endif
 #endif
 
 	tn_dpdk_devices_count = devices_count;

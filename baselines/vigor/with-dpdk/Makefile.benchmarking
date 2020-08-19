@@ -1,6 +1,9 @@
 ifndef TN_NF
 $(error Please define TN_NF to a Vigor NF without the vig prefix, e.g. 'nat')
 endif
+ifndef RTE_SDK
+$(error Please define RTE_SDK and RTE_TARGET)
+endif
 
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 VIGOR_DIR := $(THIS_DIR)/../vigor

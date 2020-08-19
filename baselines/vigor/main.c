@@ -7,18 +7,16 @@
 #include "nf.h"
 #include "nf-util.h"
 
-// DPDK devices count and args parsing
+// DPDK devices count
 #include <tn_dpdk.h>
-#include <rte_ethdev.h>
-#include <rte_eal.h>
 
 #include <stdbool.h>
 #include <stddef.h>
 
 
-#define DEVICES_MAX_COUNT 2u
+// A bit hacky to hardcode this; but we don't need more for benchmarking
+#define DEVICES_COUNT 2u
 
-static uint16_t devices_count;
 static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, void* state, bool* outputs)
 {
 	uint16_t device = (uint16_t) state;
@@ -32,11 +30,11 @@ static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, v
 	outputs[0] = vigor_output != device;
 #else
 	if (vigor_output == device) {
-		for (uint16_t n = 0; n < devices_count; n++) {
+		for (uint16_t n = 0; n < DEVICES_COUNT; n++) {
 			outputs[n] = false;
 		}
 	} else { // flood or send, same thing with 2 devices...
-		for (uint16_t n = 0; n < devices_count; n++) {
+		for (uint16_t n = 0; n < DEVICES_COUNT; n++) {
 			outputs[n] = n != device;
 		}
 	}
@@ -48,21 +46,17 @@ static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, v
 
 int main(int argc, char** argv)
 {
-	int consumed = rte_eal_init(argc, argv);
-	if (consumed < 0) {
+	struct tn_pci_device pci_devices[DEVICES_COUNT];
+	if (argc - 1 < DEVICES_COUNT || !tn_util_parse_pci(DEVICES_COUNT, argv + 1, pci_devices)) {
+		TN_INFO("Couldn't parse two PCI devices from argv");
 		return 1;
 	}
 
-	argc -= consumed;
-	argv += consumed;
-
-	devices_count = rte_eth_dev_count();
-
 	// TinyNF init
-	struct tn_net_device* devices[DEVICES_MAX_COUNT];
-	struct tn_net_agent* agents[DEVICES_MAX_COUNT];
-	for (uint16_t n = 0; n < devices_count; n++) {
-		if (!tn_net_device_init(tn_dpdk_pci_devices[n], &(devices[n]))) {
+	struct tn_net_device* devices[DEVICES_COUNT];
+	struct tn_net_agent* agents[DEVICES_COUNT];
+	for (uint16_t n = 0; n < DEVICES_COUNT; n++) {
+		if (!tn_net_device_init(pci_devices[n], &(devices[n]))) {
 			return 1000 + n;
 		}
 		if (!tn_net_device_set_promiscuous(devices[n])) {
@@ -77,18 +71,14 @@ int main(int argc, char** argv)
 	}
 
 #ifdef ASSUME_ONE_WAY
-	if (devices_count != 2) {
-		return 2;
-	}
-
-	for (uint16_t p = 0; p < devices_count; p++) {
+	for (uint16_t p = 0; p < DEVICES_COUNT; p++) {
 		if (!tn_net_agent_add_output(agents[p], devices[1 - p], 0)) {
 			return 10000 + p;
 		}
 	}
 #else
-	for (uint16_t p = 0; p < devices_count; p++) {
-		for (uint16_t q = 0; q < devices_count; q++) {
+	for (uint16_t p = 0; p < DEVICES_COUNT; p++) {
+		for (uint16_t q = 0; q < DEVICES_COUNT; q++) {
 			if (!tn_net_agent_add_output(agents[p], devices[q], p)) {
 				return 10000 + p * q;
 			}
@@ -96,7 +86,10 @@ int main(int argc, char** argv)
 	}
 #endif
 
-	nf_config_init(argc, argv);
+	// Vigor NFs ask DPDK for the devices count
+	tn_dpdk_devices_count = DEVICES_COUNT;
+
+	nf_config_init(argc - DEVICES_COUNT - 1, argv + DEVICES_COUNT + 1);
 	nf_config_print();
 
 	if (!nf_init()) {
@@ -108,11 +101,11 @@ int main(int argc, char** argv)
 #ifdef ASSUME_ONE_WAY
 	TN_INFO("Assuming the NF only needs one-way agents, hope you know what you're doing...");
 #endif
-	void* states[DEVICES_MAX_COUNT];
-	tn_net_packet_handler* handlers[DEVICES_MAX_COUNT];
-	for (uint16_t n = 0; n < DEVICES_MAX_COUNT; n++) {
+	void* states[DEVICES_COUNT];
+	tn_net_packet_handler* handlers[DEVICES_COUNT];
+	for (uint16_t n = 0; n < DEVICES_COUNT; n++) {
 		states[n] = n;
 		handlers[n] = compat_packet_handler;
 	}
-	tn_net_run(devices_count, agents, handlers, states);
+	tn_net_run(DEVICES_COUNT, agents, handlers, states);
 }

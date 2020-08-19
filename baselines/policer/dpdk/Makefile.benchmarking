@@ -29,6 +29,9 @@ CFLAGS += -DVIGOR_BATCH_SIZE=$(TN_BATCH_SIZE)
 
 CFLAGS += -fno-if-conversion -fno-if-conversion2
 
+# For policer_main.h
+CFLAGS += -I $(THIS_DIR)/..
+
 ifdef TN_2CORE
 CFLAGS += -DTN_2CORE
 endif

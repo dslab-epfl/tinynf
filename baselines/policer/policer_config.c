@@ -5,10 +5,6 @@
 #include <string.h>
 #include <stdio.h>
 
-#include <rte_common.h>
-#include <rte_ethdev.h>
-#include <cmdline_parse_etheraddr.h>
-
 #include "nf-util.h"
 #include "nf-log.h"
 
@@ -20,17 +16,16 @@ const uint32_t DEFAULT_CAPACITY = 128; // IPs
 
 #define PARSE_ERROR(format, ...)                                               \
   nf_config_usage();                                                           \
-  rte_exit(EXIT_FAILURE, format, ##__VA_ARGS__);
+  fprintf(stderr, format, ##__VA_ARGS__);                                      \
+  exit(EXIT_FAILURE);
 
-void nf_config_init(int argc, char **argv) {
+void nf_config_init(uint16_t nb_devices, int argc, char **argv) {
   // Set the default values
   config.lan_device = DEFAULT_LAN;
   config.wan_device = DEFAULT_WAN;
   config.rate = DEFAULT_RATE;             // B/s
   config.burst = DEFAULT_BURST;           // B
   config.dyn_capacity = DEFAULT_CAPACITY; // MAC addresses
-
-  unsigned nb_devices = rte_eth_dev_count();
 
   struct option long_options[] = { { "lan", required_argument, NULL, 'l' },
                                    { "wan", required_argument, NULL, 'w' },

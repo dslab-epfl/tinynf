@@ -17,7 +17,7 @@
 
 #include <stdio.h>
 
-#include "nf.h"
+#include "policer_main.h"
 
 #ifndef VIGOR_BATCH_SIZE
 #  define VIGOR_BATCH_SIZE 1
@@ -144,11 +144,12 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
+  uint16_t nb_devices = rte_eth_dev_count();
+
   // NF-specific config
-  nf_config_init(argc, argv);
+  nf_config_init(nb_devices, argc, argv);
   nf_config_print();
 
-  unsigned nb_devices = rte_eth_dev_count();
   if (nb_devices != 2) {
     printf("We assume there will be exactly 2 devices for our simple batching implementation.");
     exit(1);
@@ -177,7 +178,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (!nf_init()) {
+  if (!nf_init(nb_devices)) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
   }
 

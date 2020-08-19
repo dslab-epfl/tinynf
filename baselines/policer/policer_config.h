@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#include "nf.h"
+#include "policer_main.h"
 
 #define CONFIG_FNAME_LEN 512
 
