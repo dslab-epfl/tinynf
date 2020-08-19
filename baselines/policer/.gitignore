@@ -1,0 +1,5 @@
+*.o
+*.o.d
+*.o.cmd
+build/
+tinynf
