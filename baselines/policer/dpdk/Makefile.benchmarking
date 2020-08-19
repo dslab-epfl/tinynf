@@ -19,9 +19,11 @@ TN_BATCH_SIZE ?= 1
 
 SRCS-y := $(THIS_DIR)/main.c
 SRCS-y += $(VIGOR_DIR)/nf-util.c
+SRCS-y += $(shell echo $(VIGOR_DIR)/vigpol/!(policer_main|loop).c)
 SRCS-y += $(shell echo $(VIGOR_DIR)/libvig/verified/*.c)
 SRCS-y += $(shell echo $(THIS_DIR)/../*.c)
 CFLAGS += -I $(VIGOR_DIR)
+CFLAGS += -I $(VIGOR_DIR)/vigpol
 CFLAGS += -std=gnu11
 CFLAGS += -DCAPACITY_POW2
 CFLAGS += -O3

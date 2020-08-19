@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "policer_main.h"
+#include "nf.h"
 #include "nf-log.h"
 #include "policer_config.h"
 #include "state.h"
@@ -20,6 +20,7 @@
 #include "libvig/verified/vector.h"
 #include "libvig/verified/expirator.h"
 
+#include <rte_ethdev.h>
 #include <rte_ether.h>
 #include <rte_ip.h>
 
@@ -100,9 +101,9 @@ bool policer_check_tb(uint32_t dst, uint16_t size, vigor_time_t time) {
   }
 }
 
-bool nf_init(uint16_t devices_count) {
+bool nf_init() {
   unsigned capacity = config.dyn_capacity;
-  dynamic_ft = alloc_state(capacity, devices_count);
+  dynamic_ft = alloc_state(capacity, rte_eth_dev_count());
   return dynamic_ft != NULL;
 }
 

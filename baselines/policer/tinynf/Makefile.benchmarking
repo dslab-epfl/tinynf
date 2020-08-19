@@ -12,19 +12,17 @@ _IGNORED := $(shell $(VIGOR_DIR)/../setup.sh 2>/dev/null)
 
 # Our main file
 TN_FILES += $(THIS_DIR)/main.c
-# Other NAT files
-TN_FILES += $(shell echo $(THIS_DIR)/../*.c)
+# Policer files (but not policer_main, which we modify, nor verif-only 'loop' files)
+TN_FILES += $(THIS_DIR)/../policer_main.c $(shell echo $(VIGOR_DIR)/vigpol/!(policer_main|loop).c)
 # Vigor utility file (but not nf.c, since we have our own main!)
 TN_FILES += $(VIGOR_DIR)/nf-util.c
-# Vigor's libVig; boilerplate-assumptions is a stub file for builtins
-TN_FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/!(boilerplate-assumptions).c)
+# Vigor's libVig
+TN_FILES += $(shell echo $(VIGOR_DIR)/libvig/verified/*.c)
 
 # cpu_zero and friends
 TN_CFLAGS += -D_GNU_SOURCE
-# For policer_main.h
-TN_CFLAGS += -I $(THIS_DIR)/..
-# Vigor expects its root dir to be an include path
-TN_CFLAGS += -I $(VIGOR_DIR)
+# Vigor expects its root dir to be an include path, as well as the NF dir
+TN_CFLAGS += -I $(VIGOR_DIR) -I $(VIGOR_DIR)/vigpol
 
 # Include the file that holds the global variables for the DPDK shim
 RTE_SDK := $(THIS_DIR)/../../../shims/dpdk
