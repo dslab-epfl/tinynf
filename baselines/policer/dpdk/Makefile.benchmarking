@@ -34,6 +34,9 @@ CFLAGS += -fno-if-conversion -fno-if-conversion2
 # For policer_main.h
 CFLAGS += -I $(THIS_DIR)/..
 
+# GCC 10 warnings
+CFLAGS += -Wno-address-of-packed-member
+
 ifdef TN_2CORE
 CFLAGS += -DTN_2CORE
 endif
