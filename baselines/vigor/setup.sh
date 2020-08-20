@@ -11,7 +11,8 @@ RTE_TARGET='x86_64-native-linuxapp-gcc'
 
 cd dpdk
 if [ ! -d $RTE_TARGET ]; then
-  make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
+  # Ignore warnings caused by GCC 10
+  EXTRA_CFLAGS='-Wno-stringop-truncation -Wno-stringop-overflow -Wno-zero-length-bounds' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
 fi
 cd ..
 
@@ -21,5 +22,6 @@ if [ ! -d $RTE_TARGET ]; then
     patch -p1 < "$p"
   done
 
-  EXTRA_CFLAGS='-Wno-unused-variable' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
+  # same but with one more due to the patches
+  EXTRA_CFLAGS='-Wno-stringop-truncation -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-unused-variable' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
 fi
