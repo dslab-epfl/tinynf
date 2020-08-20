@@ -3,3 +3,4 @@
 *.o.cmd
 build/
 tinynf
+!tinynf/
