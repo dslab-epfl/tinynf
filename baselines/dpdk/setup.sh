@@ -14,5 +14,6 @@ if [ ! -d "$RTE_TARGET" ]; then
   # Changes as indicated in the Test Case 4 of the DPDK 20.02 perf report
   sed -i 's/DESC_DEFAULT 1024/DESC_DEFAULT 2048/g' examples/l3fwd/l3fwd.h
 
-  make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
+  # Ignore a bunch of GCC 10 warnings that cause errors due to DPDK's build system
+  EXTRA_CFLAGS='-Wno-stringop-overflow -Wno-maybe-uninitialized -Wno-zero-length-bounds' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
 fi
