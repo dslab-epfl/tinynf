@@ -23,7 +23,7 @@ TN_DEBUG ?= 1
 TN_ENV ?= linux-x86
 TN_NET ?= 82599
 TN_APP ?= tinynf
-TN_CC ?= gcc-9 # hardcode version for reproducibility
+TN_CC ?= gcc
 
 # Current directory
 TN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
