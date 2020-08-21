@@ -6,7 +6,7 @@
 
 // This NF does as little as possible, it's only intended for benchmarking/profiling the driver
 
-#ifndef TRUE_NOP
+#ifndef TN_DEBUG_PERF
 static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, void* state, bool* outputs)
 {
 	(void) state;
@@ -70,7 +70,7 @@ int main(int argc, char** argv)
 	TN_INFO("TinyNF initialized successfully!");
 	TN_PERF_PAPI_START();
 
-#ifdef TRUE_NOP
+#ifdef TN_DEBUG_PERF
 	uint8_t* packet;
 	uint16_t packet_length = 0;
 	while(true) {
