@@ -68,11 +68,11 @@ int main(int argc, char** argv)
 	}
 
 	TN_INFO("TinyNF initialized successfully!");
-	TN_PERF_PAPI_START();
 
 #ifdef TN_DEBUG_PERF
 	uint8_t* packet;
 	uint16_t packet_length = 0;
+	TN_PERF_PAPI_START();
 	while(true) {
 		for (uint64_t p = 0; p < 2; p++) {
 			TN_PERF_PAPI_RESET();

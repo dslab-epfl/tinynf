@@ -8,6 +8,7 @@ merge_logs()
   for i in $(seq 1 10); do
     sed -e '0,/Counters:/d' log$i | sort -n | head -n+10000000 >> logsorted
   done
+  for i in $(seq 1 10); do rm log$i; done
 }
 
 # Ensure the papi submodule is cloned
@@ -42,12 +43,13 @@ else
   exit 1
 fi
 
-# Start a packet flood
+# Start a packet flood, waiting for it to have really started
 ssh "$TESTER_HOST" "cd $REMOTE_FOLDER_NAME; ./bench-tester.sh flood 2" >/dev/null 2>&1 &
+sleep 30
 
 # Collect data on TinyNF
 cd ../../code
-  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10001000 -flto -s -I '$PAPI_DIR/src' -L '$PAPI_DIR/src' -lpapi" make
+  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10001000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make
   for i in $(seq 1 10); do
     sudo LD_LIBRARY_PATH="$PAPI_DIR/src" taskset -c "$DUT_CPUS" ./tinynf $DUT_DEVS >log$i 2>&1
   done
@@ -56,12 +58,18 @@ cd ../../code
 cd - >/dev/null
 
 # Collect data on DPDK
-#cd ../../baselines/dpdk/measurable-nop
-#  for batch in 1 32; do
-#    EXTRA_CFLAGS="-DBATCH_SIZE=$batch -DTN_DEBUG_PERF=10001000 -I '$PAPI_DIR/src'" EXTRA_LDFLAGS="-L '$PAPI_DIR/src' -lpapi" make
-#    merge_logs
-#  done
-#cd -
+cd ../../baselines/dpdk/measurable-nop
+  for batch in 1 32; do
+    make clean
+    EXTRA_CFLAGS="-DBATCH_SIZE=$batch -DTN_DEBUG_PERF=10001000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make >/dev/null 2>&1
+    ../../../benchmarking/bind-devices-to-uio.sh $DUT_DEVS
+    for i in $(seq 1 10); do
+      sudo LD_LIBRARY_PATH="$PAPI_DIR/src" taskset -c "$DUT_CPUS" ./build/app/nf >log$i 2>&1
+    done
+    merge_logs
+    mv logsorted "$RESULTS_DIR/dpdk-$batch"
+  done
+cd - >/dev/null
 
 # Stop the flood
 ssh "$TESTER_HOST" "sudo pkill -9 MoonGen"
