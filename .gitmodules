@@ -20,6 +20,7 @@
 	path = baselines/vigor/dpdk
 	url = http://dpdk.org/git/dpdk-stable
 	ignore = dirty
-[submodule "paper/papi"]
-	path = paper/papi
+[submodule "paper/lowlevel/papi"]
+	path = paper/lowlevel/papi
 	url = https://bitbucket.org/icl/papi
+	ignore = dirty

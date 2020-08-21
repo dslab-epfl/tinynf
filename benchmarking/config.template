@@ -16,3 +16,10 @@ export TESTER_CPUS=8,9,10,11,12,13,14,15
 export TESTER_DEVS='83:00.0 85:00.0'
 # 1 if you messed up your wiring and crossed the cables, 0 otherwise
 export TESTER_CABLES_CROSSED=1
+
+# Name of the local log file containing the build and run output
+export LOG_FILE='bench.log'
+# Name of the folder in the remote $HOME containing the benchmarking scripts
+export REMOTE_FOLDER_NAME='nf-benchmarking-scripts'
+# Name of the makefile used for benchmark targets; do not change unless you know what you're doing
+export BENCH_MAKEFILE_NAME='Makefile.benchmarking'

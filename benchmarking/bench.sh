@@ -1,10 +1,6 @@
 #!/bin/sh
 # See ReadMe.md in this directory for documentation.
 
-LOG_FILE='bench.log'
-BENCH_MAKEFILE_NAME='Makefile.benchmarking'
-REMOTE_FOLDER_NAME='nf-benchmarking-scripts'
-
 if [ -z "$1" ]; then
   echo "[ERROR] Please provide the directory of the NF as the first argument to $0"
   exit 1
