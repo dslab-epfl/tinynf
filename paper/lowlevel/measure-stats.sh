@@ -1,5 +1,7 @@
 #!/bin/sh
 
+echo 'Measuring low-level stats; this will take 1-2h and generate ~15GB of data, come back in a while...'
+
 # Assuming there are log1..log10 files each containing 10001000 entries, merges them into a 'logsorted' file,
 # discarding the worst 0.01% entries in terms of cycles of each log since they're weird outliers probably caused by some CPU weirdness
 merge_logs()
@@ -28,9 +30,10 @@ cd - >/dev/null
 # Ensure papi can read events
 echo 0 | sudo dd status=none of=/proc/sys/kernel/perf_event_paranoid
 
-# Get the results folder, creating it if needed
-mkdir -p results
-RESULTS_DIR="$(readlink -e results)"
+# Ensure the results folder is clean so we don't accidentally end up with stale results
+RESULTS_DIR="$(readlink -f results)"
+rm -rf "$RESULTS_DIR"
+mkdir "$RESULTS_DIR"
 
 # Ensure there are no leftover hugepages
 sudo rm -rf /dev/hugepages/*
@@ -54,7 +57,7 @@ cd ../../code
     sudo LD_LIBRARY_PATH="$PAPI_DIR/src" taskset -c "$DUT_CPUS" ./tinynf $DUT_DEVS >log$i 2>&1
   done
   merge_logs
-  mv logsorted "$RESULTS_DIR/tinynf"
+  mv logsorted "$RESULTS_DIR/TinyNF"
 cd - >/dev/null
 
 # Collect data on DPDK
@@ -67,7 +70,7 @@ cd ../../baselines/dpdk/measurable-nop
       sudo LD_LIBRARY_PATH="$PAPI_DIR/src" taskset -c "$DUT_CPUS" ./build/app/nf >log$i 2>&1
     done
     merge_logs
-    mv logsorted "$RESULTS_DIR/dpdk-$batch"
+    mv logsorted "$RESULTS_DIR/DPDK-$batch"
   done
 cd - >/dev/null
 
