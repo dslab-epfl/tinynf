@@ -71,15 +71,19 @@ int main(int argc, char** argv)
 
 #ifdef TN_DEBUG_PERF
 	uint8_t* packet;
-	uint16_t packet_length = 0;
+	uint16_t packet_length;
+	bool output = true;
 	TN_PERF_PAPI_START();
 	while(true) {
-		for (uint64_t p = 0; p < 2; p++) {
-			TN_PERF_PAPI_RESET();
-			tn_net_agent_receive(agents[p], &packet, &packet_length);
-			bool output = true;
-			tn_net_agent_transmit(agents[p], packet_length, &output);
-			TN_PERF_PAPI_RECORD(1);
+		for (uint64_t a = 0; a < 2; a++) {
+			for (uint64_t p = 0; p < 8; p++) { // sync '8' here with PROCESS_PERIOD in ixgbe
+				TN_PERF_PAPI_RESET();
+				if (!tn_net_agent_receive(agents[a], &packet, &packet_length)) {
+					break;
+				}
+				tn_net_agent_transmit(agents[a], packet_length, &output);
+				TN_PERF_PAPI_RECORD(1);
+			}
 		}
 	}
 #else
