@@ -1,43 +1,56 @@
 # Reception paths
 
-We inspect `ixgbe_recv_pkts` and assume nb_pkts == 1.
+We inspect `ixgbe_recv_pkts`, assuming:
+- `nb_pkts` is 1
+- `RTE_LIBRTE_IEEE1588` is not set
+- `RTE_LIBRTE_SECURITY` is not set
 
-Paths:
-- `staterr` doesn't have the DD flag set -> no packet
-- `rte_mbuf_raw_alloc` fails -> error
-- `rx_id` is `rxq->nb_rx_desc` (sets `rx_id` to 0; multiplies remaining paths by 2)
-- `rx_id` is 3 modulo 4 (does some prefetching; multiplies remaining paths by 2)
-- `pkt_flags` contains `PKT_RX_RSS_HASH`, OR contains `PKT_RX_FDIR`, OR nothing (sets some flags; multiplies remaining paths by 3)
-- `nb_hold` is greater than `rxq->rx_free_thresh` (sets a register; multiples remaining paths by 2)
+Let `A_F` be the number of failure paths in `rte_mbuf_raw_alloc` and `A_S` the number of success paths.
 
-Total paths: 1 + 1 + 2 * 2 * 3 * 2 = 26, 25 of which have a packet.
+`1` path: `staterr` doesn't have the DD flag set -> no packet
+`A_F` paths: `staterr` has the DD flag set, but `rte_mbuf_raw_alloc` fails -> no packet
+Multiply remaining paths by 2 due to the `rx_id == rxq->nb_rx_desc` check
+Multiply remaining paths by 2 due to the `(rx_id & 0x3) == 0` check
+Multiply remaining paths by 3 due to the `rx_status & ...` checks in `rx_desc_error_to_pkt_flags`, which includes a `&&`
+Multiply remaining paths by 2 due to the `pkt_info & IXGBE_RXDADV_PKTTYPE_ETQF` check in `ixgbe_rxd_pkt_info_to_pkt_type`
+Multiply remaining paths by 2 due to the `pkt_info & IXGBE_PACKET_TYPE_TUNNEL_BIT` check in `ixgbe_rxd_pkt_info_to_pkt_type`
+Multiply remaining paths by 3 due to the `pkt_flags & PKT_RX_RSS_HASH` check, which includes an `else if`
+Multiply remaining paths by 2 due to the `nb_hold > rxq->rx_free_thresh` check
+`A_S` paths: happy path of receiving the packet.
+
+Total paths:
+- `A_F + 1` without a packet
+- `2*2*3*2*2*3*2*A` = `288 * A_S` with a packet
+
 
 # Transmission paths
 
-We inspect `ixgbe_xmit_pkts_simple` and assume nb_pkts == 1.
+We inspect `ixgbe_xmit_pkts_simple`, assuming:
+- `nb_pkts` is 1
+- All previously sent packets came from the same mbuf pool
+- `RTE_IXGBE_TX_MAX_FREE_BUF_SZ` is infinitely large, i.e., freeing packets never needs to do so in multiple chunks
 
-Paths:
-- `txq->nb_tx_free` is less than `txq->tx_free_thresh`
-  - If yes, then call `ixgbe_tx_free_bufs`, whose paths are:
-    - `status` doesn't have the DD flag set -> return
-    - Loop from 0 to `txq->tx_rs_thresh`, with 3 paths in the body (two ifs, the first of which causes a 'continue' if the condition is satisfied), thus multiples remaining paths by `3 * txq->tx_rs_thresh`
-    - `nb_free` is greater than 0 (if yes, calls `rte_mempool_put_bulk`, multiplies remaining paths by 2)
-    - `txq->tx_next_dd` is greater than or equal `txq->nb_tx_desc` (sets `txq->tx_next_dd`, multiplies remaining paths by 2)
-  - Overall, multiples remaining paths by `1 + (1 + (3 * `txq->tx_rs_thresh`) * 2 * 2)`
-- `txq->tx_tail + 1` is greater than `txq->nb_tx_desc` (if yes, calls `ixgbe_tx_fill_hw_ring`, which has a single path given that nb_pkts = 1; multiplies remaining paths by 2)
-- `txq->tx_tail` is greater than `txq->tx_next_rs`
-  - If yes, checks if `txq->tx_next_rs` is greater than `txq->nb_tx_desc`
-  - Overall, multiplies remaining paths by 3
-- `txq->tx_tail` is greater than or equal to `txq->nb_tx_desc` (sets `txq->tx_tail` to 0; multiplies remaining paths by 2)
+Let `T` be the configured `tx_rs_thresh`
 
-Total paths: (1 + (1 + (3 * `txq->tx_rs_thresh`) * 2 * 2)) * 2 * 3 * 2 = 24 + 144 * `txq->tx_rs_thresh`
+Let `F_S` be the number of paths in `rte_pktmbuf_prefree_seg` that return a non-NULL value and `F_N` the number of paths that do.
+
+Let `P` be the number of paths in `rte_mempool_put_bulk`
+
+In `ixgbe_tx_free_bufs`, there are `(F_S + F_N)^T` paths in the "free buffers one at a time" loop,
+of which all but `F_N^T` will trigger the `nb_free > 0` check; then the number of paths is doubled
+due to the final overflow check. There is 1 additional path at the start if the DD flag is not set.
+Thus `ixgbe_tx_free_bufs` has `1` failure path and `2 * (((F_S + F_N)^T - F_N^T) * P + F_N^T)` success paths.
+
+`1` path: There are no available descriptors because `ixgbe_tx_free_bufs` failed.
+Multiply remaining paths by 1 + the number of success paths in `ixgbe_tx_free_bufs`; the 1 is for the case that function needs not be called.
+`1` path: Packet sent with wrap-around in the ring.
+`1` path: Packet sent without wrap-around in the ring, without RS bit
+`1` path: Packet sent without wrap-around in the ring, with RS bit, without updating `tx_next_rs`
+`1` path: Packet sent without wrap-around in the ring, with RS bit, with updating `tx_next_rs`
+Each of the "without wrap-around" path counts above is doubled due to wrap-around afterwards.
+
+Total paths:
+- `1` failing to transmit
+- `7 + 14 * (((F_S + F_N)^T - F_N^T) * P + F_N^T)` successfully transmitting
 
 DPDK supports transmission queues separately, so the number of paths for N queues is (number for 1 queue)^N.
-
-
-# Total
-
-To receive 1 packet and send it to O outputs, with a value N for tx_rs_thresh, there are `1 + 25 * (24 + 144N)^O` paths.
-With a default tx_rs_thresh of 32, this is `1 + 25 * 4632^O`.
-With a minimal tx_rs_thresh of 1, this is `1 + 25 * 148^O`.
-
