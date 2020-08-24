@@ -53,4 +53,4 @@ Total paths:
 - `1` failing to transmit
 - `7 + 14 * (((F_S + F_N)^T - F_N^T) * P + F_N^T)` successfully transmitting
 
-DPDK supports transmission queues separately, so the number of paths for N queues is (number for 1 queue)^N.
+DPDK supports transmission queues separately, so the number of paths for O queues is (number for 1 queue)^O.

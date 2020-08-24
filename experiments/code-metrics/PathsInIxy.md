@@ -40,4 +40,4 @@ Total paths:
 - `6` failing to transmit
 - `6 + 2*P^B` successfully transmitting
 
-Ixy supports transmission queues separately, so the number of paths for N queues is (number for 1 queue)^N.
+Ixy supports transmission queues separately, so the number of paths for O queues is (number for 1 queue)^O.

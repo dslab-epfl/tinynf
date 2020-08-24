@@ -1,26 +1,25 @@
-Note that TinyNF uses non-short-circuiting operators for the conditions specifically to reduce the number of paths.
+TinyNF handles multiple transmission queues at the same time; let `O` be the number of outputs.
 
 # Reception paths
 
-We inspect `tn_net_pipe_receive`.
+We inspect `tn_net_agent_receive`.
 
-- There may be a packet or not (bit 32 of `receive_metadata`)
-  - If there isn't, we may decide to flush or not
+`1` path: there is no packet and the agent flushes
+`1` path: there is no packet and the agent does not flush
+`1` path: there is a packet
 
-Total: 3, 1 of which results in a packet
+Total:
+- `2` paths without a packet
+- `1` path with a packet
 
 
 # Transmission paths
 
-We inspect `tn_net_pipe_send`.
+We inspect `tn_net_agent_transmit`.
 
-- We may need to flush
-- We may need to move completed transmit descriptors to the receive queue
-  - In this case there are 2^L-1 paths to compute the minimum, where L is the number of links (-1 because the first comparison always succeeds)
+Multiply remaining paths by 2 due to the `flush_counter` check
+`1` path where `rs_bit != 0`
+`2^(O-1)` paths where `rs_bit == 0`, since the first `diff <= min_diff` check always succeeds
 
-Total: `3 + 2^L - 1 = 2 + 2^L`
-
-
-# Total
-
-There are `2 + 1 * (2 + 2^L) = 4 + 2^L` paths total.
+Total:
+- `2 + 2^O` paths successfully transmitting
