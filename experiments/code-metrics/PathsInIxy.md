@@ -1,38 +1,43 @@
 # Reception paths
 
-We inspect `ixgbe_rx_batch` and assume `num_bufs` is 1, `interrupts_enabled` is false, and the NIC cannot produce multi-buffer packets since it is not configured to do so by Ixy.
+We inspect `ixgbe_rx_batch`, assuming:
+- `num_bufs` is 1
+- `interrupts_enabled` is false
+- the NIC cannot produce multi-buffer packets since it is not configured to do so by Ixy
 
-Paths:
-- `status` does not have the `IXGBE_RXDADV_STAT_DD` flag set -> no packet
-- `pkt_buf_alloc` succeeds -> OK, there is a packet
-- `pkt_buf_alloc` fails -> error
+Let `A_S` be the number of success paths in `pkt_buf_alloc` and `A_F` the number of failure paths.
 
-Total paths: 3, 1 of which has a packet.
+`1` path: `status` does not have the DD flag set -> no packet
+`A_F` paths: `pkt_buf_alloc` fails -> no packet
+`A_S` paths: `pkt_buf_alloc` succeeded (thus `rx_index != last_rx_index` is always true)
+
+Total paths:
+- `1 + A_F` without a packet
+- `A_S` with a packet
+
 
 # Transmission paths
 
-We inspect `ixgbe_tx_batch` and assume `num_bufs` == 1 and the size of the TX ring is the default of 512 and there are between 0 and 63 packets to clean (otherwise it gets messier but also extremely unlikely).
+We inspect `ixgbe_tx_batch`, assuming:
+- `num_bufs` is 1
+- there is at most one full "batch" of packets to clean (otherwise it gets messier but also extremely unlikely)
 
-Paths in first loop:
-- `cleanable` can be <0 or not (doubles the number of future paths)
-- `cleanable` can be less than `TX_CLEAN_BATCH` (skips the rest of the loop)
-- `cleanup_to >= queue->num_entries` can be true or not (doubles the number of future paths)
-- `status & IXGBE_ADVTXD_STAT_DD` can be false (skips the rest of the loop)
-- or it can be true, in which case there is a single path (despite the somewhat unusual loop shape designed to wrap-around the index on the ring)
+Let `B` be the value of `TX_CLEAN_BATCH`.
 
-Paths in second loop:
-- `clean_index == next_index` can be true -> end, no packet sent
-- or it can be false -> end, packet sent
+Let `P` be the number of paths in `pkt_buf_free`. 
+
+Multiply remaining paths by 2 due to the `cleanable < 0` check
+`1` path: there is nothing to clean and `clean_index == next_index` -> no transmission
+`1` path: there is nothing to clean and `clean_index != next_index` -> transmission
+Multiply remaining paths by 2 due to the `cleanup_to >= queue->num_entries` check
+`1` path: there is something to clean but DD is not set and `clean_index == next_index` -> no transmission
+`1` path: there is something to clean but DD is not set and `clean_index != next_index` -> transmission
+Multiply remaining paths by `P^B` due to the cleaning loop
+Multiply remaining paths by 2 due to the `cleanable < 0` check on the next iteration
+`1` path: transmission succeeds (packets have been cleaned so `clean_index != next_index)`
 
 Total paths:
-- If 0 to 31 packets might be cleanable, then 2 (first loop) * 2 (second loop)
-- If 32 to 63 packets might be cleanable but less than 31 are, then 4 (first loop) * 2 (second loop)
-- If 32 to 63 packets are cleanable, then 4 (first loop first iter) * 2 (first loop second iter) * 2 (second loop)
+- `6` failing to transmit
+- `6 + 2*P^B` successfully transmitting
 
-for a grand total of 28, half of which fail to send a packet.
-
-
-# Total
-
-To receive 1 packet and send it to L links, there are 2 + 28^L paths, and a little under half of those do not end up sending a packet.
-
+Ixy supports transmission queues separately, so the number of paths for N queues is (number for 1 queue)^N.
