@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 # $1: path to driver codebase
 # $2: file with function names in a ```-delimited block
+# $3: 'function-count' to print functions count, anything else to print LoC count
 
 import glob
-import statistics
 import subprocess
 import sys
 
@@ -31,21 +31,19 @@ lines = lines[start:end]
 # ignore repeated functions
 lines = [line for line in lines if '*' not in line]
 
-print('Unique functions: ' + str(len(lines)))
+if len(sys.argv) > 3 and sys.argv[3] == 'function-count':
+  print(len(lines))
+else:
+  # get all C files in the codebase
+  files = glob.glob(sys.argv[1] + '/**/*.c') + glob.glob(sys.argv[1] + '/*.c')
 
-# get all C files in the codebase
-files = glob.glob(sys.argv[1] + '/**/*.c') + glob.glob(sys.argv[1] + '/*.c')
+  # for each function, count its LoC (it's in the file for which count-function-loc returns something)
+  counts = []
+  for function in lines:
+    for file in files:
+      out = subprocess.check_output(['sh', 'count-function-loc.sh', file, function]).decode('utf-8').strip()
+      if out != '':
+        counts.append(int(out))
+        break
 
-# for each function, count its LoC (it's in the file for which count-function-loc returns something)
-counts = []
-for function in lines:
-  for file in files:
-    out = subprocess.check_output(['sh', 'count-function-loc.sh', file, function]).decode('utf-8').strip()
-    if out != '':
-      counts.append(int(out))
-      break
-
-print('Total LoC: ' + str(sum(counts)))
-if len(counts) > 1:
-  print('Average LoC: ' + str(statistics.mean(counts)))
-  print('Median LoC: ' + str(statistics.median(counts)) + ' / stdev: ' + str(statistics.stdev(counts)))
+  print(sum(counts))
