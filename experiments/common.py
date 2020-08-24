@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+# Common functions for graphing scripts
 
 import math
 import os
