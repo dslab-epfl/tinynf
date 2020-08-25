@@ -14,12 +14,6 @@
 #endif
 
 
-// Unfortunate requirement of verification with Vigor
-#ifdef VIGOR_SYMBEX
-#include "klee/klee.h"
-#endif
-
-
 // ===============
 // Interpretations
 // ===============
@@ -1256,13 +1250,8 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 #ifdef VIGOR_SYMBEX
 	// Not great; but less assumptions than Vigor makes in the DPDK driver patches
 	// The core reason is the same: KLEE cannot reason about "any descriptor in the ring", the descriptor index must be concrete
-	if (klee_is_symbolic(agent->processed_delimiter)) {
-		agent->processed_delimiter = 0;
-		agent->flush_counter = 0;
-	}
-	// This could be removed by rewriting Vigor's nf.c to use TinyNF directly
-#undef IXGBE_AGENT_PROCESS_PERIOD
-#define IXGBE_AGENT_PROCESS_PERIOD 1
+	agent->processed_delimiter = 0;
+	agent->flush_counter = IXGBE_AGENT_PROCESS_PERIOD - 1;
 #endif
 
 	// INTERPRETATION-MISSING: The data sheet does not specify the endianness of receive descriptor metadata fields.
