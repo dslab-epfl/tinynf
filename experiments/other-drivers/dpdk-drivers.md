@@ -2,7 +2,7 @@ This document classifies all DPDK NIC drivers according to whether they drive da
 
 The list of drivers can be found at https://doc.dpdk.org/guides-20.02/nics/index.html, but some of the non-HW ones are not mentioned, such as "bonding".
 
-For ease of scripting, the 'Name' column contains the exact names of the driver folders, in alphabetical order.
+For ease of scripting, the 'Name' column contains the exact names of the driver folders, in alphabetical order, and the document ends after the end of the table.
 
 For ease of reading, cells with 'no' are left empty.
 
@@ -44,7 +44,7 @@ For ease of reading, cells with 'no' are left empty.
 | mvneta      | yes | yes    |                        |
 | mvpp2       | yes | yes    |                        |
 | netvsc      | yes |        | Not sure; assuming no  |
-| nfb         | yes | yes    |                        |
+| nfb         |     |        | Wrapper for libnfb     |
 | nfp         | yes | yes    |                        |
 | null        |     |        | Fake debug device      |
 | octeontx    | yes |        | Command-based queue    |
@@ -58,7 +58,7 @@ For ease of reading, cells with 'no' are left empty.
 | szedata2    | yes |        | FPGA-based NICs        |
 | tap         |     |        | Software devices       |
 | thunderx    | yes | yes    |                        |
-| vdev_netvsc | yes |        | Vdev version of Netvsc |
+| vdev_netvsc |     |        | Control plane only     |
 | vhost       |     |        | Wrapper for rte_vhost  |
 | virtio      | yes | yes    |                        |
 | vmxnet3     | yes | yes    |                        |

@@ -1,4 +1,3 @@
 results/
+plots/
 __pycache__
-*.svg
-*.pdf
