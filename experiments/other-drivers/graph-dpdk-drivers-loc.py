@@ -6,6 +6,8 @@ import sys
 sys.path.append("..")
 import common
 
+subprocess.check_output(["sh", "-c", "git submodule update --init --recursive"])
+
 print("Counting and graphing lines of code, this will take less than a minute...")
 
 result = subprocess.check_output(["sh", "-c", "sed -e '0,/| Name/d' dpdk-drivers.md | tail -n+2 | grep '|\s*yes\s*|' | cut -d '|' -f 2"]).decode('utf-8').strip()
