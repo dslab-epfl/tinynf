@@ -1,16 +1,17 @@
 #!/usr/bin/python3
 
-import matplotlib as mpl
-import common
 import pathlib
 import sys
+
+sys.path.append("..")
+import common
 
 if len(sys.argv) < 3:
   print('[ERROR] Args: <name> <file>*')
   sys.exit(1)
 
 name = sys.argv[1]
-files = sys.argv[2:]
+files = ['results/' + f for f in sys.argv[2:]]
 
 values = {}
 lat_min = 10000000
@@ -42,4 +43,5 @@ ax.set_xlim(lat_min, lat_9999th)
 
 plt.xlabel('Latency (\u03BCs)')
 plt.ylabel('CCDF')
-common.save_plot(plt, 'Latencies ' + name)
+common.save_plot(plt, name)
+print("Done! Plot is in ../plots/" + name + ".svg")

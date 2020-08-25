@@ -1,11 +1,14 @@
 #!/usr/bin/python3
 
-import common
 import math
 import os
 import pathlib
 import statistics
 import sys
+
+sys.path.append("..")
+import common
+
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -93,4 +96,5 @@ plt.xlabel('Throughput (Gb/s)')
 plt.ylabel(perc_str + ' latency (\u03BCs)')
 plt.legend(loc='upper left', handletextpad=0.3, borderaxespad=0.08, edgecolor='white')
 
-common.save_plot(plt, 'Full ' + name)
+common.save_plot(plt, name)
+print("Done! Plot is in ../plots/" + name + ".svg")
