@@ -670,8 +670,9 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	//	 Each time the receive FIFO reaches the fullness indicated by RTH, hardware transmits a pause frame if the transmission of flow control frames is enabled."
 	// INTERPRETATION-CONTRADICTION: There is an obvious contradiction in the stated granularities (16 vs 32 bytes). We assume 32 is correct, since this also covers the 16 byte case.
 	// INTERPRETATION-MISSING: We assume that the "RXPBSIZE[n]-0x6000" calculation above refers to the RXPBSIZE in bytes (otherwise the size of FCRTH[n].RTH would be negative by default...)
-	//                         Thus we set FCRTH[0].RTH = 512 * 1024 - 0x6000, which importantly has the 5 lowest bits unset.
-	reg_write_field(device.addr, REG_FCRTH(0), REG_FCRTH_RTH, 512 * 1024 - 0x6000);
+	// INTERPRETATION-CONTRADICTION: The granularity has to refer to the reserved bits, otherwise there is not enough space for meaningful values.
+	//                         Thus we set FCRTH[0].RTH = (512 * 1024 - 0x6000) / 32
+	reg_write_field(device.addr, REG_FCRTH(0), REG_FCRTH_RTH, (512 * 1024 - 0x6000) / 32);
 	// "- Wait for EEPROM auto read completion."
 	// INTERPRETATION-MISSING: This refers to Section 8.2.3.2.1 EEPROM/Flash Control Register (EEC), Bit 9 "EEPROM Auto-Read Done"
 	// INTERPRETATION-MISSING: No timeout is mentioned, so we use 1s.
@@ -1254,10 +1255,14 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 {
 #ifdef VIGOR_SYMBEX
 	// Not great; but less assumptions than Vigor makes in the DPDK driver patches
+	// The core reason is the same: KLEE cannot reason about "any descriptor in the ring", the descriptor index must be concrete
 	if (klee_is_symbolic(agent->processed_delimiter)) {
 		agent->processed_delimiter = 0;
 		agent->flush_counter = 0;
 	}
+	// This could be removed by rewriting Vigor's nf.c to use TinyNF directly
+#undef IXGBE_AGENT_PROCESS_PERIOD
+#define IXGBE_AGENT_PROCESS_PERIOD 1
 #endif
 
 	// INTERPRETATION-MISSING: The data sheet does not specify the endianness of receive descriptor metadata fields.
