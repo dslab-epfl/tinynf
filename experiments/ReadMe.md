@@ -27,7 +27,7 @@ Note that if you want to reproduce multiple figures, you only need to run the da
 - **Figure 10**: In `perf-endtoend`, run `./graph-lat-ccdf.py 'Figure 10' dpdk-nop-dpdk/latencies/0 dpdk-nop-dpdk-batched/latencies/0 ixy-nop/latencies/0 ixy-nop-batched/latencies/0 tinynf-nop/latencies/0`
 - **Figure 11**: In `perf-endtoend`, run `./graph-lat-ccdf.py 'Figure 11' vigor-nat-dpdk/latencies-single/1000 vigor-nat-dpdk-batched/latencies-single/1000 vigor-nat/latencies-single/1000`
 
-- **Table 1**: TODO VERIF
+- **Table 1**: See [verification/ReadMe.md](verification/ReadMe.md)
 - **Table 2**: In `code-metrics`, run `./tabulate-drivers-loc.sh`
 - **Table 3**: In `perf-endtoend`, run `./bench-all.py` then `./tabulate-verified-nf-perf.sh`
 - **Table 4**: In `perf-lowlevel`, run `./measure-stats.sh` then `./tabulate-stats.sh`
