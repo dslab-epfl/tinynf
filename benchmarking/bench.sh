@@ -35,9 +35,13 @@ rm -rf results *.log
 NF_NAME="$(make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" -s print-nf-name)" # -s to not print 'Entering directory...'
 
 # Convenience function, now that we know what to clean up
-cleanup() { sudo pkill -x -9 "$NF_NAME" >/dev/null 2>&1; }
+cleanup()
+{
+  sudo pkill -x -9 "$NF_NAME" >/dev/null 2>&1;
+  ssh "$TESTER_HOST" "sudo pkill -9 MoonGen"
+}
 
-# Kill the NF in case some old instance is still running
+# Clean up already, in case some old stuff is still running
 cleanup
 
 # Delete any hugepages in case some program left them around

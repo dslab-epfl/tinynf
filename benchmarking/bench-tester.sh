@@ -17,8 +17,8 @@ fi
 
 echo '[bench] Setting up tester...'
 
-sudo pkill -x -9 MoonGen >/dev/null 2>&1 # in case it crashed previously
-sudo rm -rf /dev/hugepages/* # make sure there are no leftovers from a previous run
+# Make sure there are no leftovers from a previous run
+sudo rm -rf /dev/hugepages/*
 
 ./bind-devices-to-uio.sh $TESTER_DEVS
 
