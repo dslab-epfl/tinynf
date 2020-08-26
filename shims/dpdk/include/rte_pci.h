@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 
 struct rte_pci_addr
 {
