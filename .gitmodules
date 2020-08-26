@@ -1,9 +1,11 @@
 [submodule "benchmarking/moongen"]
 	path = benchmarking/moongen
 	url = https://github.com/emmericp/MoonGen
+	ignore = dirty
 [submodule "baselines/vigor/vigor"]
 	path = baselines/vigor/vigor
 	url = https://github.com/vigor-nf/vigor
+	ignore = dirty
 [submodule "baselines/ixy/ixy"]
 	path = baselines/ixy/ixy
 	url = https://github.com/emmericp/ixy

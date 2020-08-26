@@ -1,6 +1,14 @@
 #!/bin/sh
 # See ReadMe.md in this directory for documentation.
 
+THIS_DIR="$(dirname "$(readlink -f "$0")")"
+
+if [ ! -f "$THIS_DIR/config" ]; then
+  echo "[ERROR] Please create a 'config' file from the 'config.template' file in the same directory as $0"
+  exit 1
+fi
+. "$THIS_DIR/config"
+
 if [ -z "$1" ]; then
   echo "[ERROR] Please provide the directory of the NF as the first argument to $0"
   exit 1
@@ -17,14 +25,6 @@ if [ $# -lt 2 ]; then
   echo "[ERROR] Please provide at least the type of benchmark and layer as arguments to $0"
   exit 1
 fi
-
-THIS_DIR="$(dirname "$(readlink -f "$0")")"
-
-if [ ! -f "$THIS_DIR/config" ]; then
-  echo "[ERROR] Please create a 'config' file from the 'config.template' file in the same directory as $0"
-  exit 1
-fi
-. "$THIS_DIR/config"
 
 echo '[bench] Setting up the benchmark...'
 
