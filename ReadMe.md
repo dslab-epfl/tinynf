@@ -1,10 +1,9 @@
-Repository structure:
-- `baselines` contains other repositories that serve as baselines to measure performance
-- `benchmarking` contains benchmarking scripts
-- `code` contains the actual code:
-  - `env` is the environment abstraction layer
-  - `net` is the network abstraction, whose implementation is the driver
-  - `util` contains utility code
-  - `tinynf.c` shows an example of how to use the driver
-- `paper` contains scripts and data used for the paper (but not the paper itself)
-- `shims` contain shim layers used for the baselines above
+# TinyNF
+
+This repository contains the code associated with the paper "A Simpler and Faster NIC Driver Model for Network Functions" presented at OSDI 2020.
+
+The code of the "TinyNF" driver is in `code/`.
+
+The benchmarking scripts for NFs, which are independent of TinyNF, are in `benchmarking/`.
+
+The experiments presented in the paper, including replication instructions, are in `experiments/`.

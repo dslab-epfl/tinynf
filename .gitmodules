@@ -3,23 +3,23 @@
 	url = https://github.com/emmericp/MoonGen
 	ignore = dirty
 [submodule "baselines/vigor/vigor"]
-	path = baselines/vigor/vigor
+	path = experiments/baselines/vigor/vigor
 	url = https://github.com/vigor-nf/vigor
 	ignore = dirty
 [submodule "baselines/ixy/ixy"]
-	path = baselines/ixy/ixy
+	path = experiments/baselines/ixy/ixy
 	url = https://github.com/emmericp/ixy
 	ignore = dirty
 [submodule "baselines/dpdk/dpdk"]
-	path = baselines/dpdk/dpdk
+	path = experiments/baselines/dpdk/dpdk
 	url = https://github.com/DPDK/dpdk
 	ignore = dirty
 [submodule "baselines/vigor/dpdk-verified"]
-	path = baselines/vigor/dpdk-verified
+	path = experiments/baselines/vigor/dpdk-verified
 	url = http://dpdk.org/git/dpdk-stable
 	ignore = dirty
 [submodule "baselines/vigor/dpdk"]
-	path = baselines/vigor/dpdk
+	path = experiments/baselines/vigor/dpdk
 	url = http://dpdk.org/git/dpdk-stable
 	ignore = dirty
 [submodule "experiments/perf-lowlevel/papi"]
