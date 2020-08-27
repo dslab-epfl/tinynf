@@ -35,7 +35,7 @@ Assuming a 2-CPU machine whose second CPU has cores 8 to 15, we recommend the fo
 
 You will also need the following software:
 - GCC 10 (any version should work, but that is the one we used for the paper)
-- The shell utilities `bc`, `cloc, and `indent` (available under these names in most package repositories)
+- The shell utilities `bc`, `cloc`, and `indent` (available under these names in most package repositories)
 - Python 3 with the `matplotlib` package
 
 
