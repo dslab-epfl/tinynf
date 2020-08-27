@@ -9,9 +9,9 @@ DRIVERS='DPDK Ixy TinyNF'
 get_code()
 {
   if [ "$1" = 'Ixy' ]; then
-    printf '../../baselines/ixy/ixy/src/driver'
+    printf '../baselines/ixy/ixy/src/driver'
   elif [ "$1" = 'DPDK' ]; then
-    printf '../../baselines/dpdk/dpdk/drivers/net/ixgbe'
+    printf '../baselines/dpdk/dpdk/drivers/net/ixgbe'
   else
     printf '../../code/net/82599'
   fi

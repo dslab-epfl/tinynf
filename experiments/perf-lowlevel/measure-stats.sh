@@ -61,11 +61,11 @@ cd ../../code
 cd - >/dev/null
 
 # Collect data on DPDK
-cd ../../baselines/dpdk/measurable-nop
+cd ../baselines/dpdk/measurable-nop
   for batch in 1 32; do
     make clean
     EXTRA_CFLAGS="-DBATCH_SIZE=$batch -DTN_DEBUG_PERF=10001000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make >/dev/null 2>&1
-    ../../../benchmarking/bind-devices-to-uio.sh $DUT_DEVS
+    ../../../../benchmarking/bind-devices-to-uio.sh $DUT_DEVS
     for i in $(seq 1 10); do
       sudo LD_LIBRARY_PATH="$PAPI_DIR/src" taskset -c "$DUT_CPUS" ./build/app/nf >log$i 2>&1
     done

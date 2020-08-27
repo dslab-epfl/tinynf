@@ -88,4 +88,4 @@ In `code-metrics`, run `./tabulate-drivers-loc.sh`, which should take <10min.
 
 ### Table 4
 
-In `perf-lowlevel`, run `./measure-stats.sh` then `./tabulate-stats.sh`, which should take <2h in total.
+In `perf-lowlevel`, run `./measure-stats.sh` then `./tabulate-stats.sh`, which should take <2h in total and need ~20GB of free space due to the large amounts of data involved.

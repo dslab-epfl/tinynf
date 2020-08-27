@@ -9,7 +9,7 @@ THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 VIGOR_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/vigor
 
 # Use our own DPDK shim, and do that also for sub-commands
-RTE_SDK := $(THIS_DIR)/../../shims/dpdk
+RTE_SDK := $(THIS_DIR)/../../dpdk-shim
 RTE_TARGET := .
 SHELL := RTE_SDK='$(RTE_SDK)' RTE_TARGET='$(RTE_TARGET)' /bin/bash -O extglob -c
 

@@ -25,7 +25,7 @@ TN_CFLAGS += -D_GNU_SOURCE
 TN_CFLAGS += -I $(VIGOR_DIR) -I $(VIGOR_DIR)/vigpol
 
 # Include the file that holds the global variables for the DPDK shim
-RTE_SDK := $(THIS_DIR)/../../../shims/dpdk
+RTE_SDK := $(THIS_DIR)/../../../dpdk-shim
 RTE_TARGET := .
 TN_NO_RUN_TARGET := true
 DPDK_DIR := $(RTE_SDK)/$(RTE_TARGET)

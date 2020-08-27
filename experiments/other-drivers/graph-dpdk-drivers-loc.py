@@ -12,7 +12,7 @@ print("Counting and graphing lines of code, this will take less than a minute...
 
 result = subprocess.check_output(["sh", "-c", "sed -e '0,/| Name/d' dpdk-drivers.md | tail -n+2 | grep '|\s*yes\s*|' | cut -d '|' -f 2"]).decode('utf-8').strip()
 drivers = [line.strip() for line in result.split('\n')]
-locs = [(d, float(subprocess.check_output(["sh", "-c", "cloc --quiet --exclude-lang=make,build ../../baselines/dpdk/dpdk/drivers/net/" + d + " | grep '^SUM:' | awk '{print $5}'"]).decode('utf-8').strip()) / 1000.0) for d in drivers]
+locs = [(d, float(subprocess.check_output(["sh", "-c", "cloc --quiet --exclude-lang=make,build ../baselines/dpdk/dpdk/drivers/net/" + d + " | grep '^SUM:' | awk '{print $5}'"]).decode('utf-8').strip()) / 1000.0) for d in drivers]
 locs.sort(key=lambda t: t[1])
 x = list(range(len(locs)))
 y = [t[1] for t in locs]
