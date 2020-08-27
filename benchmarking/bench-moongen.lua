@@ -24,6 +24,7 @@ local HEATUP_RATE = 100 -- Mbps
 local HEATUP_BATCH_SIZE = 8 -- packets
 
 local LATENCY_DURATION = 30000 -- milliseconds
+local LATENCY_HEATUP_DURATION = 5000 -- milliseconds; discarded latency measurements
 local LATENCY_PACKETS_PER_SECOND = 1000 -- packets; not too much or MoonGen gets very confused
 local LATENCY_PACKETS_SIZE = 84 -- bytes, minimum 84
 local LATENCY_LOAD_INCREMENT = 500 -- Mbps
@@ -123,27 +124,35 @@ local packetInits = {
 -- Helper function, has to be global because it's started as a task
 -- Note that MoonGen doesn't want us to create more than one timestamper, so we do all iterations inside the task
 function _latencyTask(txQueue, rxQueue, layer, direction, labels)
+  local counter = 0
   local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
-  local rateLimiter = timer:new(1 / LATENCY_PACKETS_PER_SECOND)
-  local sendTimer = timer:new(LATENCY_DURATION / 1000)
+  local measureFunc = function()
+    return timestamper:measureLatency(LATENCY_PACKETS_SIZE, function(buf)
+      packetInits[direction](buf, LATENCY_PACKETS_SIZE)
+      packetConfigs[direction][layer](buf:getUdpPacket(), counter)
+      counter = (counter + 1) % FLOWS_COUNT
+    end, 1) -- wait 1ms at most before declaring a packet lost, to avoid confusing old packets for new ones
+  end
 
+  local rateLimiter = timer:new(1 / LATENCY_PACKETS_PER_SECOND)
+
+  -- Heatup part
+  local heatupTimer = timer:new(LATENCY_HEATUP_DURATION / 1000)
+  while heatupTimer:running() and mg.running() do
+    measureFunc()
+    rateLimiter:wait()
+    rateLimiter:reset()
+  end
+
+  local sendTimer = timer:new(LATENCY_DURATION / 1000)
   local results = {}
   for i = 1, #labels do
     mg.sleepMillis(LATENCY_TIME_PADDING)
+    rateLimiter:reset()
     sendTimer:reset()
+    counter = 0
 
     local lats = {}
-    local counter = 0
-    local measureFunc = function()
-      return timestamper:measureLatency(LATENCY_PACKETS_SIZE, function(buf)
-        packetInits[direction](buf, LATENCY_PACKETS_SIZE)
-        packetConfigs[direction][layer](buf:getUdpPacket(), counter)
-        counter = (counter + 1) % FLOWS_COUNT
-      end, 1) -- wait 1ms at most before declaring a packet lost, to avoid confusing old packets for new ones
-    end
-
-    measureFunc() -- expire flows if needed, without counting the latency
-
     while sendTimer:running() and mg.running() do
       lats[#lats+1] = measureFunc()
       rateLimiter:wait()
@@ -151,6 +160,7 @@ function _latencyTask(txQueue, rxQueue, layer, direction, labels)
     end
     results[#results+1] = lats
     io.write("[bench] " .. labels[i] .. ": " .. summarizeLatencies(lats) .. "\n")
+    io.flush()
     mg.sleepMillis(LATENCY_TIME_PADDING)
   end
 
@@ -246,6 +256,7 @@ end
 -- Heats up at the given layer
 function heatUp(queuePair, layer, ignoreloss)
   io.write("[bench] Heating up...\n")
+  io.flush()
   local task = startMeasureThroughput(queuePair.tx, queuePair.rx, HEATUP_RATE, layer, HEATUP_DURATION, queuePair.direction, HEATUP_BATCH_SIZE)
   local loss = task:wait()
   if not ignoreloss and loss > 0.01 then
@@ -253,6 +264,7 @@ function heatUp(queuePair, layer, ignoreloss)
     os.exit(1)
   end
   io.write("[bench] Finished heating up. Benchmarking...\n")
+  io.flush()
 end
 
 
@@ -290,6 +302,7 @@ function measureStandard(queuePairs, extraPair, args)
     end
 
     io.write("loss = " .. loss .. "\n")
+    io.flush()
 
     if (loss <= args.acceptableloss) then
       bestRate = rate
@@ -312,7 +325,7 @@ function measureStandard(queuePairs, extraPair, args)
     end
   end
 
-  -- don't do latency if explicitly asked to
+  -- don't do latency if explicitly asked not to
   if args.latencyload == -1 then
     return
   end
@@ -340,8 +353,11 @@ function measureStandard(queuePairs, extraPair, args)
       latencyLabels[i] = "" .. (rate * #queuePairs) .. " Mb/s"
     end
   end
+
   io.write("[bench] Measuring latency...\n")
   local latencyTask = startMeasureLatency(extraPair.tx, extraPair.rx, args.layer, extraPair.direction, latencyLabels)
+  mg.sleepMillis(LATENCY_HEATUP_DURATION)
+
   for r, rate in ipairs(latencyRates) do
     local throughputTasks = {}
     local loss = 0
@@ -377,6 +393,7 @@ end
 
 function flood(queuePairs, extraPair, args)
   io.write("[bench] Flooding. Stop with Ctrl+C.\n")
+  io.flush()
 
   local tasks = {}
   for i, pair in ipairs(queuePairs) do

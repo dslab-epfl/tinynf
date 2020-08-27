@@ -7,7 +7,7 @@ RTE_TARGET := x86_64-native-linuxapp-gcc
 # DPDK stuff, part 1
 include $(RTE_SDK)/mk/rte.vars.mk
 
-CFLAGS += -I $(SELF_DIR)/../../../code
+CFLAGS += -I $(SELF_DIR)/../../../../code
 
 SRCS-y += main.c
 

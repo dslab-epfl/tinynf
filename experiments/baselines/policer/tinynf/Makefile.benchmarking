@@ -44,7 +44,7 @@ TN_CFLAGS += -lpthread
 endif
 
 # Include the TinyNF makefile
-include $(THIS_DIR)/../../../code/Makefile
+include $(THIS_DIR)/../../../../code/Makefile
 
 # Include the Vigor NF's makefile, minus the other makefiles, so we can get the NF's args
 VIGOR_MAKEFILE := $(shell mktemp)

@@ -40,4 +40,4 @@ TN_CFLAGS += -w
 TN_CFLAGS += -DCAPACITY_POW2
 
 # Include the TinyNF makefile
-include $(THIS_DIR)/../../code/Makefile
+include $(THIS_DIR)/../../../code/Makefile
