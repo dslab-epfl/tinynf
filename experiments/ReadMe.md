@@ -2,6 +2,15 @@
 
 This folder contains experiments used for the OSDI'20 TinyNF paper.
 
+Subfolders:
+- `baselines`: baseline NFs for various experiments
+- `code-metrics`: scripts and data on code metrics such as number of lines of code
+- `dpdk-shim`: a shim layer allowing DPDK NFs to use TinyNF, assuming they only need the TinyNF model
+- `other-drivers`: scripts and data on other drivers, such as DPDK network drivers
+- `perf-endtoend`: scripts for measuring "end to end" performance
+- `perf-lowlevel`: scripts for measuring low-level performance metrics such as cache misses
+- `verification`: experiments related to formally verifying NFs running on TinyNF
+
 
 ## Prerequisites
 
