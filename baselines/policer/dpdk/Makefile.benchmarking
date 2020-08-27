@@ -1,3 +1,7 @@
+ifndef RTE_SDK
+$(error Please define RTE_SDK and RTE_TARGET)
+endif
+
 # get current dir, see https://stackoverflow.com/a/8080530
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
@@ -5,7 +9,7 @@ THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 VIGOR_DIR := $(THIS_DIR)/../../vigor/vigor
 
 # Vigor baseline setup script if needed
-_IGNORED := $(shell $(VIGOR_DIR)/../setup.sh 2>/dev/null)
+_IGNORED := $(shell cd $(VIGOR_DIR)/..; ./setup.sh 2>/dev/null)
 
 # DPDK stuff
 include $(RTE_SDK)/mk/rte.vars.mk

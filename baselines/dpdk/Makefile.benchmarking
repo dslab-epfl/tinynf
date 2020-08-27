@@ -2,7 +2,7 @@
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 # Run the setup script, in case it hasn't been run yet
-_IGNORED := $(shell $(THIS_DIR)/setup.sh 2>/dev/null)
+_IGNORED := $(shell cd $(THIS_DIR); ./setup.sh 2>/dev/null)
 
 RTE_SDK := $(THIS_DIR)/dpdk
 RTE_TARGET := x86_64-native-linuxapp-gcc
