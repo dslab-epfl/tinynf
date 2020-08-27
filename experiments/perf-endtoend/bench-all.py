@@ -3,6 +3,7 @@ from distutils.dir_util import copy_tree
 import os
 import shutil
 import subprocess
+import sys
 import time
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -129,9 +130,9 @@ def bench_vigor(nf, env):
   add_suffix(BENCH_RESULT_LATS_PATH, '-single')
   move_into(BENCH_RESULTS_PATH, out_folder)
 
-def bench(path, nf, kind, env):
+def bench(path, nf, kind, env, results_folder_name='results'):
   print('[ !!! ] Benchmarking', kind, nf, 'in', path)
-  out_folder = 'results/' + kind + '-' + get_key(nf, env)
+  out_folder = results_folder_name + '/' + kind + '-' + get_key(nf, env)
   bench_core(nf, THIS_DIR + '/../../' + path, ['standard'], env)
   remove(out_folder + '/latencies') # don't keep old latencies around
   move_into(BENCH_RESULTS_PATH, out_folder)
@@ -140,34 +141,38 @@ def bench(path, nf, kind, env):
 # Overall, because binding DPDK's igb_uio driver has a slight chance of hanging the machine for some reason,
 # each step performs all non-DPDK stuff first then all DPDK stuff
 
+
+# Special for the reduced CPU frequency benchmarks
+if len(sys.argv) > 1 and sys.argv[1] == 'slow-nops':
+  bench('code', 'nop', 'tinynf', {}, results_folder_name='results-slow')
+  bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET}, results_folder_name='results-slow')
+  bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE}, results_folder_name='results-slow')
+  return
+
+
 # DPDK's testpmd no-op, batched or not, vs TinyNF no-op vs Ixy no-op (throughput, zero-loss throughput, detailed latency)
-if 1:
-  bench('code', 'nop', 'tinynf', {})
-  bench('baselines/ixy', 'nop', 'ixy', {})
-  bench('baselines/ixy', 'nop', 'ixy', {'TN_BATCH_SIZE': BATCH_SIZE})
-  bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+bench('code', 'nop', 'tinynf', {})
+bench('baselines/ixy', 'nop', 'ixy', {})
+bench('baselines/ixy', 'nop', 'ixy', {'TN_BATCH_SIZE': BATCH_SIZE})
+bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # VigPol with TinyNF vs TinyNF-DPDK-shim vs DPDK vs DPDK batched, and parallel versions of TinyNF, DPDK, DPDK batched
-if 1:
-  bench('baselines/policer/tinynf', 'pol', 'tinynf', {})
-  bench('baselines/policer/dpdk', 'pol', 'tinynf', {'RTE_SDK': SHIM_RTE_SDK, 'RTE_TARGET': SHIM_RTE_TARGET})
-  bench('baselines/policer/tinynf', 'pol', 'tinynf-parallel', {'TN_2CORE': '1'})
-  bench('baselines/policer/dpdk', 'pol', 'vigor', {'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/policer/dpdk', 'pol', 'vigor', {'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
-  bench('baselines/policer/dpdk', 'pol', 'vigor-parallel', {'TN_2CORE': '1', 'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
-  bench('baselines/policer/dpdk', 'pol', 'vigor-parallel', {'TN_2CORE': '1', 'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+bench('baselines/policer/tinynf', 'pol', 'tinynf', {})
+bench('baselines/policer/dpdk', 'pol', 'tinynf', {'RTE_SDK': SHIM_RTE_SDK, 'RTE_TARGET': SHIM_RTE_TARGET})
+bench('baselines/policer/tinynf', 'pol', 'tinynf-parallel', {'TN_2CORE': '1'})
+bench('baselines/policer/dpdk', 'pol', 'vigor', {'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
+bench('baselines/policer/dpdk', 'pol', 'vigor', {'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
+bench('baselines/policer/dpdk', 'pol', 'vigor-parallel', {'TN_2CORE': '1', 'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
+bench('baselines/policer/dpdk', 'pol', 'vigor-parallel', {'TN_2CORE': '1', 'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Vigor NFs, as well as batched NAT for latency
-if 1:
-  for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
-    bench_vigor(nf, {})
-  for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
-    bench_vigor(nf, {'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
-  bench_vigor('nat', {'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
-
+for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
+  bench_vigor(nf, {})
+for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
+  bench_vigor(nf, {'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
+bench_vigor('nat', {'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 
 # SANITY CHECK: DPDK l3fwd, which should reach 2x10 Gb/s line rate, as indicated in the DPDK perf reports
-if 0:
-  bench('baselines/dpdk/l3fwd', 'l3fwd', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+# bench('baselines/dpdk/l3fwd', 'l3fwd', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET})

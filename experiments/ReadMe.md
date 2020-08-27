@@ -66,8 +66,14 @@ Then run the following, which should take a minute:
 
 ### Figure 9
 
-TODO NOP SLOW 50
-Add `intel_pstate=disable` to be able to control the frequency (with e.g. cpupower). However, the max frequency might become lower... e.g. on our Xeon E5-2667v2 this caps the max freq at 3.3GHz instead of 3.6GHz...
+Add `intel_pstate=disable` to your Linux kernel configuration; this requires an `update-grub` and a reboot.
+Set the maximum frequency of the CPU that runs the NFs to 2GHz, e.g. using `cpupower frequency-set`; note that due to how CPU frequencies work the actual freq may be a bit above or below the desired frequency.
+
+In `perf-endtoend`, run `./bench-all.py slow-nops`, which should take <1h.
+
+Then run `./graph-tput-vs-lat.py 'Figure 9' 50 99 results-slow/dpdk-nop-dpdk results-slow/dpdk-nop-dpdk-batched results-slow/tinynf-nop
+
+Note: Don't forget to remove `intel_pstate=disable` if you plan on running other benchmarks; on our Xeon E5-2667v2 this option caps the max freq at 3.3GHz instead of 3.6GHz...
 
 
 ### Table 1

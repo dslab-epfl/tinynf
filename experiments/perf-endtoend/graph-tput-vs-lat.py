@@ -38,7 +38,12 @@ all_vals = []
 max_tput = 0
 lats_comp = []
 for nf in nfs:
-  nf_folder = THIS_DIR + '/results/' + nf
+  if '/' in nf:
+    # Override the results folder
+    nf_folder = THIS_DIR + nf
+  else:
+    # For convenience, default folder
+    nf_folder = THIS_DIR + '/results/' + nf
 
   lats_folder = pathlib.Path(nf_folder, 'latencies')
   lats = [(float(lat_file.name) / 1000, [float(l) / 1000.0 for l in lat_file.read_text().splitlines()]) for lat_file in lats_folder.glob('*')]
