@@ -936,6 +936,14 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	// 	Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
 	// We don't need to do anything here by assumption NOWANT
 
+	// Section 4.6.8 Transmit Initialization:
+	// "Enable transmit path by setting DMATXCTL.TE. This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
+	// Do it here already, so that the transmit path does not contain any non-queue-specific registers.
+	reg_set_field(device.addr, REG_DMATXCTL, REG_DMATXCTL_TE);
+	// However... Section 8.2.3.9.10 Transmit Descriptor Control: "When setting the global Tx enable DMATXCTL.TE the ENABLE bit of Tx queue zero is enabled as well."
+	// So we must disable that.
+	reg_clear_field(device.addr, REG_TXDCTL(0), REG_TXDCTL_ENABLE);
+
 	uintptr_t device_addr;
 	if (!tn_mem_allocate(sizeof(struct tn_net_device), &device_addr)) {
 		TN_DEBUG("Could not allocate device struct");
@@ -1223,8 +1231,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, const struct tn_n
 	reg_clear_field(device->addr, REG_DCATXCTRL(queue_index), REG_DCATXCTRL_TX_DESC_WB_RO_EN);
 	// "- Enable transmit path by setting DMATXCTL.TE.
 	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
-	// Do it every time, it makes the code simpler.
-	reg_set_field(device->addr, REG_DMATXCTL, REG_DMATXCTL_TE);
+	// Already done in device initialization
 	// "- Enable the queue using TXDCTL.ENABLE.
 	//    Poll the TXDCTL register until the Enable bit is set."
 	// INTERPRETATION-MISSING: No timeout is mentioned here, let's say 1s to be safe.
