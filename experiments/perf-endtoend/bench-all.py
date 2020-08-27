@@ -7,17 +7,17 @@ import time
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
-DPDK_RTE_SDK = THIS_DIR + '/../baselines/dpdk/dpdk'
-VIGOR_RTE_SDK = THIS_DIR + '/../baselines/vigor/dpdk'
-VIGOR_RTE_SDK_VERIFIED = THIS_DIR + '/../baselines/vigor/dpdk-verified'
-SHIM_RTE_SDK = THIS_DIR + '/../shims/dpdk'
+DPDK_RTE_SDK = THIS_DIR + '/../../baselines/dpdk/dpdk'
+VIGOR_RTE_SDK = THIS_DIR + '/../../baselines/vigor/dpdk'
+VIGOR_RTE_SDK_VERIFIED = THIS_DIR + '/../../baselines/vigor/dpdk-verified'
+SHIM_RTE_SDK = THIS_DIR + '/../../shims/dpdk'
 
 RTE_TARGET = 'x86_64-native-linuxapp-gcc'
 SHIM_RTE_TARGET = '.'
 
 BATCH_SIZE = '32'
 
-BENCH_PATH = THIS_DIR + '/../benchmarking/'
+BENCH_PATH = THIS_DIR + '/../../benchmarking/'
 BENCH_RESULTS_PATH = BENCH_PATH + '/results'
 BENCH_RESULT_TPUT_PATH = BENCH_RESULTS_PATH + '/throughput'
 BENCH_RESULT_LATS_PATH = BENCH_RESULTS_PATH + '/latencies'
@@ -122,7 +122,7 @@ def bench_core(nf, nf_dir, benchflags, additional_env):
 def bench_vigor(nf, env):
   print('[ !!! ] Benchmarking', nf, 'in the Vigor way')
   suffix = '/with-dpdk' if has_dpdk(env) else ''
-  bench_core(nf, THIS_DIR + '/../baselines/vigor' + suffix, ['--acceptableloss=0.001', '--latencyload=1000', 'standard-single'], env)
+  bench_core(nf, THIS_DIR + '/../../baselines/vigor' + suffix, ['--acceptableloss=0.001', '--latencyload=1000', 'standard-single'], env)
   out_folder = 'results/vigor-' + get_key(nf, env)
   remove(out_folder + '/latencies-single') # don't keep old latencies around
   add_suffix(BENCH_RESULT_TPUT_PATH, '-single')
@@ -132,7 +132,7 @@ def bench_vigor(nf, env):
 def bench(path, nf, kind, env):
   print('[ !!! ] Benchmarking', kind, nf, 'in', path)
   out_folder = 'results/' + kind + '-' + get_key(nf, env)
-  bench_core(nf, THIS_DIR + '/../' + path, ['standard'], env)
+  bench_core(nf, THIS_DIR + '/../../' + path, ['standard'], env)
   remove(out_folder + '/latencies') # don't keep old latencies around
   move_into(BENCH_RESULTS_PATH, out_folder)
 

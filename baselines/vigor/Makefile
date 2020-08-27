@@ -14,10 +14,7 @@ RTE_TARGET := .
 SHELL := RTE_SDK='$(RTE_SDK)' RTE_TARGET='$(RTE_TARGET)' /bin/bash -O extglob -c
 
 # Run the setup script, in case it hasn't been run yet
-_IGNORED := $(shell $(THIS_DIR)/setup.sh 2>/dev/null)
-
-# Force the auto-generation of Vigor files; pretend we have VeriFast so the auto-generation doesn't fail
-_IGNORED := $(shell cd $(VIGOR_DIR)/vig$(TN_NF); dir=$$(mktemp -d); ln -s /bin/true "$$dir/verifast"; PATH="$$dir:$$PATH" make autogen; rm -rf "$$dir")
+_IGNORED := $(shell cd $(THIS_DIR); ./setup.sh 2>/dev/null)
 
 # Our main stub
 TN_FILES += main.c

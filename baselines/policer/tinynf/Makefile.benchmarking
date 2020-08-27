@@ -8,7 +8,7 @@ SHELL := /bin/bash -O extglob -c
 VIGOR_DIR := $(THIS_DIR)/../../vigor/vigor
 
 # Vigor baseline setup script if needed
-_IGNORED := $(shell $(VIGOR_DIR)/../setup.sh 2>/dev/null)
+_IGNORED := $(shell $(VIGOR_DIR)/..; ./setup.sh 2>/dev/null)
 
 # Our main file
 TN_FILES += $(THIS_DIR)/main.c
