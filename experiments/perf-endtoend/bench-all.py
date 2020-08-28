@@ -147,7 +147,7 @@ if len(sys.argv) > 1 and sys.argv[1] == 'slow-nops':
   bench('../code', 'nop', 'tinynf', {}, results_folder_name='results-slow')
   bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET}, results_folder_name='results-slow')
   bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE}, results_folder_name='results-slow')
-  return
+  sys.exit(0)
 
 
 # DPDK's testpmd no-op, batched or not, vs TinyNF no-op vs Ixy no-op (throughput, zero-loss throughput, detailed latency)
