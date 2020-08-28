@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int papi_events[] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_L1_DCM, PAPI_L1_ICM, PAPI_L2_TCM, PAPI_L3_TCM};
+static int papi_events[] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_L1_DCM, PAPI_L2_TCM, PAPI_L3_TCM};
 #define papi_events_count sizeof(papi_events)/sizeof(papi_events[0])
 static uint64_t papi_counter;
 static uint8_t papi_batches[TN_DEBUG_PERF];
@@ -17,9 +17,10 @@ static long long papi_values[TN_DEBUG_PERF][papi_events_count];
 
 // PAPI functions: call START(), then RESET() before your event and RECORD() immediately after
 #define TN_PERF_PAPI_START() do { \
-		printf("Counters: cycles, instructions, L1d, L1i, L2, L3\n"); \
-		if (PAPI_start_counters(papi_events, papi_events_count) != PAPI_OK) { \
-			printf("Couldn't start PAPI counters!\n"); \
+		printf("Counters: cycles, instructions, L1d, L2, L3\n"); \
+		int _papi_start_ret; \
+		if ((_papi_start_ret = PAPI_start_counters(papi_events, papi_events_count)) != PAPI_OK) { \
+			printf("Couldn't start PAPI counters! Error: %s\n", PAPI_strerror(_papi_start_ret)); \
 			exit(1); \
 		} \
 	} while(0)
