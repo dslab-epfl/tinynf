@@ -9,7 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int papi_events[] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_L1_DCM, PAPI_L2_TCM, PAPI_L3_TCM};
+// PAPI can't measure L1d hits directly on our machine so we have to compute it from memory insructions and L1d misses
+static int papi_events[] = {PAPI_REF_CYC, PAPI_TOT_INS, PAPI_LD_INS, PAPI_SR_INS, PAPI_L1_DCM, PAPI_L2_TCM};
 #define papi_events_count sizeof(papi_events)/sizeof(papi_events[0])
 static uint64_t papi_counter;
 static uint8_t papi_batches[TN_DEBUG_PERF];
@@ -17,7 +18,7 @@ static long long papi_values[TN_DEBUG_PERF][papi_events_count];
 
 // PAPI functions: call START(), then RESET() before your event and RECORD() immediately after
 #define TN_PERF_PAPI_START() do { \
-		printf("Counters: cycles, instructions, L1d, L2, L3\n"); \
+		printf("Counters: cycles, instructions, L1d hits, L2 hits, L3/mem hits\n"); \
 		int _papi_start_ret; \
 		if ((_papi_start_ret = PAPI_start_counters(papi_events, papi_events_count)) != PAPI_OK) { \
 			printf("Couldn't start PAPI counters! Error: %s\n", PAPI_strerror(_papi_start_ret)); \
@@ -33,10 +34,13 @@ static long long papi_values[TN_DEBUG_PERF][papi_events_count];
 			for (uint64_t n = 0; n < TN_DEBUG_PERF; n++) { \
 				uint64_t m; \
 				for (m = 0; m < papi_batches[n] && n + m < TN_DEBUG_PERF; m++) { \
-					for (uint64_t e = 0; e < papi_events_count; e++) { \
-						printf("%lf ", (double) papi_values[n][e] / (double) papi_batches[n]); \
-					} \
-					printf("\n"); \
+					printf("%lf %lf %lf %lf %lf\n", \
+						(double) papi_values[n][0] / (double) papi_batches[n], \
+						(double) papi_values[n][1] / (double) papi_batches[n], \
+						(double) (papi_values[n][2] + papi_values[n][3] - papi_values[n][4]) / (double) papi_batches[n], \
+						(double) (papi_values[n][4] - papi_values[n][5]) / (double) papi_batches[n], \
+						(double) papi_values[n][5] / (double) papi_batches[n] \
+					); \
 				} \
 				n += m - 1; \
 			} \
