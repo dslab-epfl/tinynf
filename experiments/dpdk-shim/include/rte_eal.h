@@ -34,12 +34,12 @@ static inline int rte_eal_init(int argc, char** argv)
 		devices_count++;
 	}
 
-	if (!tn_util_parse_pci(devices_count, devices_args, tn_dpdk_pci_devices)) {
+	if (!tn_util_parse_pci(devices_count, devices_args, tn_dpdk_pci_addresses)) {
 		return -1;
 	}
 
 	for (int n = 0; n < devices_count; n++) {
-		if (!tn_net_device_init(tn_dpdk_pci_devices[n], &(tn_dpdk_devices[n].device))) {
+		if (!tn_net_device_init(tn_dpdk_pci_addresses[n], &(tn_dpdk_devices[n].device))) {
 			return -2;
 		}
 

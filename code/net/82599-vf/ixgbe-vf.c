@@ -33,9 +33,9 @@
 #define REG_PFVFTE(n) (0x08110u + 4u*n)
 
 
-bool tn_net_device_init(struct tn_pci_device pci_device, struct tn_net_device** out_device)
+bool tn_net_device_init(struct tn_pci_address pci_address, struct tn_net_device** out_device)
 {
-	if (!pf_init(pci_device, out_device)) {
+	if (!pf_init(pci_address, out_device)) {
 		TN_DEBUG("PF could not init");
 		return false;
 	}

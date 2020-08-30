@@ -33,8 +33,8 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, v
 
 int main(int argc, char** argv)
 {
-	struct tn_pci_device pci_devices[2];
-	if (argc - 1 != 2 || !tn_util_parse_pci(2, argv + 1, pci_devices)) {
+	struct tn_pci_address pci_addresses[2];
+	if (argc - 1 != 2 || !tn_util_parse_pci(2, argv + 1, pci_addresses)) {
 		TN_INFO("Couldn't parse two PCI devices from argv");
 		return 1;
 	}
@@ -46,7 +46,7 @@ int main(int argc, char** argv)
 			TN_INFO("Couldn't init agent");
 			return 2 + 100*n;
 		}
-		if (!tn_net_device_init(pci_devices[n], &(devices[n]))) {
+		if (!tn_net_device_init(pci_addresses[n], &(devices[n]))) {
 			TN_INFO("Couldn't init device");
 			return 3 + 100*n;
 		}

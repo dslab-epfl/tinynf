@@ -19,7 +19,7 @@
 struct tn_net_device;
 struct tn_net_agent;
 
-bool tn_net_device_init(struct tn_pci_device pci_device, struct tn_net_device** out_device);
+bool tn_net_device_init(struct tn_pci_address pci_address, struct tn_net_device** out_device);
 bool tn_net_device_set_promiscuous(struct tn_net_device* device);
 
 bool tn_net_agent_init(struct tn_net_agent** out_agent);

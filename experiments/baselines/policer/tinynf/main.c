@@ -40,8 +40,8 @@ void* thread1(void* arg)
 
 int main(int argc, char** argv)
 {
-	struct tn_pci_device pci_devices[DEVICES_COUNT];
-	if (argc - 1 < DEVICES_COUNT || !tn_util_parse_pci(DEVICES_COUNT, argv + 1, pci_devices)) {
+	struct tn_pci_address pci_addresses[DEVICES_COUNT];
+	if (argc - 1 < DEVICES_COUNT || !tn_util_parse_pci(DEVICES_COUNT, argv + 1, pci_addresses)) {
 		TN_INFO("Couldn't parse two PCI devices from argv");
 		return 1;
 	}
@@ -49,7 +49,7 @@ int main(int argc, char** argv)
 	// TinyNF init
 	struct tn_net_device* devices[DEVICES_COUNT];
 	for (uint16_t n = 0; n < DEVICES_COUNT; n++) {
-		if (!tn_net_device_init(pci_devices[n], &(devices[n]))) {
+		if (!tn_net_device_init(pci_addresses[n], &(devices[n]))) {
 			return 1000 + n;
 		}
 		if (!tn_net_device_set_promiscuous(devices[n])) {

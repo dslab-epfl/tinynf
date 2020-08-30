@@ -449,26 +449,26 @@ static bool reg_is_field_cleared(uintptr_t addr, uint32_t reg, uint32_t field)
 	return reg_read_field(addr, reg, field) == 0;
 }
 
-// Get the value of PCI register 'reg' on device 'dev'
-static uint32_t pcireg_read(struct tn_pci_device dev, uint8_t reg)
+// Get the value of PCI register 'reg' on the device at address 'addr'
+static uint32_t pcireg_read(struct tn_pci_address addr, uint8_t reg)
 {
-	uint32_t value = tn_pci_read(dev, reg);
+	uint32_t value = tn_pci_read(addr, reg);
 	TN_VERBOSE("IXGBE PCI write: 0x%02" PRIx8 " -> 0x%08" PRIx32, reg, value);
 	return value;
 }
 
-// Check if the field 'field' (from the PCIREG_... #defines) of register 'reg' on device 'dev' is cleared (i.e., reads as all 0s)
-static bool pcireg_is_field_cleared(struct tn_pci_device dev, uint8_t reg, uint32_t field)
+// Check if the field 'field' (from the PCIREG_... #defines) of register 'reg' on the device at address 'addr' is cleared (i.e., reads as all 0s)
+static bool pcireg_is_field_cleared(struct tn_pci_address addr, uint8_t reg, uint32_t field)
 {
-	return (pcireg_read(dev, reg) & field) == 0;
+	return (pcireg_read(addr, reg) & field) == 0;
 }
 
-// Set (i.e., write all 1s) the field 'field' (from the PCIREG_... #defines) of register 'reg' on device 'dev'
-static void pcireg_set_field(struct tn_pci_device dev, uint8_t reg, uint32_t field)
+// Set (i.e., write all 1s) the field 'field' (from the PCIREG_... #defines) of register 'reg' on the device at address 'addr'
+static void pcireg_set_field(struct tn_pci_address addr, uint8_t reg, uint32_t field)
 {
-	uint32_t old_value = pcireg_read(dev, reg);
+	uint32_t old_value = pcireg_read(addr, reg);
 	uint32_t new_value = old_value | field;
-	tn_pci_write(dev, reg, new_value);
+	tn_pci_write(addr, reg, new_value);
 	TN_VERBOSE("IXGBE PCI write: 0x%02" PRIx8 " := 0x%08" PRIx32, reg, new_value);
 }
 
@@ -479,7 +479,7 @@ static void pcireg_set_field(struct tn_pci_device dev, uint8_t reg, uint32_t fie
 struct tn_net_device
 {
 	uintptr_t addr;
-	struct tn_pci_device pci;
+	struct tn_pci_address pci_addr;
 	bool rx_enabled;
 	uint8_t _padding[7];
 };
@@ -522,7 +522,7 @@ static bool ixgbe_device_reset(const struct tn_net_device* const device)
 		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
 		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
 		// INTERPRETATION-MISSING: Might? Let's say this is a must, and that we assume the software resets work...
-		if (!pcireg_is_field_cleared(device->pci, PCIREG_DEVICESTATUS, PCIREG_DEVICESTATUS_TRANSACTIONPENDING)) {
+		if (!pcireg_is_field_cleared(device->pci_addr, PCIREG_DEVICESTATUS, PCIREG_DEVICESTATUS_TRANSACTIONPENDING)) {
 			TN_DEBUG("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable");
 			return false;
 		}
@@ -563,14 +563,14 @@ static bool ixgbe_device_reset(const struct tn_net_device* const device)
 // Section 4.6.3 Initialization Sequence
 // -------------------------------------
 
-bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_device** out_device)
+bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_device** out_device)
 {
 	// The NIC supports 64-bit addresses, so pointers can't be larger
 	static_assert(UINTPTR_MAX <= UINT64_MAX, "uintptr_t must fit in an uint64_t");
 
 	// First make sure the PCI device is really an 82599ES 10-Gigabit SFI/SFP+ Network Connection
 	// According to https://cateee.net/lkddb/web-lkddb/IXGBE.html, this means vendor ID (bottom 16 bits) 8086, device ID (top 16 bits) 10FB
-	uint32_t pci_id = pcireg_read(pci_device, PCIREG_ID);
+	uint32_t pci_id = pcireg_read(pci_address, PCIREG_ID);
 	if (pci_id != ((0x10FBu << 16) | 0x8086u)) {
 		TN_DEBUG("PCI device is not what was expected");
 		return false;
@@ -581,28 +581,28 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 	// Section 9.3.7.1.4 Power Management Control / Status Register (PMCSR):
 	// "No_Soft_Reset. This bit is always set to 0b to indicate that the 82599 performs an internal reset upon transitioning from D3hot to D0 via software control of the PowerState bits."
 	// Thus, the device cannot go from D3 to D0 without resetting, which would mean losing the BARs.
-	if (!pcireg_is_field_cleared(pci_device, PCIREG_PMCSR, PCIREG_PMCSR_POWER_STATE)) {
+	if (!pcireg_is_field_cleared(pci_address, PCIREG_PMCSR, PCIREG_PMCSR_POWER_STATE)) {
 		TN_DEBUG("PCI device not in D0.");
 		return false;
 	}
 	// The bus master may not be enabled; enable it just in case.
-	pcireg_set_field(pci_device, PCIREG_COMMAND, PCIREG_COMMAND_BUS_MASTER_ENABLE);
+	pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_BUS_MASTER_ENABLE);
 	// Same for memory reads, i.e. actually using the BARs.
-	pcireg_set_field(pci_device, PCIREG_COMMAND, PCIREG_COMMAND_MEMORY_ACCESS_ENABLE);
+	pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_MEMORY_ACCESS_ENABLE);
 	// Finally, since we don't want interrupts and certainly not legacy ones, make sure they're disabled
-	pcireg_set_field(pci_device, PCIREG_COMMAND, PCIREG_COMMAND_INTERRUPT_DISABLE);
+	pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_INTERRUPT_DISABLE);
 
 	// Section 8.2.2 Registers Summary PF - BAR 0: As the section title indicate, registers are at the address pointed to by BAR 0, which is the only one we care about
-	uint32_t pci_bar0low = pcireg_read(pci_device, PCIREG_BAR0_LOW);
+	uint32_t pci_bar0low = pcireg_read(pci_address, PCIREG_BAR0_LOW);
 	// Sanity check: a 64-bit BAR must have bit 2 of low as 1 and bit 1 of low as 0 as per Table 9-4 Base Address Registers' Fields
 	if ((pci_bar0low & BIT(2)) == 0 || (pci_bar0low & BIT(1)) != 0) {
 		TN_DEBUG("BAR0 is not a 64-bit BAR");
 		return false;
 	}
-	uint32_t pci_bar0high = pcireg_read(pci_device, PCIREG_BAR0_HIGH);
+	uint32_t pci_bar0high = pcireg_read(pci_address, PCIREG_BAR0_HIGH);
 	// No need to detect the size, since we know exactly which device we're dealing with. (This also means no writes to BARs, one less chance to mess everything up)
 
-	struct tn_net_device device = { .pci = pci_device };
+	struct tn_net_device device = { .pci_addr = pci_address };
 	// Section 9.3.6.1 Memory and IO Base Address Registers:
 	// As indicated in Table 9-4, the low 4 bits are read-only and not part of the address
 	uintptr_t dev_phys_addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
@@ -612,7 +612,7 @@ bool tn_net_device_init(const struct tn_pci_device pci_device, struct tn_net_dev
 		return false;
 	}
 
-	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, device.pci.bus, device.pci.device, device.pci.function, device.addr);
+	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, device.pci_addr.bus, device.pci_addr.device, device.pci_addr.function, device.addr);
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"

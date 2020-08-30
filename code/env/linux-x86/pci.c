@@ -32,10 +32,10 @@ static bool get_ioport_access(void)
 }
 
 // From https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-bus-pci
-static bool get_device_node(const struct tn_pci_device device, uint64_t* out_node)
+static bool get_device_node(const struct tn_pci_address address, uint64_t* out_node)
 {
 	char node_str[3] = {0};
-	if (!tn_fs_readline(node_str, sizeof(node_str)/sizeof(char), "/sys/bus/pci/devices/0000:%02" PRIx8 ":%02" PRIx8 ".%" PRIx8 "/numa_node", device.bus, device.device, device.function)) {
+	if (!tn_fs_readline(node_str, sizeof(node_str)/sizeof(char), "/sys/bus/pci/devices/0000:%02" PRIx8 ":%02" PRIx8 ".%" PRIx8 "/numa_node", address.bus, address.device, address.function)) {
 		TN_DEBUG("Could not read PCI numa node");
 		return false;
 	}
@@ -54,40 +54,40 @@ static bool get_device_node(const struct tn_pci_device device, uint64_t* out_nod
 	return true;
 }
 
-static uint32_t get_pci_reg_addr(const struct tn_pci_device device, const uint8_t reg)
+static uint32_t get_pci_reg_addr(const struct tn_pci_address address, const uint8_t reg)
 {
-	return 0x80000000u | ((uint32_t)device.bus << 16) | ((uint32_t)device.device << 11) | ((uint32_t)device.function << 8) | reg;
+	return 0x80000000u | ((uint32_t) address.bus << 16) | ((uint32_t) address.device << 11) | ((uint32_t) address.function << 8) | reg;
 }
 
-static void pci_address(const struct tn_pci_device device, const uint8_t reg)
+static void pci_target(const struct tn_pci_address address, const uint8_t reg)
 {
-	const uint32_t addr = get_pci_reg_addr(device, reg);
-	outl(addr, PCI_CONFIG_ADDR);
+	const uint32_t reg_addr = get_pci_reg_addr(address, reg);
+	outl(reg_addr, PCI_CONFIG_ADDR);
 	// Wait til the outl is done
 	outb(0, 0x80);
 }
 
-uint32_t tn_pci_read(const struct tn_pci_device device, const uint8_t reg)
+uint32_t tn_pci_read(const struct tn_pci_address address, const uint8_t reg)
 {
 	uint64_t device_node;
-	if (!get_ioport_access() || !get_device_node(device, &device_node) || !tn_numa_is_current_node(device_node)) {
+	if (!get_ioport_access() || !get_device_node(address, &device_node) || !tn_numa_is_current_node(device_node)) {
 		return 0xFFFFFFFFu; // same as reading unknown reg
 	}
 
-	pci_address(device, reg);
+	pci_target(address, reg);
 	const uint32_t result = inl(PCI_CONFIG_DATA);
 	TN_VERBOSE("PCI read: 0x%02" PRIx8 " -> 0x%08" PRIx32, reg, result);
 	return result;
 }
 
-void tn_pci_write(const struct tn_pci_device device, const uint8_t reg, const uint32_t value)
+void tn_pci_write(const struct tn_pci_address address, const uint8_t reg, const uint32_t value)
 {
 	uint64_t device_node;
-	if (!get_ioport_access() || !get_device_node(device, &device_node) || !tn_numa_is_current_node(device_node)) {
+	if (!get_ioport_access() || !get_device_node(address, &device_node) || !tn_numa_is_current_node(device_node)) {
 		return;
 	}
 
-	pci_address(device, reg);
+	pci_target(address, reg);
 	outl(value, PCI_CONFIG_DATA);
 	TN_VERBOSE("PCI write: 0x%02" PRIx8 " := 0x%08" PRIx32, reg, value);
 }

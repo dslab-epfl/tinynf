@@ -60,7 +60,7 @@ static bool tn_util_parse_hex8(char** ref_value, char end, uint8_t* out_result)
 
 
 // Parses PCI addresses in Bus:Device.Function format; out_devices must be pre-allocated
-static bool tn_util_parse_pci(uint64_t count, char** values, struct tn_pci_device* out_devices)
+static bool tn_util_parse_pci(uint64_t count, char** values, struct tn_pci_address* out_addresses)
 {
 	for (uint64_t n = 0; n < count; n++) {
 		uint8_t bus;
@@ -78,7 +78,7 @@ static bool tn_util_parse_pci(uint64_t count, char** values, struct tn_pci_devic
 			return false;
 		}
 
-		out_devices[n] = (struct tn_pci_device) { .bus = bus, .device = device, .function = function };
+		out_addresses[n] = (struct tn_pci_address) { .bus = bus, .device = device, .function = function };
 	}
 
 	return true;
