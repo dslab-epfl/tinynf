@@ -61,7 +61,7 @@ int main(int argc, char** argv)
 	}
 
 	for (uint8_t n = 0; n < 2; n++) {
-		if (!tn_net_agent_add_output(agents[n], devices[1 - n], 0)) {
+		if (!tn_net_agent_add_output(agents[n], devices[1 - n])) {
 			TN_INFO("Couldn't set agent TX");
 			return 6 + 100*n;
 		}

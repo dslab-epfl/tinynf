@@ -24,7 +24,7 @@ bool tn_net_device_set_promiscuous(struct tn_net_device* device);
 
 bool tn_net_agent_init(struct tn_net_agent** out_agent);
 bool tn_net_agent_set_input(struct tn_net_agent* agent, struct tn_net_device* device);
-bool tn_net_agent_add_output(struct tn_net_agent* agent, struct tn_net_device* device, uint64_t queue_index);
+bool tn_net_agent_add_output(struct tn_net_agent* agent, struct tn_net_device* device);
 
 
 // Packet processing API

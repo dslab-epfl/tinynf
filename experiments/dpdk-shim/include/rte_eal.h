@@ -58,14 +58,14 @@ static inline int rte_eal_init(int argc, char** argv)
 	}
 
 	for (int n = 0; n < devices_count; n++) {
-		if (!tn_net_agent_add_output(tn_dpdk_devices[n].agent, tn_dpdk_devices[1 - n].device, 0)) {
+		if (!tn_net_agent_add_output(tn_dpdk_devices[n].agent, tn_dpdk_devices[1 - n].device)) {
 			return -6;
 		}
 	}
 #else
 	for (int n = 0; n < devices_count; n++) {
 		for (int d = 0; d < devices_count; d++) {
-			if (!tn_net_agent_add_output(tn_dpdk_devices[n].agent, tn_dpdk_devices[d].device, n)) {
+			if (!tn_net_agent_add_output(tn_dpdk_devices[n].agent, tn_dpdk_devices[d].device)) {
 				return -7;
 			}
 		}

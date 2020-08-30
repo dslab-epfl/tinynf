@@ -72,14 +72,14 @@ int main(int argc, char** argv)
 
 #ifdef ASSUME_ONE_WAY
 	for (uint16_t p = 0; p < DEVICES_COUNT; p++) {
-		if (!tn_net_agent_add_output(agents[p], devices[1 - p], 0)) {
+		if (!tn_net_agent_add_output(agents[p], devices[1 - p])) {
 			return 10000 + p;
 		}
 	}
 #else
 	for (uint16_t p = 0; p < DEVICES_COUNT; p++) {
 		for (uint16_t q = 0; q < DEVICES_COUNT; q++) {
-			if (!tn_net_agent_add_output(agents[p], devices[q], p)) {
+			if (!tn_net_agent_add_output(agents[p], devices[q])) {
 				return 10000 + p * q;
 			}
 		}

@@ -64,7 +64,7 @@ int main(int argc, char** argv)
 	}
 
 	for (uint16_t p = 0; p < DEVICES_COUNT; p++) {
-		if (!tn_net_agent_add_output(agents[p], devices[1 - p], 0)) {
+		if (!tn_net_agent_add_output(agents[p], devices[1 - p])) {
 			return 10000 + p;
 		}
 	}
