@@ -5,10 +5,12 @@
 #define tn_net_device_init pf_init
 #define tn_net_device_set_promiscuous pf_set_promiscuous
 #define tn_net_agent_set_input pf_set_input
+#define tn_net_agent_add_output pf_add_output
 #include "net/82599/ixgbe.c"
 #undef tn_net_device_init
 #undef tn_net_device_set_promiscuous
 #undef tn_net_agent_set_input
+#undef tn_net_agent_add_output
 
 
 #include "util/log.h"
@@ -57,7 +59,8 @@
 
 // 16 KB
 #define IXGBE_VF_SIZE 16u * 1024u
-
+// Max number of supported VFs
+#define IXGBE_VF_COUNT 64u
 
 
 // Write 'value' to the field 'field' (from the PCIREG_... #defines) of register 'reg' on the PCI device at address 'addr'
@@ -83,8 +86,8 @@ bool tn_net_device_init(struct tn_pci_address pci_address, struct tn_net_device*
 	// First, we clearly need to enable VFs in PCIREG_SRIOV_CONTROL, which has a separate bit for allowing them to use memory.
 	pcireg_set_field(pci_address, PCIREG_SRIOV_CONTROL, PCIREG_SRIOV_CONTROL_VFE);
 	pcireg_set_field(pci_address, PCIREG_SRIOV_CONTROL, PCIREG_SRIOV_CONTROL_VFMSE);
-	// Then let's set the number of VFs; 64 is the max and seems like a nice number
-	pcireg_write_field(pci_address, PCIREG_SRIOV_NUMVFS, PCIREG_SRIOV_NUMVFS_NUMVFS, 64u);
+	// Then let's set the number of VFs
+	pcireg_write_field(pci_address, PCIREG_SRIOV_NUMVFS, PCIREG_SRIOV_NUMVFS_NUMVFS, IXGBE_VF_COUNT);
 	// This should be enough... now there are enabled VFs, whose BARs are at at 16 KB offsets starting at the VF BAR0.
 
 
@@ -219,11 +222,11 @@ bool tn_net_agent_set_input(struct tn_net_agent* agent, struct tn_net_device* de
 	}
 
 	// Fake device!
-	// - The address is the VF one, since RX queue registers are at the same offset on PFs and VFs
-	// - We pretend rx_enabled is true cause it needs to be done to the PF, not VF
+	// The address is the VF one, since RX queue registers are at the same offset on PFs and VFs
+	// We pretend rx_enabled is true cause it needs to be done to the PF, not VF
 	struct tn_net_device vf_device = {
 		.addr = vf0_addr,
-		.pci_addr = device->pci_addr,
+		.pci_addr = device->pci_addr, // should not be needed
 		.rx_enabled = true
 	};
 	if (!pf_set_input(agent, &vf_device)) {
@@ -238,5 +241,33 @@ bool tn_net_agent_set_input(struct tn_net_agent* agent, struct tn_net_device* de
 		return false;
 	}
 
+	return true;
+}
+
+bool tn_net_agent_add_output(struct tn_net_agent* agent, struct tn_net_device* device)
+{
+	uint64_t vf_index = 0;
+	for (; vf_index < IXGBE_VF_COUNT; vf_index++) {
+		void* vf_addr;
+		if (!vf_get_virtual_bar(device, vf_index, &vf_addr)) {
+			TN_DEBUG("Could not get VF BAR.");
+			return false;
+		}
+
+		// Fake device!
+		// The address is the VF one minus 0x4000, since TX queue registers are at 0x20xx in VFs but 0x60xx in PFs
+		struct tn_net_device vf_device = {
+			.addr = (uint8_t*) vf_addr - 0x4000u,
+			.pci_addr = device->pci_addr, // should not be needed
+			.rx_enabled = true // whatever
+		};
+		if (pf_add_output(agent, &vf_device)) {
+			break;
+		}
+	}
+	if (vf_index == IXGBE_VF_COUNT) {
+		TN_DEBUG("None of the VFs worked with add_output");
+		return false;
+	}
 	return true;
 }
