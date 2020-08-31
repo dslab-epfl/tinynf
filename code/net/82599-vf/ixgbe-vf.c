@@ -21,6 +21,9 @@ bool pf_add_output(struct tn_net_agent* agent, struct tn_net_device* device);
 #define PCIREG_SRIOV_CONTROL_VFE BIT(0)
 #define PCIREG_SRIOV_CONTROL_VFMSE BIT(3)
 
+// Section 9.4.4.4 PCIe SR-IOV Max/Total VFs Register
+#define PCIREG_SRIOV_VFS 0x16C
+
 // Section 9.4.4.5 PCIe SR-IOV Num VFs Register
 #define PCIREG_SRIOV_NUMVFS 0x170u
 #define PCIREG_SRIOV_NUMVFS_NUMVFS BITS(0,15)
@@ -56,6 +59,9 @@ bool pf_add_output(struct tn_net_agent* agent, struct tn_net_device* device);
 // Section 8.2.3.27.8 PF VF Transmit Enable
 #define REG_PFVFTE(n) (0x08110u + 4u*n)
 
+// Section 8.2.3.1.2 Device Status Register
+#define REG_STATUS_NUMVFS BITS(10,17)
+
 
 // 16 KB
 #define IXGBE_VF_SIZE 16u * 1024u
@@ -63,16 +69,44 @@ bool pf_add_output(struct tn_net_agent* agent, struct tn_net_device* device);
 #define IXGBE_VF_COUNT 64u
 
 
-// Write 'value' to the field 'field' (from the PCIREG_... #defines) of register 'reg' on the PCI device at address 'addr'
-static void pcireg_write_field(struct tn_pci_address address, uint16_t reg, uint32_t field, uint32_t field_value)
+
+static bool get_pcie_extended_address(struct tn_pci_address pci_address, uint16_t reg, volatile uint32_t** out_addr)
 {
-	uint32_t old_value = pcireg_read(address, reg);
-	uint32_t shift = find_first_set(field);
-	uint32_t new_value = (old_value & ~field) | (field_value << shift);
-	TN_VERBOSE("IXGBE PCI write: 0x%04" PRIx16 " := 0x%08" PRIx32, reg, new_value);
-	tn_pci_write(address, reg, new_value);
+	// HUGE UNSAFE BAD TERRIBLE NO GOOD HACK
+	// The proper way to do this is to find the ACPI RSDP, then use it to find the ACPI XSDT,
+	// then use it to find the ACPI MCFG, then loop through sub-tables to find the base address corresponding to the bus,
+	// then use memory-mapped access to the enhanced config space (ECAM).
+	// So instead we just lookup MMCONFIG in `sudo cat /proc/iomem` and use that; it will only work on this machine but oh well.
+	uintptr_t ecam_addr = 0xC0000000;
+	void* ecam_virt_addr;
+	if (!tn_mem_phys_to_virt(ecam_addr, 256 * 1024 * 1024, &ecam_virt_addr)) { // ECAM is 256 MB max
+		TN_DEBUG("Could not phys-to-virt the ECAM base addr");
+		return false;
+	}
+	uintptr_t offset = ((uintptr_t) pci_address.bus << 20) | ((uintptr_t) pci_address.device << 15) | ((uintptr_t) pci_address.function << 12) | (uintptr_t) reg;
+	*out_addr = (volatile uint32_t*) ((uint8_t*) ecam_virt_addr + offset);
+	return true;
 }
 
+static uint32_t read_pcie_extended_reg(struct tn_pci_address pci_address, uint16_t reg)
+{
+	volatile uint32_t* mmapped_addr;
+	if (get_pcie_extended_address(pci_address, reg, &mmapped_addr)) {
+		return *mmapped_addr;
+	}
+	return 0xFFFFFFFFu; // like other bad PCI reads
+
+}
+
+static void write_pcie_extended_field(struct tn_pci_address pci_address, uint16_t reg, uint32_t field, uint32_t value)
+{
+	volatile uint32_t* mmapped_addr;
+	if (get_pcie_extended_address(pci_address, reg, &mmapped_addr)) {
+		uint32_t old_value = *mmapped_addr;
+		uint32_t new_value = (old_value & ~field) | (value << find_first_set(field));
+		*mmapped_addr = new_value;
+	} // else ignore, like other bad PCI writes
+}
 
 
 bool tn_net_device_init(struct tn_pci_address pci_address, struct tn_net_device** out_device)
@@ -84,12 +118,23 @@ bool tn_net_device_init(struct tn_pci_address pci_address, struct tn_net_device*
 	struct tn_net_device* device = *out_device;
 
 	// Now for the fun part of enabling the VFs, which isn't really documented outside of specific registers' descriptions...
-	// First, we clearly need to enable VFs in PCIREG_SRIOV_CONTROL, which has a separate bit for allowing them to use memory.
-	pcireg_set_field(pci_address, PCIREG_SRIOV_CONTROL, PCIREG_SRIOV_CONTROL_VFE);
-	pcireg_set_field(pci_address, PCIREG_SRIOV_CONTROL, PCIREG_SRIOV_CONTROL_VFMSE);
-	// Then let's set the number of VFs
-	pcireg_write_field(pci_address, PCIREG_SRIOV_NUMVFS, PCIREG_SRIOV_NUMVFS_NUMVFS, IXGBE_VF_COUNT);
+	// Sanity check: there's a register with the number of VFs, it should be 64 in the upper part and 64 in the lower part
+	if (read_pcie_extended_reg(pci_address, PCIREG_SRIOV_VFS) != 0x00400040u) {
+		TN_DEBUG("Bad SRIOV_VFS: %" PRIx32, read_pcie_extended_reg(pci_address, PCIREG_SRIOV_VFS));
+		return false;
+	}
+	// First set the number of VFs
+	write_pcie_extended_field(pci_address, PCIREG_SRIOV_NUMVFS, PCIREG_SRIOV_NUMVFS_NUMVFS, IXGBE_VF_COUNT);
+	// Then enable VFs in PCIREG_SRIOV_CONTROL, which has a separate bit for allowing them to use memory.
+	// This has to be done _after_ setting the number of VFs, despite the data sheet not mentioning this.
+	write_pcie_extended_field(pci_address, PCIREG_SRIOV_CONTROL, PCIREG_SRIOV_CONTROL_VFE, 1);
+	write_pcie_extended_field(pci_address, PCIREG_SRIOV_CONTROL, PCIREG_SRIOV_CONTROL_VFMSE, 1);
 	// This should be enough... now there are enabled VFs, whose BARs are at at 16 KB offsets starting at the VF BAR0.
+	// Sanity check: The STATUS register (in memory space, not PCI) mirrors NUMVFS
+	if (reg_read_field(device->addr, REG_STATUS, REG_STATUS_NUMVFS) != IXGBE_VF_COUNT) {
+		TN_DEBUG("Did not properly write to NUMVFS");
+		return false;
+	}
 
 
 	// Section 4.6.10.2 IOV Initialization
@@ -195,17 +240,18 @@ bool tn_net_device_set_promiscuous(struct tn_net_device* device)
 
 static bool vf_get_virtual_bar(struct tn_net_device* device, uint64_t index, void** out_addr)
 {
-	uint32_t bar0low = pcireg_read(device->pci_addr, PCIREG_SRIOV_BAR0_LOW);
+	uint32_t bar0low = read_pcie_extended_reg(device->pci_addr, PCIREG_SRIOV_BAR0_LOW);
 	// Sanity check: a 64-bit BAR must have bit 2 of low as 1 and bit 1 of low as 0 as per Table 9-4 Base Address Registers' Fields
 	if ((bar0low & BIT(2)) == 0 || (bar0low & BIT(1)) != 0) {
 		TN_DEBUG("VF BAR0 is not a 64-bit BAR");
 		return false;
 	}
 
-	uint32_t bar0high = pcireg_read(device->pci_addr, PCIREG_SRIOV_BAR0_HIGH);
+	uint32_t bar0high = read_pcie_extended_reg(device->pci_addr, PCIREG_SRIOV_BAR0_HIGH);
 
-	uintptr_t bar0 = ((uint64_t) bar0high << 32) | (uint64_t) bar0low;
+	uintptr_t bar0 = ((uint64_t) bar0high << 32) | (bar0low & ~BITS(0,3));
 
+	TN_DEBUG("VF BAR0: %" PRIxPTR, bar0);
 	if (!tn_mem_phys_to_virt(bar0 + index * IXGBE_VF_SIZE, IXGBE_VF_SIZE, out_addr)) {
 		TN_DEBUG("Could not phys-to-virt VF BAR.");
 		return false;
