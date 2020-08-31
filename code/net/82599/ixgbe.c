@@ -388,15 +388,15 @@ static uint32_t find_first_set(uint32_t value)
 // ---------------------
 
 // Get the value of register 'reg' on NIC at address 'addr'
-static uint32_t reg_read(uintptr_t addr, uint32_t reg)
+static uint32_t reg_read(void* addr, uint32_t reg)
 {
-	uint32_t val_le = *((volatile uint32_t*)(addr + reg));
+	uint32_t val_le = *((volatile uint32_t*)((uint8_t*) addr + reg));
 	uint32_t result = tn_le_to_cpu32(val_le);
-	TN_VERBOSE("IXGBE read (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
+	TN_VERBOSE("IXGBE read (addr 0x%016p): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;
 }
 // Get the value of field 'field' (from the REG_... macros) of register 'reg' on NIC at address 'addr'
-static uint32_t reg_read_field(uintptr_t addr, uint32_t reg, uint32_t field)
+static uint32_t reg_read_field(void* addr, uint32_t reg, uint32_t field)
 {
 	uint32_t value = reg_read(addr, reg);
 	uint32_t shift = find_first_set(field);
@@ -404,19 +404,19 @@ static uint32_t reg_read_field(uintptr_t addr, uint32_t reg, uint32_t field)
 }
 
 // Write 'value' to the given register address 'reg_addr'; this is the sum of a NIC address and a register offset
-static void reg_write_raw(uintptr_t reg_addr, uint32_t value)
+static void reg_write_raw(volatile uint32_t* reg_addr, uint32_t value)
 {
-	*((volatile uint32_t*)reg_addr) = tn_cpu_to_le32(value);
+	*reg_addr = tn_cpu_to_le32(value);
 }
 
 // Write 'value' to register 'reg' on NIC at address 'addr'
-static void reg_write(uintptr_t addr, uint32_t reg, uint32_t value)
+static void reg_write(void* addr, uint32_t reg, uint32_t value)
 {
-	reg_write_raw(addr + reg, value);
-	TN_VERBOSE("IXGBE write (addr 0x%016" PRIxPTR "): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
+	reg_write_raw((volatile uint32_t*) ((uint8_t*)addr + reg), value);
+	TN_VERBOSE("IXGBE write (addr 0x%016p): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
 // Write 'value' to the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
-static void reg_write_field(uintptr_t addr, uint32_t reg, uint32_t field, uint32_t field_value)
+static void reg_write_field(void* addr, uint32_t reg, uint32_t field, uint32_t field_value)
 {
 	uint32_t old_value = reg_read(addr, reg);
 	uint32_t shift = find_first_set(field);
@@ -425,18 +425,18 @@ static void reg_write_field(uintptr_t addr, uint32_t reg, uint32_t field, uint32
 }
 
 // Clear (i.e., write all 0s) register 'reg' on NIC at address 'addr'
-static void reg_clear(uintptr_t addr, uint32_t reg)
+static void reg_clear(void* addr, uint32_t reg)
 {
 	reg_write(addr, reg, 0);
 }
 // Clear (i.e., write all 0s) the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
-static void reg_clear_field(uintptr_t addr, uint32_t reg, uint32_t field)
+static void reg_clear_field(void* addr, uint32_t reg, uint32_t field)
 {
 	reg_write_field(addr, reg, field, 0);
 }
 
 // Set (i.e., write all 1s) the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
-static void reg_set_field(uintptr_t addr, uint32_t reg, uint32_t field)
+static void reg_set_field(void* addr, uint32_t reg, uint32_t field)
 {
 	uint32_t old_value = reg_read(addr, reg);
 	uint32_t new_value = old_value | field;
@@ -444,7 +444,7 @@ static void reg_set_field(uintptr_t addr, uint32_t reg, uint32_t field)
 }
 
 // Check if the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr' is cleared (i.e., reads as all 0s)
-static bool reg_is_field_cleared(uintptr_t addr, uint32_t reg, uint32_t field)
+static bool reg_is_field_cleared(void* addr, uint32_t reg, uint32_t field)
 {
 	return reg_read_field(addr, reg, field) == 0;
 }
@@ -478,7 +478,7 @@ static void pcireg_set_field(struct tn_pci_address addr, uint16_t reg, uint32_t 
 
 struct tn_net_device
 {
-	uintptr_t addr;
+	void* addr;
 	struct tn_pci_address pci_addr;
 	bool rx_enabled;
 	uint8_t _padding[7];
@@ -612,7 +612,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 		return false;
 	}
 
-	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016" PRIxPTR, device.pci_addr.bus, device.pci_addr.device, device.pci_addr.function, device.addr);
+	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016p", device.pci_addr.bus, device.pci_addr.device, device.pci_addr.function, device.addr);
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
@@ -946,12 +946,11 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 	// So we must disable that.
 	reg_clear_field(device.addr, REG_TXDCTL(0), REG_TXDCTL_ENABLE);
 
-	uintptr_t device_addr;
-	if (!tn_mem_allocate(sizeof(struct tn_net_device), &device_addr)) {
+	// Do the memory alloc here so we don't have to free it if we fail earlier
+	if (!tn_mem_allocate(sizeof(struct tn_net_device), (void**) out_device)) {
 		TN_DEBUG("Could not allocate device struct");
 		return false;
 	}
-	*out_device = (struct tn_net_device*) device_addr;
 	**out_device = device;
 	return true;
 }
@@ -991,8 +990,8 @@ bool tn_net_device_set_promiscuous(struct tn_net_device* const device)
 
 struct tn_net_agent
 {
-	uintptr_t buffer;
-	uintptr_t receive_tail_addr;
+	uint8_t* buffer;
+	volatile uint32_t* receive_tail_addr;
 	uint64_t processed_delimiter;
 	uint64_t outputs_count;
 	uint64_t flush_counter;
@@ -1004,7 +1003,7 @@ struct tn_net_agent
 	#define TRANSMIT_HEAD_MULTIPLIER 16
 	volatile uint32_t transmit_heads[IXGBE_AGENT_OUTPUTS_MAX * TRANSMIT_HEAD_MULTIPLIER];
 	volatile uint64_t* rings[IXGBE_AGENT_OUTPUTS_MAX]; // 0 == shared receive/transmit, rest are exclusive transmit
-	uintptr_t transmit_tail_addrs[IXGBE_AGENT_OUTPUTS_MAX];
+	volatile uint32_t* transmit_tail_addrs[IXGBE_AGENT_OUTPUTS_MAX];
 };
 
 // --------------------
@@ -1014,30 +1013,27 @@ struct tn_net_agent
 bool tn_net_agent_init(struct tn_net_agent** out_agent)
 {
 	struct tn_net_agent* agent;
-	if (!tn_mem_allocate(sizeof(struct tn_net_agent), (uintptr_t*) &agent)) {
+	if (!tn_mem_allocate(sizeof(struct tn_net_agent), (void**) &agent)) {
 		TN_DEBUG("Could not allocate agent");
 		return false;
 	}
 
-	if (!tn_mem_allocate(IXGBE_RING_SIZE * PACKET_BUFFER_SIZE, &(agent->buffer))) {
+	if (!tn_mem_allocate(IXGBE_RING_SIZE * PACKET_BUFFER_SIZE, (void**) &(agent->buffer))) {
 		TN_DEBUG("Could not allocate buffer for agent");
-		tn_mem_free((uintptr_t) agent);
+		tn_mem_free(agent);
 		return false;
 	}
 
 	for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
-		uintptr_t ring_addr;
-		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, &ring_addr)) { // 16 bytes per descriptor, i.e. 2x64bits
+		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, (void**) &(agent->rings[n]))) { // 16 bytes per descriptor, i.e. 2x64bits
 			TN_DEBUG("Could not allocate ring");
 			for (uint64_t m = 0; m < n; m++) {
-				tn_mem_free((uintptr_t) agent->rings[m]);
+				tn_mem_free((void*) agent->rings[m]);
 			}
 			tn_mem_free(agent->buffer);
-			tn_mem_free((uintptr_t) agent);
+			tn_mem_free(agent);
 			return false;
 		}
-
-		agent->rings[n] = (volatile uint64_t*) ring_addr;
 	}
 
 	*out_agent = agent;
@@ -1083,7 +1079,7 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_devi
 	}
 
 	// The 82599 has more than one receive queue, but we only need queue 0
-	uint8_t queue_index = 0;
+	uint32_t queue_index = 0;
 
 	// See later for details of RXDCTL.ENABLE
 	if (!reg_is_field_cleared(device->addr, REG_RXDCTL(queue_index), REG_RXDCTL_ENABLE)) {
@@ -1104,7 +1100,7 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_devi
 	// 	"The receive descriptor base address must point to a 128 byte-aligned block of data."
 	// This alignment is guaranteed by the agent initialization
 	uintptr_t ring_phys_addr;
-	if (!tn_mem_virt_to_phys((uintptr_t) agent->rings[0], &ring_phys_addr)) {
+	if (!tn_mem_virt_to_phys((void*) agent->rings[0], &ring_phys_addr)) {
 		TN_DEBUG("Could not get phys addr of main ring");
 		return false;
 	}
@@ -1151,7 +1147,7 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_devi
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
 	reg_clear_field(device->addr, REG_DCARXCTRL(queue_index), REG_DCARXCTRL_UNKNOWN);
 
-	agent->receive_tail_addr = device->addr + REG_RDT(queue_index);
+	agent->receive_tail_addr = (volatile uint32_t*) ((uint8_t*) device->addr + REG_RDT(queue_index));
 	return true;
 }
 
@@ -1166,7 +1162,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_dev
 		return false;
 	}
 
-	uint64_t queue_index = 0;
+	uint32_t queue_index = 0;
 	for (; queue_index < TRANSMIT_QUEUES_COUNT; queue_index++) {
 		// See later for details of TXDCTL.ENABLE
 		if (reg_is_field_cleared(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_ENABLE)) {
@@ -1182,13 +1178,13 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_dev
 	// "- Allocate a region of memory for the transmit descriptor list."
 	// This is already done in agent initialization as agent->rings[*]
 	volatile uint64_t* ring = agent->rings[agent->outputs_count];
-	// Program all descriptors' buffer address now
-	for (uintptr_t n = 0; n < IXGBE_RING_SIZE; n++) {
+	// Program all descriptors' buffer addresses now
+	for (uint64_t n = 0; n < IXGBE_RING_SIZE; n++) {
 		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 		// "Buffer Address (64)", 1st line offset 0
-		uintptr_t packet = agent->buffer + n * PACKET_BUFFER_SIZE;
+		void* packet_addr = agent->buffer + n * PACKET_BUFFER_SIZE;
 		uintptr_t packet_phys_addr;
-		if (!tn_mem_virt_to_phys(packet, &packet_phys_addr)) {
+		if (!tn_mem_virt_to_phys(packet_addr, &packet_phys_addr)) {
 			TN_DEBUG("Could not get a packet's physical address");
 			return false;
 		}
@@ -1202,7 +1198,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_dev
 	// 	"The Transmit Descriptor Base Address must point to a 128 byte-aligned block of data."
 	// This alignment is guaranteed by the agent initialization
 	uintptr_t ring_phys_addr;
-	if (!tn_mem_virt_to_phys((uintptr_t) ring, &ring_phys_addr)) {
+	if (!tn_mem_virt_to_phys((void*) ring, &ring_phys_addr)) {
 		TN_DEBUG("Could not get a transmit ring's physical address");
 		return false;
 	}
@@ -1224,7 +1220,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_dev
 	reg_write_field(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	uintptr_t head_phys_addr;
-	if (!tn_mem_virt_to_phys((uintptr_t) &(agent->transmit_heads[agent->outputs_count * TRANSMIT_HEAD_MULTIPLIER]), &head_phys_addr)) {
+	if (!tn_mem_virt_to_phys((void*) &(agent->transmit_heads[agent->outputs_count * TRANSMIT_HEAD_MULTIPLIER]), &head_phys_addr)) {
 		TN_DEBUG("Could not get the physical address of the transmit head");
 		return false;
 	}
@@ -1261,7 +1257,7 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_dev
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
 	// Nothing to transmit yet, so leave TDT alone.
 
-	agent->transmit_tail_addrs[agent->outputs_count] = device->addr + REG_TDT(queue_index);
+	agent->transmit_tail_addrs[agent->outputs_count] = (volatile uint32_t*) ((uint8_t*) device->addr + REG_TDT(queue_index));
 	agent->outputs_count = agent->outputs_count + 1;
 	return true;
 }
@@ -1301,7 +1297,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	}
 
 	// This cannot overflow because the packet is by definition in an allocated block of memory
-	*out_packet = (uint8_t*) agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
+	*out_packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
 	*out_packet_length = tn_le_to_cpu16(receive_metadata & 0xFFFFu);
 

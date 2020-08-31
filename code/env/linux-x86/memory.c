@@ -33,7 +33,7 @@ static uintptr_t get_page_size(void)
 	return 0;
 }
 
-bool tn_mem_allocate(const uint64_t size, uintptr_t* out_addr)
+bool tn_mem_allocate(const size_t size, void** out_addr)
 {
 	// OK if size is smaller, we'll just return too much memory
 	if (size > HUGEPAGE_SIZE) {
@@ -62,11 +62,9 @@ bool tn_mem_allocate(const uint64_t size, uintptr_t* out_addr)
 		return false;
 	}
 
-	uintptr_t addr = (uintptr_t) page;
-
 	// Default kernel policy is to allocate on-node, so this should work fine
 	uint64_t node;
-	if (!tn_numa_get_addr_node(addr, &node)) {
+	if (!tn_numa_get_addr_node(page, &node)) {
 		TN_DEBUG("Could not get memory's NUMA node");
 		goto error;
 	}
@@ -75,7 +73,7 @@ bool tn_mem_allocate(const uint64_t size, uintptr_t* out_addr)
 		goto error;
 	}
 
-	*out_addr = addr;
+	*out_addr = page;
 	return true;
 
 error:
@@ -83,17 +81,13 @@ error:
 	return false;
 }
 
-void tn_mem_free(const uintptr_t addr)
+void tn_mem_free(void* const addr)
 {
-	munmap((void*) addr, HUGEPAGE_SIZE);
+	munmap(addr, HUGEPAGE_SIZE);
 }
 
-bool tn_mem_phys_to_virt(const uintptr_t addr, const uint64_t size, uintptr_t* out_virt_addr)
+bool tn_mem_phys_to_virt(const uintptr_t addr, const size_t size, void** out_virt_addr)
 {
-	if (size > SIZE_MAX) {
-		TN_DEBUG("Cannot phys-to-virt more than SIZE_MAX");
-		return false;
-	}
 	if (addr != (uintptr_t) (off_t) addr) {
 		TN_DEBUG("Cannot phys-to-virt an addr that does not roundtrip to off_t");
 		return false;
@@ -108,8 +102,8 @@ bool tn_mem_phys_to_virt(const uintptr_t addr, const uint64_t size, uintptr_t* o
 	void* mapped = mmap(
 		// No specific address
 		NULL,
-		// Size of the mapping (cast OK because we checked above)
-		(size_t) size,
+		// Size of the mapping
+		size,
 		// R/W page
 		PROT_READ | PROT_WRITE,
 		// Send updates to the underlying "file"
@@ -120,7 +114,7 @@ bool tn_mem_phys_to_virt(const uintptr_t addr, const uint64_t size, uintptr_t* o
 		(off_t) addr
 	);
 
-	// nothing we can do if this fail, since we didn't write don't even bother checking
+	// nothing we can do if this fails, since we didn't write don't even bother checking
 	close(mem_fd);
 
 	if (mapped == MAP_FAILED) {
@@ -128,12 +122,12 @@ bool tn_mem_phys_to_virt(const uintptr_t addr, const uint64_t size, uintptr_t* o
 		return false;
 	}
 
-	*out_virt_addr = (uintptr_t) mapped;
+	*out_virt_addr = mapped;
 	return true;
 }
 
 // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
-bool tn_mem_virt_to_phys(const uintptr_t addr, uintptr_t* out_phys_addr)
+bool tn_mem_virt_to_phys(void* const addr, uintptr_t* out_phys_addr)
 {
 	const uintptr_t page_size = get_page_size();
 	if (page_size == 0) {
@@ -141,7 +135,7 @@ bool tn_mem_virt_to_phys(const uintptr_t addr, uintptr_t* out_phys_addr)
 		return false;
 	}
 
-	const uintptr_t page = addr / page_size;
+	const uintptr_t page = (uintptr_t) addr / page_size;
 	const uintptr_t map_offset = page * sizeof(uint64_t);
 	if (map_offset != (uintptr_t) (off_t) map_offset) {
 		TN_DEBUG("Cannot virt-to-phys with an offset that does not roundtrip to off_t");
@@ -180,7 +174,7 @@ bool tn_mem_virt_to_phys(const uintptr_t addr, uintptr_t* out_phys_addr)
 		return false;
 	}
 
-	const uintptr_t addr_offset = addr % page_size;
+	const uintptr_t addr_offset = (uintptr_t) addr % page_size;
 	*out_phys_addr = pfn * page_size + addr_offset;
 	return true;
 }

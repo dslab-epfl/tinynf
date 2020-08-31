@@ -32,7 +32,8 @@ TN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ifeq (,$(TN_FILES))
 TN_FILES := $(TN_DIR)/tinynf.c
 ifneq (,$(findstring clang,$(TN_CC)))
-TN_CFLAGS += -Weverything
+# Ignore cast warnings, we know what we're doing
+TN_CFLAGS += -Weverything -Wno-cast-qual -Wno-cast-align
 endif
 ifneq (,$(findstring gcc,$(TN_CC)))
 TN_CFLAGS += -Wall -Wextra -Wshadow -Wstrict-aliasing -Wunused-macros -pedantic
