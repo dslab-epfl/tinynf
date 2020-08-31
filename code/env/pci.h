@@ -15,7 +15,7 @@ struct tn_pci_address {
 
 
 // Reads the given register of the device at the given address and return its value.
-uint32_t tn_pci_read(struct tn_pci_address address, uint16_t reg);
+uint32_t tn_pci_read(struct tn_pci_address address, uint8_t reg);
 
 // Writes the given value to the given register of the device at the given address
-void tn_pci_write(struct tn_pci_address address, uint16_t reg, uint32_t value);
+void tn_pci_write(struct tn_pci_address address, uint8_t reg, uint32_t value);

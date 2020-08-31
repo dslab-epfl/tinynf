@@ -66,9 +66,10 @@ bool pf_add_output(struct tn_net_agent* agent, struct tn_net_device* device);
 // Write 'value' to the field 'field' (from the PCIREG_... #defines) of register 'reg' on the PCI device at address 'addr'
 static void pcireg_write_field(struct tn_pci_address address, uint16_t reg, uint32_t field, uint32_t field_value)
 {
-	uint32_t old_value = tn_pci_read(address, reg);
+	uint32_t old_value = pcireg_read(address, reg);
 	uint32_t shift = find_first_set(field);
 	uint32_t new_value = (old_value & ~field) | (field_value << shift);
+	TN_VERBOSE("IXGBE PCI write: 0x%04" PRIx16 " := 0x%08" PRIx32, reg, new_value);
 	tn_pci_write(address, reg, new_value);
 }
 

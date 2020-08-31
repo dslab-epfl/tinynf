@@ -54,13 +54,12 @@ static bool get_device_node(const struct tn_pci_address address, uint64_t* out_n
 	return true;
 }
 
-static uint32_t get_pci_reg_addr(const struct tn_pci_address address, const uint16_t reg)
+static uint32_t get_pci_reg_addr(const struct tn_pci_address address, const uint8_t reg)
 {
-	// This looks odd but is the correct way to address extended registers; bus addresses are 8 bits so the top 8 bits are free thus the bottom 4 of that are for extended regs
-	return 0x80000000u | (((uint32_t) (reg & 0xF00u)) << 16) | ((uint32_t) address.bus << 16) | ((uint32_t) address.device << 11) | ((uint32_t) address.function << 8) | (reg & 0xFFu);
+	return 0x80000000u | ((uint32_t) address.bus << 16) | ((uint32_t) address.device << 11) | ((uint32_t) address.function << 8) | reg;
 }
 
-static void pci_target(const struct tn_pci_address address, const uint16_t reg)
+static void pci_target(const struct tn_pci_address address, const uint8_t reg)
 {
 	const uint32_t reg_addr = get_pci_reg_addr(address, reg);
 	outl(reg_addr, PCI_CONFIG_ADDR);
@@ -68,14 +67,9 @@ static void pci_target(const struct tn_pci_address address, const uint16_t reg)
 	outb(0, 0x80);
 }
 
-uint32_t tn_pci_read(const struct tn_pci_address address, const uint16_t reg)
+uint32_t tn_pci_read(const struct tn_pci_address address, const uint8_t reg)
 {
 	// Note that non-existent registers read as all-1s, so that's what we return if there's an error
-
-	if (reg >= 4096) {
-		return 0xFFFFFFFFu; // invalid register
-	}
-
 	uint64_t device_node;
 	if (!get_ioport_access() || !get_device_node(address, &device_node) || !tn_numa_is_current_node(device_node)) {
 		return 0xFFFFFFFFu;
@@ -85,12 +79,8 @@ uint32_t tn_pci_read(const struct tn_pci_address address, const uint16_t reg)
 	return inl(PCI_CONFIG_DATA);
 }
 
-void tn_pci_write(const struct tn_pci_address address, const uint16_t reg, const uint32_t value)
+void tn_pci_write(const struct tn_pci_address address, const uint8_t reg, const uint32_t value)
 {
-	if (reg >= 4096) {
-		return; // invalid register
-	}
-
 	uint64_t device_node;
 	if (!get_ioport_access() || !get_device_node(address, &device_node) || !tn_numa_is_current_node(device_node)) {
 		return;
