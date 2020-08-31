@@ -1,12 +1,24 @@
+#include "net/network.h"
+
 // Reuse as much code as possible, renaming some functions so we can implement our own
 
 #define tn_net_device_init pf_init
+#define tn_net_device_set_promiscuous pf_set_promiscuous
 #include "net/82599/ixgbe.c"
 #undef tn_net_device_init
+#undef tn_net_device_set_promiscuous
 
 #include "net/network.h"
 #include "util/log.h"
 
+// Section 9.4.4.3 PCIe SR-IOV Control/Status Register
+#define PCIREG_SRIOV_CONTROL 0x168u
+#define PCIREG_SRIOV_CONTROL_VFE BIT(0)
+#define PCIREG_SRIOV_CONTROL_VFMSE BIT(3)
+
+// Section 9.4.4.5 PCIe SR-IOV Num VFs Register
+#define PCIREG_SRIOV_NUMVFS 0x170u
+#define PCIREG_SRIOV_NUMVFS_NUMVFS BITS(0,15)
 
 // Section 8.2.3.1.3 Extended Device Control Register
 #define REG_CTRLEXT_PFRSTD BIT(14)
@@ -33,6 +45,17 @@
 #define REG_PFVFTE(n) (0x08110u + 4u*n)
 
 
+// Write 'value' to the field 'field' (from the PCIREG_... #defines) of register 'reg' on the PCI device at address 'addr'
+static void pcireg_write_field(struct tn_pci_address address, uint16_t reg, uint32_t field, uint32_t field_value)
+{
+	uint32_t old_value = tn_pci_read(address, reg);
+	uint32_t shift = find_first_set(field);
+	uint32_t new_value = (old_value & ~field) | (field_value << shift);
+	tn_pci_write(address, reg, new_value);
+}
+
+
+
 bool tn_net_device_init(struct tn_pci_address pci_address, struct tn_net_device** out_device)
 {
 	if (!pf_init(pci_address, out_device)) {
@@ -40,6 +63,15 @@ bool tn_net_device_init(struct tn_pci_address pci_address, struct tn_net_device*
 		return false;
 	}
 	struct tn_net_device* device = *out_device;
+
+	// Now for the fun part of enabling the VFs, which isn't really documented outside of specific registers' descriptions...
+	// First, we clearly need to enable VFs in PCIREG_SRIOV_CONTROL, which has a separate bit for allowing them to use memory.
+	pcireg_set_field(pci_address, PCIREG_SRIOV_CONTROL, PCIREG_SRIOV_CONTROL_VFE);
+	pcireg_set_field(pci_address, PCIREG_SRIOV_CONTROL, PCIREG_SRIOV_CONTROL_VFMSE);
+	// Then let's set the number of VFs; 64 is the max and seems like a nice number
+	pcireg_write_field(pci_address, PCIREG_SRIOV_NUMVFS, PCIREG_SRIOV_NUMVFS_NUMVFS, 64u);
+	// This should be enough... now there are enabled VFs, whose BARs are at at 16 KB offsets starting at the VF BAR0.
+
 
 	// Section 4.6.10.2 IOV Initialization
 	// Section 4.6.10.2.1 Physical Function (PF) Driver Initialization
@@ -50,7 +82,7 @@ bool tn_net_device_init(struct tn_pci_address pci_address, struct tn_net_device*
 	// Section 4.6.10.1.1 Global Filtering and Offload Capabilities
 	// "Select one of the VMDQ pooling methods — MAC/VLAN filtering for pool selection and either DCB or RSS for the queue in pool selection.
 	//  MRQC.Multiple Receive Queues Enable = 1000b, 1010b, 1011b, 1100b, or 1101b."
-	//   Section 8.2.3.7.12 Multiple Receive Queues Command Register - MRQC: "1000b = Virtualization only — 64 pools, no RSS, each pool allocated 2 queues."
+	//   Section 8.2.3.7.12 Multiple Receive Queues Command Register - MRQC: "1000b = Virtualization only � 64 pools, no RSS, each pool allocated 2 queues."
 	reg_write_field(device->addr, REG_MRQC, REG_MRQC_MRQE, 8);
 
 	// "DCB should be initiated as described in Section 4.6.11. In RSS mode, the RSS key (RSSRK) and redirection table (RETA) should be programmed."
@@ -125,5 +157,19 @@ bool tn_net_device_init(struct tn_pci_address pci_address, struct tn_net_device*
 	//    The usual behavior is to allow drop in order to avoid head of line blocking. Setting PFQDE per queue is made by using the Queue Index field in the PFQDE register."
 	// Multiple parts of the spec, such as Section 8.2.3.23.75 Queue Packets Received Drop Count, describe this as an "OR" with the usual Drop_En, so we don't need it since PF init sets Drop_En
 
+	return true;
+}
+
+bool tn_net_device_set_promiscuous(struct tn_net_device* device)
+{
+	if (!pf_set_promiscuous(device)) {
+		TN_DEBUG("PF could not be set to promiscuous");
+		return false;
+	}
+
+	// See the init function for an explanation
+	// Not sure if we should stop reception or anything... not written in the data sheet... but this is just a toy driver so let's not
+	reg_set_field(device->addr, REG_PFVML2FLT(0), REG_PFVML2FLT_BAM);
+	reg_set_field(device->addr, REG_PFVML2FLT(0), REG_PFVML2FLT_MPE);
 	return true;
 }

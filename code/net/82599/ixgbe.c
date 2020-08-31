@@ -450,26 +450,26 @@ static bool reg_is_field_cleared(uintptr_t addr, uint32_t reg, uint32_t field)
 }
 
 // Get the value of PCI register 'reg' on the device at address 'addr'
-static uint32_t pcireg_read(struct tn_pci_address addr, uint8_t reg)
+static uint32_t pcireg_read(struct tn_pci_address addr, uint16_t reg)
 {
 	uint32_t value = tn_pci_read(addr, reg);
-	TN_VERBOSE("IXGBE PCI write: 0x%02" PRIx8 " -> 0x%08" PRIx32, reg, value);
+	TN_VERBOSE("IXGBE PCI write: 0x%04" PRIx16 " -> 0x%08" PRIx32, reg, value);
 	return value;
 }
 
 // Check if the field 'field' (from the PCIREG_... #defines) of register 'reg' on the device at address 'addr' is cleared (i.e., reads as all 0s)
-static bool pcireg_is_field_cleared(struct tn_pci_address addr, uint8_t reg, uint32_t field)
+static bool pcireg_is_field_cleared(struct tn_pci_address addr, uint16_t reg, uint32_t field)
 {
 	return (pcireg_read(addr, reg) & field) == 0;
 }
 
 // Set (i.e., write all 1s) the field 'field' (from the PCIREG_... #defines) of register 'reg' on the device at address 'addr'
-static void pcireg_set_field(struct tn_pci_address addr, uint8_t reg, uint32_t field)
+static void pcireg_set_field(struct tn_pci_address addr, uint16_t reg, uint32_t field)
 {
 	uint32_t old_value = pcireg_read(addr, reg);
 	uint32_t new_value = old_value | field;
 	tn_pci_write(addr, reg, new_value);
-	TN_VERBOSE("IXGBE PCI write: 0x%02" PRIx8 " := 0x%08" PRIx32, reg, new_value);
+	TN_VERBOSE("IXGBE PCI write: 0x%04" PRIx16 " := 0x%08" PRIx32, reg, new_value);
 }
 
 // -----------------
