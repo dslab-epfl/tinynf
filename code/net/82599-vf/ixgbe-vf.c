@@ -16,9 +16,6 @@ bool pf_add_output(struct tn_net_agent* agent, struct tn_net_device* device);
 #undef tn_net_agent_add_output
 
 
-#include "util/log.h"
-
-
 // Section 9.4.4.3 PCIe SR-IOV Control/Status Register
 #define PCIREG_SRIOV_CONTROL 0x168u
 #define PCIREG_SRIOV_CONTROL_VFE BIT(0)

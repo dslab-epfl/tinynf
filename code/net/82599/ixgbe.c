@@ -392,7 +392,7 @@ static uint32_t reg_read(void* addr, uint32_t reg)
 {
 	uint32_t val_le = *((volatile uint32_t*)((uint8_t*) addr + reg));
 	uint32_t result = tn_le_to_cpu32(val_le);
-	TN_VERBOSE("IXGBE read (addr 0x%016p): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
+	TN_VERBOSE("IXGBE read (addr %p): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;
 }
 // Get the value of field 'field' (from the REG_... macros) of register 'reg' on NIC at address 'addr'
@@ -413,7 +413,7 @@ static void reg_write_raw(volatile uint32_t* reg_addr, uint32_t value)
 static void reg_write(void* addr, uint32_t reg, uint32_t value)
 {
 	reg_write_raw((volatile uint32_t*) ((uint8_t*)addr + reg), value);
-	TN_VERBOSE("IXGBE write (addr 0x%016p): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
+	TN_VERBOSE("IXGBE write (addr %p): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
 // Write 'value' to the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
 static void reg_write_field(void* addr, uint32_t reg, uint32_t field, uint32_t field_value)
@@ -612,7 +612,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 		return false;
 	}
 
-	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to 0x%016p", device.pci_addr.bus, device.pci_addr.device, device.pci_addr.function, device.addr);
+	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to %p", device.pci_addr.bus, device.pci_addr.device, device.pci_addr.function, device.addr);
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
