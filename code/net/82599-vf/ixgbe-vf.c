@@ -4,12 +4,15 @@
 
 #define tn_net_device_init pf_init
 #define tn_net_device_set_promiscuous pf_set_promiscuous
+#define tn_net_agent_set_input pf_set_input
 #include "net/82599/ixgbe.c"
 #undef tn_net_device_init
 #undef tn_net_device_set_promiscuous
+#undef tn_net_agent_set_input
 
-#include "net/network.h"
+
 #include "util/log.h"
+
 
 // Section 9.4.4.3 PCIe SR-IOV Control/Status Register
 #define PCIREG_SRIOV_CONTROL 0x168u
@@ -19,6 +22,13 @@
 // Section 9.4.4.5 PCIe SR-IOV Num VFs Register
 #define PCIREG_SRIOV_NUMVFS 0x170u
 #define PCIREG_SRIOV_NUMVFS_NUMVFS BITS(0,15)
+
+// Section 9.4.4.10 PCIe SR-IOV BAR 0 Low Register
+#define PCIREG_SRIOV_BAR0_LOW 0x184u
+
+// Section 9.4.4.11 PCIe SR-IOV BAR 0 High Register
+#define PCIREG_SRIOV_BAR0_HIGH 0x188u
+
 
 // Section 8.2.3.1.3 Extended Device Control Register
 #define REG_CTRLEXT_PFRSTD BIT(14)
@@ -43,6 +53,11 @@
 
 // Section 8.2.3.27.8 PF VF Transmit Enable
 #define REG_PFVFTE(n) (0x08110u + 4u*n)
+
+
+// 16 KB
+#define IXGBE_VF_SIZE 16u * 1024u
+
 
 
 // Write 'value' to the field 'field' (from the PCIREG_... #defines) of register 'reg' on the PCI device at address 'addr'
@@ -171,5 +186,57 @@ bool tn_net_device_set_promiscuous(struct tn_net_device* device)
 	// Not sure if we should stop reception or anything... not written in the data sheet... but this is just a toy driver so let's not
 	reg_set_field(device->addr, REG_PFVML2FLT(0), REG_PFVML2FLT_BAM);
 	reg_set_field(device->addr, REG_PFVML2FLT(0), REG_PFVML2FLT_MPE);
+	return true;
+}
+
+static bool vf_get_virtual_bar(struct tn_net_device* device, uint64_t index, void** out_addr)
+{
+	uint32_t bar0low = pcireg_read(device->pci_addr, PCIREG_SRIOV_BAR0_LOW);
+	// Sanity check: a 64-bit BAR must have bit 2 of low as 1 and bit 1 of low as 0 as per Table 9-4 Base Address Registers' Fields
+	if ((bar0low & BIT(2)) == 0 || (bar0low & BIT(1)) != 0) {
+		TN_DEBUG("VF BAR0 is not a 64-bit BAR");
+		return false;
+	}
+
+	uint32_t bar0high = pcireg_read(device->pci_addr, PCIREG_SRIOV_BAR0_HIGH);
+
+	uintptr_t bar0 = ((uint64_t) bar0high << 32) | (uint64_t) bar0low;
+
+	if (!tn_mem_phys_to_virt(bar0 + index * IXGBE_VF_SIZE, IXGBE_VF_SIZE, out_addr)) {
+		TN_DEBUG("Could not phys-to-virt VF BAR.");
+		return false;
+	}
+
+	return true;
+}
+
+bool tn_net_agent_set_input(struct tn_net_agent* agent, struct tn_net_device* device)
+{
+	void* vf0_addr;
+	if (!vf_get_virtual_bar(device, 0, &vf0_addr)) {
+		TN_DEBUG("Could not get VF0's BAR.");
+		return false;
+	}
+
+	// Fake device!
+	// - The address is the VF one, since RX queue registers are at the same offset on PFs and VFs
+	// - We pretend rx_enabled is true cause it needs to be done to the PF, not VF
+	struct tn_net_device vf_device = {
+		.addr = vf0_addr,
+		.pci_addr = device->pci_addr,
+		.rx_enabled = true
+	};
+	if (!pf_set_input(agent, &vf_device)) {
+		TN_DEBUG("Could not set input using the VF device");
+		return false;
+	}
+
+	// Now we can start the PF itself
+	// We should rollback the set_input call if this happens; but this is a toy driver, so...
+	if (!ixgbe_device_start(device)) {
+		TN_DEBUG("Could not start the PF");
+		return false;
+	}
+
 	return true;
 }
