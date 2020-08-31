@@ -1,7 +1,10 @@
 #include "net/network.h"
 
 // Reuse as much code as possible, renaming some functions so we can implement our own
-
+bool pf_init(struct tn_pci_address pci_address, struct tn_net_device** out_device);
+bool pf_set_promiscuous(struct tn_net_device* device);
+bool pf_set_input(struct tn_net_agent* agent, struct tn_net_device* device);
+bool pf_add_output(struct tn_net_agent* agent, struct tn_net_device* device);
 #define tn_net_device_init pf_init
 #define tn_net_device_set_promiscuous pf_set_promiscuous
 #define tn_net_agent_set_input pf_set_input
