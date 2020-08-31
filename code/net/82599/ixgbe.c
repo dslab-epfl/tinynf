@@ -453,7 +453,7 @@ static bool reg_is_field_cleared(void* addr, uint32_t reg, uint32_t field)
 static uint32_t pcireg_read(struct tn_pci_address addr, uint16_t reg)
 {
 	uint32_t value = tn_pci_read(addr, reg);
-	TN_VERBOSE("IXGBE PCI write: 0x%04" PRIx16 " -> 0x%08" PRIx32, reg, value);
+	TN_VERBOSE("IXGBE PCI read: 0x%04" PRIx16 " -> 0x%08" PRIx32, reg, value);
 	return value;
 }
 
