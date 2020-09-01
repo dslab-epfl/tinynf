@@ -90,6 +90,9 @@
 // Section 7.10.3.10 Switch Control:
 //	"Multicast Table Array (MTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address."
 #define MULTICAST_TABLE_ARRAY_SIZE (4u * 1024u)
+// Section 7.1.2.2 Queuing in a Virtualized Environment:
+// 	There are 64 pools max (this is also stated in other places)
+#define POOLS_COUNT 64u
 // Section 7.1.1.1.1 Unicast Filter:
 // 	"The Ethernet MAC address is checked against the 128 host unicast addresses"
 #define RECEIVE_ADDRS_COUNT 128u
@@ -104,9 +107,6 @@
 // Section 7.10.3.10 Switch Control:
 // 	"Unicast Table Array (PFUTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address"
 #define UNICAST_TABLE_ARRAY_SIZE (4u * 1024u)
-// Section 7.10.3.2 Pool Selection:
-// 	"64 shared VLAN filters"
-#define VLAN_FILTER_COUNT 64u
 
 // ---------------------
 // PCI and NIC registers
@@ -182,6 +182,10 @@
 // Section 8.2.3.5.9 Extended Interrupt Mask Clear Registers
 #define REG_EIMC(n) (n == 0 ? 0x00888u : (0x00AB0u + 4u*(n - 1u)))
 
+// Section 8.2.3.3.7 Flow Control Configuration
+#define REG_FCCFG 0x03D00u
+#define REG_FCCFG_TFCE BITS(3,4)
+
 // Section 8.2.3.3.4 Flow Control Receive Threshold High
 #define REG_FCRTH(n) (0x03260u + 4u*(n))
 #define REG_FCRTH_RTH BITS(5,18)
@@ -250,6 +254,12 @@
 // Section 8.2.3.10.2 DCB Transmit Descriptor Plane Control and Status
 #define REG_RTTDCS 0x04900u
 #define REG_RTTDCS_ARBDIS BIT(6)
+
+// Section 8.2.3.10.13 DCB Transmit Descriptor Plane Queue Select
+#define REG_RTTDQSEL 0x04904u
+
+// Section 8.2.3.10.14 DCB Transmit Descriptor Plane T1 Config
+#define REG_RTTDT1C 0x04908u
 
 // Section 8.2.3.8.10 Receive Control Register
 #define REG_RXCTRL 0x03000u
@@ -725,7 +735,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 	// INTERPRETATION-MISSING: While the spec appears to mention PFVLVF only in conjunction with VLNCTRL.VFE being enabled, let's be conservative and initialize them anyway.
 	// 	Section 8.2.3.27.15 PF VM VLAN Pool Filter (PFVLVF[n]):
 	//		"Software should initialize these registers before transmit and receive are enabled."
-	for (uint8_t n = 0; n < VLAN_FILTER_COUNT; n++) {
+	for (uint8_t n = 0; n < POOLS_COUNT; n++) {
 		reg_clear(device.addr, REG_PFVLVF(n));
 	}
 	//	"- MAC Pool Select Array (MPSAR[n])."
@@ -735,16 +745,15 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 	//		 Each bit when set, enables packet reception with the associated pools as follows:
 	//		 Bit 'i' in register '2*n' is associated with POOL 'i'.
 	//		 Bit 'i' in register '2*n+1' is associated with POOL '32+i'."
-	// INTERPRETATION-MISSING: We should enable all pools with address 0, just in case, and disable everything else since we only have 1 MAC address.
-	reg_write(device.addr, REG_MPSAR(0), 0xFFFFFFFFu);
-	reg_write(device.addr, REG_MPSAR(1), 0xFFFFFFFFu);
-	for (uint16_t n = 2; n < RECEIVE_ADDRS_COUNT * 2; n++) {
+	// INTERPRETATION-MISSING: We should enable pool 0 with address 0 and disable everything else since we only have 1 MAC address.
+	reg_write(device.addr, REG_MPSAR(0), 1);
+	for (uint16_t n = 1; n < RECEIVE_ADDRS_COUNT * 2; n++) {
 		reg_clear(device.addr, REG_MPSAR(n));
 	}
 	//	"- VLAN Pool Filter Bitmap (PFVLVFB[n])."
 	// INTERPRETATION-MISSING: See above remark on PFVLVF
 	//	Section 8.2.3.27.16: PF VM VLAN Pool Filter Bitmap
-	for (uint8_t n = 0; n < VLAN_FILTER_COUNT * 2; n++) {
+	for (uint8_t n = 0; n < POOLS_COUNT * 2; n++) {
 		reg_clear(device.addr, REG_PFVLVFB(n));
 	}
 	//	"Set up the Multicast Table Array (MTA) registers.
@@ -858,6 +867,27 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 	// Thus we do not need to modify MFLCN.RPFCE.
 	//		"- Enable receive legacy flow control via: MFLCN.RFCE=1b"
 	reg_set_field(device.addr, REG_MFLCN, REG_MFLCN_RFCE);
+	//		"- Enable transmit legacy flow control via: FCCFG.TFCE=01b"
+	reg_write_field(device.addr, REG_FCCFG, REG_FCCFG_TFCE, 1);
+	//		"Reset all arbiters:"
+	//		"- Clear RTTDT1C register, per each queue, via setting RTTDQSEL first"
+	for (uint8_t n = 0; n < TRANSMIT_QUEUES_COUNT; n++) {
+		reg_write(device.addr, REG_RTTDQSEL, n);
+		reg_clear(device.addr, REG_RTTDT1C);
+	}
+	//		"- Clear RTTDT2C[0-7] registers"
+	// INTERPRETATION-POINTLESS: Section 8.2.3.10.9 DCB Transmit Descriptor Plane T2 Config (RTTDT2C) states the init val of all fields is 0, thus they are already cleared
+	//		"- Clear RTTPT2C[0-7] registers"
+	// INTERPRETATION-POINTLESS: Section 8.2.3.10.10 DCB Transmit Packet Plane T2 Config (RTTPT2C) states the init val of all fields is 0, thus they are already cleared
+	//		"- Clear RTRPT4C[0-7] registers"
+	// INTERPRETATION-POINTLESS: Section 8.2.3.10.6 DCB Receive Packet Plane T4 Config (RTRPT4C) states the init val of all fields is 0, thus they are already cleared
+	//		"Disable TC and VM arbitration layers:"
+	//		"- Tx Descriptor Plane Control and Status (RTTDCS), bits: TDPAC=0b, VMPAC=0b, TDRM=0b, BDPM=1b, BPBFSM=1b"
+	// INTERPRETATION-POINTLESS: Section 8.2.3.10.2 DCB Transmit Descriptor Plane Control and Status (RTTDCS) states that these are already the init vals of these fields
+	//		"- Tx Packet Plane Control and Status (RTTPCS): TPPAC=0b, TPRM=0b, ARBD=0x224"
+	// INTERPRETATION-POINTLESS: Section 8.2.3.10.3 DCB Transmit Packet Plane Control and Status (RTTPCS) states that these are already the init vals of these fields
+	//		"- Rx Packet Plane Control and Status (RTRPCS): RAC=0b, RRM=0b"
+	// INTERPRETATION-POINTLESS: Section 8.2.3.10.1 DCB Receive Packet Plane Control and Status (RTRPCS) states that these are already the init vals of these fields
 	//	"Enable jumbo reception by setting HLREG0.JUMBOEN in one of the following two cases:
 	//	 1. Jumbo packets are expected. Set the MAXFRS.MFS to expected max packet size.
 	//	 2. LinkSec encapsulation is expected."

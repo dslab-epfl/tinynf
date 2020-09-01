@@ -33,7 +33,8 @@ ifeq (,$(TN_FILES))
 TN_FILES := $(TN_DIR)/tinynf.c
 ifneq (,$(findstring clang,$(TN_CC)))
 # Ignore cast warnings, we know what we're doing
-TN_CFLAGS += -Weverything -Wno-cast-qual -Wno-cast-align
+# Also ignore unused CLI args, this triggers due to -rdynamic in debug mode
+TN_CFLAGS += -Weverything -Wno-cast-qual -Wno-cast-align -Wno-unused-command-line-argument
 endif
 ifneq (,$(findstring gcc,$(TN_CC)))
 TN_CFLAGS += -Wall -Wextra -Wshadow -Wstrict-aliasing -Wunused-macros -pedantic
@@ -54,7 +55,7 @@ TN_CFLAGS += -DLOG_LEVEL=$(TN_DEBUG)
 
 # Debug mode if level > 1 (i.e. not just 'info')
 ifeq ($(shell test $(TN_DEBUG) -gt 1; echo $$?),0)
-TN_CFLAGS += -O0 -g
+TN_CFLAGS += -O0 -g -rdynamic
 else
 TN_CFLAGS += -O3
 endif
