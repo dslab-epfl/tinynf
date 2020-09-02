@@ -1374,7 +1374,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
 	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < agent->outputs_count; n++) {
-		*(agent->rings[n] + 2u*agent->processed_delimiter + 1) = (outputs[n] * (uint64_t) tn_cpu_to_le16(packet_length)) | rs_bit | BITL(24+1) | BITL(24);
+		agent->rings[n][2u*agent->processed_delimiter + 1] = (outputs[n] * (uint64_t) tn_cpu_to_le16(packet_length)) | rs_bit | BITL(24+1) | BITL(24);
 	}
 
 	// Increment the processed delimiter, modulo the ring size
