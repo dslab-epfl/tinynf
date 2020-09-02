@@ -1309,8 +1309,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
 
 	// Since descriptors are 16 bytes, the index must be doubled
-	volatile uint64_t* main_metadata_addr = agent->rings[0] + 2u*agent->processed_delimiter + 1;
-	uint64_t receive_metadata = *main_metadata_addr;
+	uint64_t receive_metadata = agent->rings[0][2u*agent->processed_delimiter + 1];
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
 	if ((receive_metadata & BITL(32)) == 0) {
