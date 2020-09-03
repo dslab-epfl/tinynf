@@ -489,85 +489,9 @@ static void pcireg_set_field(struct tn_pci_address addr, uint8_t reg, uint32_t f
 struct tn_net_device
 {
 	void* addr;
-	struct tn_pci_address pci_addr;
 	bool rx_enabled;
 	uint8_t _padding[7];
 };
-
-// --------------------------------
-// Section 4.2.1.6.1 Software Reset
-// --------------------------------
-
-static bool ixgbe_device_reset(const struct tn_net_device* const device)
-{
-	// "Prior to issuing software reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
-	// Section 5.2.5.3.2 Master Disable:
-	// "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
-	for (uint8_t queue = 0; queue < RECEIVE_QUEUES_COUNT; queue++) {
-		// Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
-		// "Disable the queue by clearing the RXDCTL.ENABLE bit."
-		reg_clear_field(device->addr, REG_RXDCTL(queue), REG_RXDCTL_ENABLE);
-
-		// "The 82599 clears the RXDCTL.ENABLE bit only after all pending memory accesses to the descriptor ring are done.
-		//  The driver should poll this bit before releasing the memory allocated to this queue."
-		// INTERPRETATION-MISSING: There is no mention of what to do if the 82599 never clears the bit; 1s seems like a decent timeout
-		IF_AFTER_TIMEOUT(1000 * 1000, !reg_is_field_cleared(device->addr, REG_RXDCTL(queue), REG_RXDCTL_ENABLE)) {
-			TN_DEBUG("RXDCTL.ENABLE did not clear, cannot disable receive");
-			return false;
-		}
-
-		// "Once the RXDCTL.ENABLE bit is cleared the driver should wait additional amount of time (~100 us) before releasing the memory allocated to this queue."
-		tn_sleep_us(100);
-	}
-
-	// "Then the device driver sets the PCIe Master Disable bit [in the Device Status register] when notified of a pending master disable (or D3 entry)."
-	reg_set_field(device->addr, REG_CTRL, REG_CTRL_MASTER_DISABLE);
-
-	// "The 82599 then blocks new requests and proceeds to issue any pending requests by this function.
-	//  The driver then reads the change made to the PCIe Master Disable bit and then polls the PCIe Master Enable Status bit.
-	//  Once the bit is cleared, it is guaranteed that no requests are pending from this function."
-	// INTERPRETATION-MISSING: The next sentence refers to "a given time"; let's say 1 second should be plenty...
-	// "The driver might time out if the PCIe Master Enable Status bit is not cleared within a given time."
-	IF_AFTER_TIMEOUT(1000 * 1000, !reg_is_field_cleared(device->addr, REG_STATUS, REG_STATUS_PCIE_MASTER_ENABLE_STATUS)) {
-		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
-		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
-		// INTERPRETATION-MISSING: Might? Let's say this is a must, and that we assume the software resets work...
-		if (!pcireg_is_field_cleared(device->pci_addr, PCIREG_DEVICESTATUS, PCIREG_DEVICESTATUS_TRANSACTIONPENDING)) {
-			TN_DEBUG("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable");
-			return false;
-		}
-
-		// "In the above situation, the data path must be flushed before the software resets the 82599.
-		//  The recommended method to flush the transmit data path is as follows:"
-		// "- Inhibit data transmission by setting the HLREG0.LPBK bit and clearing the RXCTRL.RXEN bit.
-		//    This configuration avoids transmission even if flow control or link down events are resumed."
-		reg_set_field(device->addr, REG_HLREG0, REG_HLREG0_LPBK);
-		reg_clear_field(device->addr, REG_RXCTRL, REG_RXCTRL_RXEN);
-
-		// "- Set the GCR_EXT.Buffers_Clear_Func bit for 20 microseconds to flush internal buffers."
-		reg_set_field(device->addr, REG_GCREXT, REG_GCREXT_BUFFERS_CLEAR_FUNC);
-		tn_sleep_us(20);
-
-		// "- Clear the HLREG0.LPBK bit and the GCR_EXT.Buffers_Clear_Func"
-		reg_clear_field(device->addr, REG_HLREG0, REG_HLREG0_LPBK);
-		reg_clear_field(device->addr, REG_GCREXT, REG_GCREXT_BUFFERS_CLEAR_FUNC);
-
-		// "- It is now safe to issue a software reset."
-		// see just below for an explanation of this line
-		reg_set_field(device->addr, REG_CTRL, REG_CTRL_RST);
-		tn_sleep_us(2);
-	}
-
-	// happy path, back to Section 4.2.1.6.1:
-	// "Software reset is done by writing to the Device Reset bit of the Device Control register (CTRL.RST)."
-	reg_set_field(device->addr, REG_CTRL, REG_CTRL_RST);
-
-	// Section 8.2.3.1.1 Device Control Register
-	// "To ensure that a global device reset has fully completed and that the 82599 responds to subsequent accesses,
-	//  programmers must wait approximately 1 ms after setting before attempting to check if the bit has cleared or to access (read or write) any other device register."
-	tn_sleep_us(1000);
-	return true;
-}
 
 // -------------------------------------
 // Section 4.6.3 Initialization Sequence
@@ -612,7 +536,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 	uint32_t pci_bar0high = pcireg_read(pci_address, PCIREG_BAR0_HIGH);
 	// No need to detect the size, since we know exactly which device we're dealing with. (This also means no writes to BARs, one less chance to mess everything up)
 
-	struct tn_net_device device = { .pci_addr = pci_address };
+	struct tn_net_device device = { 0 };
 	// Section 9.3.6.1 Memory and IO Base Address Registers:
 	// As indicated in Table 9-4, the low 4 bits are read-only and not part of the address
 	uintptr_t dev_phys_addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
@@ -622,7 +546,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 		return false;
 	}
 
-	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to %p", device.pci_addr.bus, device.pci_addr.device, device.pci_addr.function, device.addr);
+	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to %p", pci_address.bus, pci_address.device, pci_address.function, device.addr);
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
@@ -638,11 +562,69 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 	// INTERPRETATION-POINTLESS: We do not support interrupts, there is no way we can have re-entrancy here, so we don't need step 1
 	// 	Section 4.6.3.2 Global Reset and General Configuration:
 	//	"Device initialization typically starts with a software reset that puts the device into a known state and enables the device driver to continue the initialization sequence."
-	if (!ixgbe_device_reset(&device)) {
-		TN_DEBUG("Could not reset.");
-		return false;
+	// Section 4.2.1.6.1 Software Reset
+	// "Prior to issuing software reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
+	//   Section 5.2.5.3.2 Master Disable:
+	//   "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
+	for (uint8_t queue = 0; queue < RECEIVE_QUEUES_COUNT; queue++) {
+		// Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
+		// "Disable the queue by clearing the RXDCTL.ENABLE bit."
+		reg_clear_field(device.addr, REG_RXDCTL(queue), REG_RXDCTL_ENABLE);
+		// "The 82599 clears the RXDCTL.ENABLE bit only after all pending memory accesses to the descriptor ring are done.
+		//  The driver should poll this bit before releasing the memory allocated to this queue."
+		// INTERPRETATION-MISSING: There is no mention of what to do if the 82599 never clears the bit; 1s seems like a decent timeout
+		IF_AFTER_TIMEOUT(1000 * 1000, !reg_is_field_cleared(device.addr, REG_RXDCTL(queue), REG_RXDCTL_ENABLE)) {
+			TN_DEBUG("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
+			return false;
+		}
+		// "Once the RXDCTL.ENABLE bit is cleared the driver should wait additional amount of time (~100 us) before releasing the memory allocated to this queue."
+		tn_sleep_us(100);
 	}
-	//	"Following a Global Reset the Software driver should wait at least 10msec to enable smooth initialization flow."
+	//   "Then the device driver sets the PCIe Master Disable bit [in the Device Status register] when notified of a pending master disable (or D3 entry)."
+	reg_set_field(device.addr, REG_CTRL, REG_CTRL_MASTER_DISABLE);
+	//   "The 82599 then blocks new requests and proceeds to issue any pending requests by this function.
+	//    The driver then reads the change made to the PCIe Master Disable bit and then polls the PCIe Master Enable Status bit.
+	//    Once the bit is cleared, it is guaranteed that no requests are pending from this function."
+	// INTERPRETATION-MISSING: The next sentence refers to "a given time"; let's say 1 second should be plenty...
+	//   "The driver might time out if the PCIe Master Enable Status bit is not cleared within a given time."
+	IF_AFTER_TIMEOUT(1000 * 1000, !reg_is_field_cleared(device.addr, REG_STATUS, REG_STATUS_PCIE_MASTER_ENABLE_STATUS)) {
+		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
+		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
+		// INTERPRETATION-MISSING: Might? Let's say this is a must, and that we assume the software resets work...
+		if (!pcireg_is_field_cleared(pci_address, PCIREG_DEVICESTATUS, PCIREG_DEVICESTATUS_TRANSACTIONPENDING)) {
+			TN_DEBUG("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable to reset");
+			return false;
+		}
+
+		// "In the above situation, the data path must be flushed before the software resets the 82599.
+		//  The recommended method to flush the transmit data path is as follows:"
+		// "- Inhibit data transmission by setting the HLREG0.LPBK bit and clearing the RXCTRL.RXEN bit.
+		//    This configuration avoids transmission even if flow control or link down events are resumed."
+		reg_set_field(device.addr, REG_HLREG0, REG_HLREG0_LPBK);
+		reg_clear_field(device.addr, REG_RXCTRL, REG_RXCTRL_RXEN);
+
+		// "- Set the GCR_EXT.Buffers_Clear_Func bit for 20 microseconds to flush internal buffers."
+		reg_set_field(device.addr, REG_GCREXT, REG_GCREXT_BUFFERS_CLEAR_FUNC);
+		tn_sleep_us(20);
+
+		// "- Clear the HLREG0.LPBK bit and the GCR_EXT.Buffers_Clear_Func"
+		reg_clear_field(device.addr, REG_HLREG0, REG_HLREG0_LPBK);
+		reg_clear_field(device.addr, REG_GCREXT, REG_GCREXT_BUFFERS_CLEAR_FUNC);
+
+		// "- It is now safe to issue a software reset."
+		// see just below for an explanation of this line
+		reg_set_field(device.addr, REG_CTRL, REG_CTRL_RST);
+		tn_sleep_us(2);
+	}
+	// happy path, back to Section 4.2.1.6.1:
+	// "Software reset is done by writing to the Device Reset bit of the Device Control register (CTRL.RST)."
+	reg_set_field(device.addr, REG_CTRL, REG_CTRL_RST);
+	// Section 8.2.3.1.1 Device Control Register
+	// "To ensure that a global device reset has fully completed and that the 82599 responds to subsequent accesses,
+	//  programmers must wait approximately 1 ms after setting before attempting to check if the bit has cleared or to access (read or write) any other device register."
+	tn_sleep_us(1000);
+	// Section 4.6.3.2 Global Reset and General Configuration: "Following a Global Reset the Software driver should wait at least 10msec to enable smooth initialization flow."
+	// This is a bit odd, but let's do both, it can't hurt
 	tn_sleep_us(10 * 1000);
 	//	Section 8.2.3.5.4 Extended Interrupt Mask Clear Register (EIMC):
 	//	"Writing a 1b to any bit clears its corresponding bit in the EIMS register disabling the corresponding interrupt in the EICR register. Writing 0b has no impact"
