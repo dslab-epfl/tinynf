@@ -95,6 +95,10 @@ To get the times with TinyNF, in `verification`, run `./measure-verification-tim
 If you want to get the times with Vigor, in `verification`, run `./measure-verification-times.sh ~/vigor original`, again changing the location to match.
 However, this will take multiple hours even on a server with dozens of cores, and those numbers have already been reproduced as part of Vigor's artifact evaluation.
 
+Alternatively, you can use the Vigor Docker image: run `sudo docker run -it --entrypoint bash dslabepfl/vigor` to start a container,
+then in the container run `rm -rf vigor ; git clone https://github.com/vigor-nf/vigor` to get the latest Vigor and `. ~/paths.sh` to update your PATH with the toolchain,
+then clone the TinyNF repo and proceed as indicated above. This might have some overhead compared to running it directly, though.
+
 
 ### Table 2
 
