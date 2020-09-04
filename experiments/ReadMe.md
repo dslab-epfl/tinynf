@@ -87,7 +87,12 @@ Note: Don't forget to remove `intel_pstate=disable` if you plan on running other
 
 ### Table 1
 
-See [verification/ReadMe.md](verification/ReadMe.md).
+First, clone the `vigor-nf/vigor` repo on GitHub and run its `setup.sh` script as indicated in its readme.
+
+To get the times with TinyNF, in `verification`, run `./measure-verification-times.sh ~/vigor`, changing the location of the Vigor directory to match your setup.
+
+If you want to get the times with Vigor, in `verification`, run `./measure-verification-times.sh ~/vigor original`, again changing the location to match.
+However, this will take multiple hours even on a server with dozens of cores, and those numbers have already been reproduced as part of Vigor's artifact evaluation.
 
 
 ### Table 2

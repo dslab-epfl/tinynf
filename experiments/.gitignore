@@ -1,4 +1,5 @@
 results/
 results-slow/
 plots/
+*.log
 __pycache__
