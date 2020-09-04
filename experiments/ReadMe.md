@@ -46,7 +46,7 @@ All figures and tables in the paper can be reproduced by running scripts, except
 
 ### Figure 1
 
-In `other-drivers`, run `./graph-dpdk-drivers-loc.py`, which should take <2min.
+In `other-drivers`, run `./graph-dpdk-drivers-loc.py 'Figure 1'`, which should take <2min.
 
 
 ### Figures 2 to 5
