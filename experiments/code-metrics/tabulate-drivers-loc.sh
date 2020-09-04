@@ -17,17 +17,14 @@ get_code()
   fi
 }
 
-printf '\t\t%s\t%s\t%s\n' $DRIVERS
+printf '\tInit\t\tReceive\t\tTransmit\n'
+printf '\t#funs\t#LoCs\t#funs\t#LoCs\t#funs\t#LoCs\n'
 
-for x in 'Init' 'RX' 'TX'; do
-  printf '%s\tFuncs\t' $x
-  for d in $DRIVERS; do
-    printf '%s\t' $(./count-functions-loc.py "$(get_code $d)" "data/$d-$x.md" function-count)
-  done
-  printf '\n'
-  printf '\tLoC\t'
-  for d in $DRIVERS; do
-    printf '%s\t' $(./count-functions-loc.py "$(get_code $d)" "data/$d-$x.md")
+for d in $DRIVERS; do
+  printf '%s\t' "$d"
+  for x in 'Init' 'RX' 'TX'; do
+    ./count-functions-loc.py "$(get_code $d)" "data/$d-$x.md"
+    printf '\t'
   done
   printf '\n'
 done
