@@ -97,7 +97,9 @@ However, this will take multiple hours even on a server with dozens of cores, an
 
 ### Table 2
 
-In `code-metrics`, run `./tabulate-drivers-loc.sh`, which should take <10min.
+For the numbers of functions and lines of code: in `code-metrics`, run `./tabulate-drivers-loc.sh`, which should take <10min.
+
+For the numbers of paths: read the `code-metrics/PathsIn...` files.
 
 
 ### Table 4

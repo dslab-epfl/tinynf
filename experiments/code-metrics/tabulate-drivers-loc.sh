@@ -17,7 +17,7 @@ get_code()
   fi
 }
 
-printf '\tInit\t\tReceive\t\tTransmit\n'
+printf '\tInit\t\tRX\t\tTX\n'
 printf '\t#funs\t#LoCs\t#funs\t#LoCs\t#funs\t#LoCs\n'
 
 for d in $DRIVERS; do

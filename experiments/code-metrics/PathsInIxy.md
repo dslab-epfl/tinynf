@@ -22,7 +22,7 @@ We inspect `ixgbe_tx_batch`, assuming:
 - `num_bufs` is 1
 - there is at most one full "batch" of packets to clean (otherwise it gets messier but also extremely unlikely)
 
-Let `B` be the value of `TX_CLEAN_BATCH`.
+Let `C` be the value of `TX_CLEAN_BATCH`; it's not modifiable but makes notation simpler.
 
 Let `P` be the number of paths in `pkt_buf_free`. 
 
@@ -32,12 +32,16 @@ Multiply remaining paths by 2 due to the `cleanable < 0` check
 Multiply remaining paths by 2 due to the `cleanup_to >= queue->num_entries` check
 `1` path: there is something to clean but DD is not set and `clean_index == next_index` -> no transmission
 `1` path: there is something to clean but DD is not set and `clean_index != next_index` -> transmission
-Multiply remaining paths by `P^B` due to the cleaning loop
+Multiply remaining paths by `P^C` due to the cleaning loop
 Multiply remaining paths by 2 due to the `cleanable < 0` check on the next iteration
 `1` path: transmission succeeds (packets have been cleaned so `clean_index != next_index)`
 
 Total paths:
 - `6` failing to transmit
-- `6 + 2*P^B` successfully transmitting
+- `6 + 2*P^C` successfully transmitting
+
+Since P is always 1 and C is always 32, total paths:
+- `6` failing to transmit
+- `8` successfully transmitting
 
 Ixy supports transmission queues separately, so the number of paths for O queues is (number for 1 queue)^O.

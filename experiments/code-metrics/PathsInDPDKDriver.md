@@ -32,14 +32,14 @@ We inspect `ixgbe_xmit_pkts_simple`, assuming:
 
 Let `T` be the configured `tx_rs_thresh`
 
-Let `F_S` be the number of paths in `rte_pktmbuf_prefree_seg` that return a non-NULL value and `F_N` the number of paths that do.
+Let `F_S` be the number of paths in `rte_pktmbuf_prefree_seg` that return a non-NULL value and `F_F` the number of paths that do.
 
 Let `P` be the number of paths in `rte_mempool_put_bulk`
 
-In `ixgbe_tx_free_bufs`, there are `(F_S + F_N)^T` paths in the "free buffers one at a time" loop,
-of which all but `F_N^T` will trigger the `nb_free > 0` check; then the number of paths is doubled
+In `ixgbe_tx_free_bufs`, there are `(F_S + F_F)^T` paths in the "free buffers one at a time" loop,
+of which all but `F_F^T` will trigger the `nb_free > 0` check; then the number of paths is doubled
 due to the final overflow check. There is 1 additional path at the start if the DD flag is not set.
-Thus `ixgbe_tx_free_bufs` has `1` failure path and `2 * (((F_S + F_N)^T - F_N^T) * P + F_N^T)` success paths.
+Thus `ixgbe_tx_free_bufs` has `1` failure path and `2 * (((F_S + F_F)^T - F_F^T) * P + F_F^T)` success paths.
 
 `1` path: There are no available descriptors because `ixgbe_tx_free_bufs` failed.
 Multiply remaining paths by 1 + the number of success paths in `ixgbe_tx_free_bufs`; the 1 is for the case that function needs not be called.
@@ -51,6 +51,6 @@ Each of the "without wrap-around" path counts above is doubled due to wrap-aroun
 
 Total paths:
 - `1` failing to transmit
-- `7 + 14 * (((F_S + F_N)^T - F_N^T) * P + F_N^T)` successfully transmitting
+- `7 + 14 * (F_F^T + P * ((F_S + F_F)^T - F_F^T))` successfully transmitting
 
 DPDK supports transmission queues separately, so the number of paths for O queues is (number for 1 queue)^O.
