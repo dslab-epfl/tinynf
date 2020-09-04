@@ -143,10 +143,13 @@ def bench(path, nf, kind, env, results_folder_name='results'):
 
 
 # Special for the reduced CPU frequency benchmarks
-if len(sys.argv) > 1 and sys.argv[1] == 'slow-nops':
-  bench('../code', 'nop', 'tinynf', {}, results_folder_name='results-slow')
-  bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET}, results_folder_name='results-slow')
-  bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE}, results_folder_name='results-slow')
+if len(sys.argv) > 1:
+  if sys.argv[1] == 'slow-nops':
+    bench('../code', 'nop', 'tinynf', {}, results_folder_name='results-slow')
+    bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET}, results_folder_name='results-slow')
+    bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE}, results_folder_name='results-slow')
+  else:
+    print("The only allowed argument for now is 'slow-nops'")
   sys.exit(0)
 
 

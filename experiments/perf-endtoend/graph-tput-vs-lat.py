@@ -40,7 +40,7 @@ lats_comp = []
 for nf in nfs:
   if '/' in nf:
     # Override the results folder
-    nf_folder = THIS_DIR + nf
+    nf_folder = THIS_DIR + '/' + nf
   else:
     # For convenience, default folder
     nf_folder = THIS_DIR + '/results/' + nf

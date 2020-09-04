@@ -24,7 +24,7 @@ As a first step, go to the `benchmarking` folder at the root of this repository,
 
 Assuming a 2-CPU machine whose second CPU has cores 8 to 15, we recommend the following Linux kernel parameters for the two machines (add to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`):
 - `nosmt`: Disable HyperThreading, to avoid contention among threads in benchmarks
-- `intel_iommu=on iommu=pt`: Passthrough IOMMU, we don't need it
+- `intel_iommu=off`: Disable the IOMMU, we don't need it
 - `hugepages=4096`: preallocate 4K hugepages of the default 2MB size
 - `isolcpus=8-15 nohz_full=8-15 rcu_nocbs=8-15`: Isolate the second CPU entirely
 - `nosoftlockup`: No backtraces for processes that appear to hang, such as NFs that run for a long time
@@ -76,13 +76,14 @@ Then run the following, which should take a minute:
 ### Figure 9
 
 Add `intel_pstate=disable` to your Linux kernel configuration; this requires an `update-grub` and a reboot.
-Set the maximum frequency of the CPU that runs the NFs to 2GHz, e.g. using `cpupower frequency-set`; note that due to how CPU frequencies work the actual freq may be a bit above or below the desired frequency.
+Set the maximum frequency of the CPU that runs the NFs to 2GHz, e.g. `sudo cpupower -c 8-15 frequency-set -f 2GHz` assuming you are running the NFs on a CPU whose cores are numbered 8 to 15;
+note that due to how CPU frequencies work the actual freq may be a bit above or below the desired frequency.
+
+Don't forget to remove `intel_pstate=disable` once you're done; on our Xeon E5-2667v2 this option caps the max freq at 3.3GHz instead of 3.6GHz...
 
 In `perf-endtoend`, run `./bench-all.py slow-nops`, which should take <1h.
 
 Then run `./graph-tput-vs-lat.py 'Figure 9' 50 99 results-slow/dpdk-nop-dpdk results-slow/dpdk-nop-dpdk-batched results-slow/tinynf-nop`
-
-Note: Don't forget to remove `intel_pstate=disable` if you plan on running other benchmarks; on our Xeon E5-2667v2 this option caps the max freq at 3.3GHz instead of 3.6GHz...
 
 
 ### Table 1
