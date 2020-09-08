@@ -32,10 +32,12 @@ Assuming a 2-CPU machine whose second CPU has cores 8 to 15, we recommend the fo
 - `pcie_aspm=off`: Force PCIe devices to run at full power
 - `intel_idle.max_cstate=0 processor.max_cstate=0`: Disable CPU low power states
 - `idle=poll cpuidle.off=1`: Force the CPU to spin instead of using waits for idling
+- `intel_pstate=disable`: Allow Linux to set the CPU frequency via `cpupower` instead of letting the Intel driver choose
 
 You will also need the following software:
 - GCC 10 (any version should work, but that is the one we used for the paper)
-- The shell utilities `bc`, `cloc`, and `indent` (available under these names in most package repositories)
+- The shell utilities `bc`, `cloc`, and `indent`, available under these names in most package repositories
+- The shell utility `cpupower`, available under names such as `linux-tools-common` (Ubuntu) or `kernel-tools` (Fedora) in package repositories
 - Python 3 with the `matplotlib` package
 
 
@@ -57,6 +59,10 @@ They are based on the source code of DPDK and TinyNF; the paper explains them.
 
 ### Figures 6, 7, 8, 10, 11 and Table 3
 
+Run `sudo cpupower -c 8-15 frequency-set -f 99GHz`, where `8-15` are all of the cores on the physical CPU on which you will run NFs.
+That is, not only the cores configured in the `benchmarking/config` file, but also the other cores on the same physical CPU.
+`99GHz` simply tells `cpupower` to use the highest possible frequency. You can double-check this by looking at `/proc/cpuinfo`.
+
 In `perf-endtoend`, run `./bench-all.py`, which should take ~4h.
 
 Then run the following, which should take a minute:
@@ -75,11 +81,10 @@ Then run the following, which should take a minute:
 
 ### Figure 9
 
-Add `intel_pstate=disable` to your Linux kernel configuration; this requires an `update-grub` and a reboot.
-Set the maximum frequency of the CPU that runs the NFs to 2GHz, e.g. `sudo cpupower -c 8-15 frequency-set -f 2GHz` assuming you are running the NFs on a CPU whose cores are numbered 8 to 15;
-note that due to how CPU frequencies work the actual freq may be a bit above or below the desired frequency.
+Run `sudo cpupower -c 8-15 frequency-set -f 2GHz`, where `8-15` are all of the cores on the physical CPU on which you will run NFs (same remark as above).
+Note that due to how CPU frequencies work, the actual frequency may be a bit above or below the desired frequency; you can check this by looking at `/proc/cpuinfo`.
 
-Don't forget to remove `intel_pstate=disable` once you're done; on our Xeon E5-2667v2 this option caps the max freq at 3.3GHz instead of 3.6GHz...
+Remember to set the frequency back to normal afterwards (using the `99GHz` trick mentioned above), otherwise the results of other experiments will be off.
 
 In `perf-endtoend`, run `./bench-all.py slow-nops`, which should take <1h.
 
