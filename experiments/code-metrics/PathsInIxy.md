@@ -7,9 +7,13 @@ We inspect `ixgbe_rx_batch`, assuming:
 
 Let `A_S` be the number of success paths in `pkt_buf_alloc` and `A_F` the number of failure paths.
 
+
 `1` path: `status` does not have the DD flag set -> no packet
+
 `A_F` paths: `pkt_buf_alloc` fails -> no packet
+
 `A_S` paths: `pkt_buf_alloc` succeeded (thus `rx_index != last_rx_index` is always true)
+
 
 Total paths:
 - `1 + A_F` without a packet
@@ -26,15 +30,25 @@ Let `C` be the value of `TX_CLEAN_BATCH`; it's not modifiable but makes notation
 
 Let `P` be the number of paths in `pkt_buf_free`. 
 
+
 Multiply remaining paths by 2 due to the `cleanable < 0` check
+
 `1` path: there is nothing to clean and `clean_index == next_index` -> no transmission
+
 `1` path: there is nothing to clean and `clean_index != next_index` -> transmission
+
 Multiply remaining paths by 2 due to the `cleanup_to >= queue->num_entries` check
+
 `1` path: there is something to clean but DD is not set and `clean_index == next_index` -> no transmission
+
 `1` path: there is something to clean but DD is not set and `clean_index != next_index` -> transmission
+
 Multiply remaining paths by `P^C` due to the cleaning loop
+
 Multiply remaining paths by 2 due to the `cleanable < 0` check on the next iteration
+
 `1` path: transmission succeeds (packets have been cleaned so `clean_index != next_index)`
+
 
 Total paths:
 - `6` failing to transmit
