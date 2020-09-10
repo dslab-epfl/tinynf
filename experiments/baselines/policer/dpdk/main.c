@@ -30,13 +30,13 @@ static const uint16_t TX_QUEUES_COUNT = 1;
 // Queue sizes for receiving/transmitting packets
 #if VIGOR_BATCH_SIZE != 1
 static const uint16_t RX_QUEUE_SIZE = 128;
-static const uint16_t TX_QUEUE_SIZE = 128;
+static const uint16_t TX_QUEUE_SIZE = 512;
 #else
 // NOT powers of 2 so that ixgbe doesn't use vector stuff
 // but they have to be multiples of 8, and at least 32, otherwise the driver
 // refuses
-static const uint16_t RX_QUEUE_SIZE = 96;
-static const uint16_t TX_QUEUE_SIZE = 96;
+static const uint16_t RX_QUEUE_SIZE = 160;
+static const uint16_t TX_QUEUE_SIZE = 544;
 #endif
 
 // Buffer count for mempools
