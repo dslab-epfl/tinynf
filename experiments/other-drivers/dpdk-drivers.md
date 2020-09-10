@@ -7,7 +7,6 @@ For ease of scripting, the 'Name' column contains the exact names of the driver 
 For ease of reading, cells with 'no' are left empty.
 
 
-| ----------- | --- | ------ | ---------------------- |
 | Name        | HW? | Descs? | Remarks                |
 | ----------- | --- | ------ | ---------------------- |
 | af_packet   |     |        | UNIX sockets           |
