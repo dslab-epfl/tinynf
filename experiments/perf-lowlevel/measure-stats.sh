@@ -2,6 +2,21 @@
 
 echo 'Measuring low-level stats; this will take less than an hour...'
 
+TINYNF_DIR='../../code'
+DPDK_DIR='../baselines/dpdk/measurable-nop'
+LAYER='2'
+RESULTS_SUFFIX=''
+
+if [ "$1" = 'policer' ]; then
+  echo 'Using policer instead of NOP.'
+  TINYNF_DIR='../baselines/policer/tinynf'
+  DPDK_DIR='../baselines/policer/dpdk'
+  LAYER='3'
+  RESULTS_SUFFIX='-policer'
+  export RTE_SDK="$(pwd)/../baselines/vigor/dpdk"
+  export RTE_TARGET=x86_64-native-linuxapp-gcc
+fi
+
 # Ensure the papi submodule is cloned
 git submodule update --init --recursive
 
@@ -20,8 +35,8 @@ cd - >/dev/null
 echo 0 | sudo dd status=none of=/proc/sys/kernel/perf_event_paranoid
 
 # Ensure the results folder is deleted so we don't accidentally end up with stale results
-RESULTS_DIR="$(readlink -f results)"
-rm -rf "$RESULTS_DIR"
+RESULTS_DIR="$(readlink -f results$RESULTS_SUFFIX)"
+#rm -rf "$RESULTS_DIR"
 
 # Ensure there are no leftover hugepages
 sudo rm -rf /dev/hugepages/*
@@ -35,7 +50,7 @@ else
 fi
 
 # Start a packet flood, waiting for it to have really started
-ssh "$TESTER_HOST" "cd $REMOTE_FOLDER_NAME; ./bench-tester.sh flood 2" >/dev/null 2>&1 &
+ssh "$TESTER_HOST" "cd $REMOTE_FOLDER_NAME; ./bench-tester.sh flood $LAYER" >/dev/null 2>&1 &
 sleep 30
 
 # assumes pwd is right
@@ -49,14 +64,14 @@ run_nf()
 }
 
 # Collect data on TinyNF
-cd ../../code
-  mkdir -p "$RESULTS_DIR/TinyNF"
-  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10001000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build
-  run_nf 'TinyNF'
-cd - >/dev/null
+#cd "$TINYNF_DIR"
+#  mkdir -p "$RESULTS_DIR/TinyNF"
+#  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10001000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build
+#  run_nf 'TinyNF'
+#cd - >/dev/null
 
 # Collect data on DPDK, without and with batching
-cd ../baselines/dpdk/measurable-nop
+cd "$DPDK_DIR"
   for batch in 1 32; do
     mkdir -p "$RESULTS_DIR/DPDK-$batch"
     TN_BATCH_SIZE=$batch EXTRA_CFLAGS="-DTN_DEBUG_PERF=10001000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build >/dev/null 2>&1

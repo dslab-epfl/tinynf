@@ -2,6 +2,12 @@
 
 printf 'Tabulating results... This will take around 10 minutes due to the amount of data involved.\n\n'
 
+RESULTS_DIR='results'
+
+if [ ! -z "$1" ]; then
+  RESULTS_DIR="$RESULTS_DIR-$1"
+fi
+
 round()
 {
   # use sed to print 0.00 if the number is 0, and the leading zero if the number is >0 and <1
@@ -17,7 +23,7 @@ medstd()
 
 printf '\tCycles\t\tInstrs\t\tL1 hits\t\tL2 hits\t\tL3 hits\n'
 printf '\tmed\tstdev\tmed\tstdev\tmed\tstdev\tmed\tstdev\tmed\tstdev\n'
-for d in results/*; do
+for d in "$RESULTS_DIR"/*; do
   printf "$(basename "$d")\t"
   printf "$(medstd "$d" 1)"
   printf "$(medstd "$d" 2)"

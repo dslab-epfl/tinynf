@@ -38,6 +38,9 @@ CFLAGS += -fno-if-conversion -fno-if-conversion2
 # For policer_main.h
 CFLAGS += -I $(THIS_DIR)/..
 
+# For util/perf.h
+CFLAGS += -I $(THIS_DIR)/../../../../code
+
 # GCC 10 warnings
 CFLAGS += -Wno-address-of-packed-member
 
@@ -60,8 +63,9 @@ ifeq ($(RTE_TARGET),.)
 run:
 	@sudo ./build/app/$(APP) $(TN_ARGS) -- $(NF_ARGS)
 else
+# Preserve LD_LIBRARY_PATH so that util/perf.h can find libPAPI
 run:
-	@sudo ./build/app/$(APP) --no-shconf -n $(DUT_MEMORY_CHANNELS) -- $(NF_ARGS)
+	@sudo LD_LIBRARY_PATH="$$LD_LIBRARY_PATH" ./build/app/$(APP) --no-shconf -n $(DUT_MEMORY_CHANNELS) -- $(NF_ARGS)
 
 is-dpdk:
 	@# yes

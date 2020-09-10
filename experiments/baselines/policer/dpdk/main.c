@@ -19,6 +19,9 @@
 
 #include "nf.h"
 
+// TinyNF perf measurements
+#include "util/perf.h"
+
 #ifndef VIGOR_BATCH_SIZE
 #  define VIGOR_BATCH_SIZE 1
 #endif
@@ -95,6 +98,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
 // --- Per-core work ---
 
 static int lcore_main(void* arg) {
+  TN_PERF_PAPI_START();
 #ifdef TN_2CORE
   unsigned lcore = rte_lcore_id();
   uint16_t rx_id = lcore & 1;
@@ -106,6 +110,7 @@ static int lcore_main(void* arg) {
     struct rte_mbuf *mbufs[VIGOR_BATCH_SIZE];
     struct rte_mbuf *mbufs_to_send[VIGOR_BATCH_SIZE];
     int mbuf_send_index = 0;
+    TN_PERF_PAPI_RESET();
     uint16_t received_count = rte_eth_rx_burst(rx_id, 0, mbufs, VIGOR_BATCH_SIZE);
     for (uint16_t n = 0; n < received_count; n++) {
       uint8_t* packet = rte_pktmbuf_mtod(mbufs[n], uint8_t*);
@@ -123,6 +128,7 @@ static int lcore_main(void* arg) {
     for (uint16_t n = sent_count; n < mbuf_send_index; n++) {
       rte_pktmbuf_free(mbufs[n]);
     }
+    TN_PERF_PAPI_RECORD(sent_count);
   }
   return 0;
 }

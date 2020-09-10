@@ -2,6 +2,7 @@
 #include "net/network.h"
 #include "util/log.h"
 #include "util/parse.h"
+#include "util/perf.h"
 
 // DPDK devices count
 #include <tn_dpdk.h>
@@ -103,6 +104,24 @@ int main(int argc, char** argv)
 
 	pthread_join(t0, NULL);
 	pthread_join(t1, NULL);
+#elif defined(TN_DEBUG_PERF)
+	uint8_t* packet;
+	uint16_t packet_length;
+	bool output = true;
+	TN_PERF_PAPI_START();
+	while(true) {
+		for (uint64_t a = 0; a < 2; a++) {
+			for (uint64_t p = 0; p < 8; p++) { // sync '8' here with PROCESS_PERIOD in ixgbe
+				TN_PERF_PAPI_RESET();
+				if (!tn_net_agent_receive(agents[a], &packet, &packet_length)) {
+					break;
+				}
+				uint16_t transmit_length = packet_handler(packet, packet_length, (void*) a, &output);
+				tn_net_agent_transmit(agents[a], transmit_length, &output);
+				TN_PERF_PAPI_RECORD(1);
+			}
+		}
+	}
 #else
 	void* states[2] = { 0, 1 };
 	tn_net_packet_handler* handlers[2] = { packet_handler, packet_handler };
