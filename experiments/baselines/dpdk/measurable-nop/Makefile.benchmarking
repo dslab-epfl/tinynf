@@ -13,5 +13,19 @@ SRCS-y += main.c
 
 APP := nf
 
+DUT_MEMORY_CHANNELS ?= 2
+
 # DPDK stuff, part 2
 include $(RTE_SDK)/mk/rte.extapp.mk
+
+build: all
+
+# Preserve LD_LIBRARY_PATH so that util/perf.h can find libPAPI
+run:
+	@sudo LD_LIBRARY_PATH="$$LD_LIBRARY_PATH" ./build/app/nf -n $(DUT_MEMORY_CHANNELS)
+
+is-dpdk:
+	@#yes
+
+print-nf-name:
+	@echo nf

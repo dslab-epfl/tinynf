@@ -1,17 +1,6 @@
 #!/bin/sh
 
-echo 'Measuring low-level stats; this will take 1-2h and generate ~15GB of data, come back in a while...'
-
-# Assuming there are log1..log10 files each containing 10001000 entries, merges them into a 'logsorted' file,
-# discarding the worst 0.01% entries in terms of cycles of each log since they're weird outliers probably caused by some CPU weirdness
-merge_logs()
-{
-  rm -f logsorted
-  for i in $(seq 1 10); do
-    sed -e '0,/Counters:/d' log$i | sort -n | head -n+10000000 >> logsorted
-  done
-  for i in $(seq 1 10); do rm log$i; done
-}
+echo 'Measuring low-level stats; this will take around an hour...'
 
 # Ensure the papi submodule is cloned
 git submodule update --init --recursive
@@ -30,10 +19,9 @@ cd - >/dev/null
 # Ensure papi can read events
 echo 0 | sudo dd status=none of=/proc/sys/kernel/perf_event_paranoid
 
-# Ensure the results folder is clean so we don't accidentally end up with stale results
+# Ensure the results folder is deleted so we don't accidentally end up with stale results
 RESULTS_DIR="$(readlink -f results)"
 rm -rf "$RESULTS_DIR"
-mkdir "$RESULTS_DIR"
 
 # Ensure there are no leftover hugepages
 sudo rm -rf /dev/hugepages/*
@@ -52,25 +40,22 @@ sleep 30
 
 # Collect data on TinyNF
 cd ../../code
-  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10001000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make
+  mkdir -p "$RESULTS_DIR/TinyNF"
+  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10001000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build
   for i in $(seq 1 10); do
-    sudo LD_LIBRARY_PATH="$PAPI_DIR/src" taskset -c "$DUT_CPUS" ./tinynf $DUT_DEVS >log$i 2>&1
+    LD_LIBRARY_PATH="$PAPI_DIR/src" TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPUS" make -f Makefile.benchmarking run >"$RESULTS_DIR/TinyNF/log$i" 2>&1
   done
-  merge_logs
-  mv logsorted "$RESULTS_DIR/TinyNF"
 cd - >/dev/null
 
 # Collect data on DPDK
 cd ../baselines/dpdk/measurable-nop
   for batch in 1 32; do
-    make clean
-    EXTRA_CFLAGS="-DBATCH_SIZE=$batch -DTN_DEBUG_PERF=10001000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make >/dev/null 2>&1
+    mkdir -p "$RESULTS_DIR/DPDK-$batch"
+    EXTRA_CFLAGS="-DBATCH_SIZE=$batch -DTN_DEBUG_PERF=10001000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build >/dev/null 2>&1
     ../../../../benchmarking/bind-devices-to-uio.sh $DUT_DEVS
     for i in $(seq 1 10); do
-      sudo LD_LIBRARY_PATH="$PAPI_DIR/src" taskset -c "$DUT_CPUS" ./build/app/nf >log$i 2>&1
+      LD_LIBRARY_PATH="$PAPI_DIR/src" taskset -c "$DUT_CPUS" make -f Makefile.benchmarking run >"$RESULTS_DIR/DPDK-$batch/log$i" 2>&1
     done
-    merge_logs
-    mv logsorted "$RESULTS_DIR/DPDK-$batch"
   done
 cd - >/dev/null
 

@@ -116,4 +116,4 @@ For the numbers of paths: read the `code-metrics/PathsIn...` files.
 
 ### Table 4
 
-In `perf-lowlevel`, run `./measure-stats.sh` then `./tabulate-stats.sh`, which should take <2h in total and need ~20GB of free space due to the large amounts of data involved.
+In `perf-lowlevel`, run `./measure-stats.sh` then `./tabulate-stats.sh`, which should take <2h in total and use ~30GB of disk space due to the amount of data involved.
