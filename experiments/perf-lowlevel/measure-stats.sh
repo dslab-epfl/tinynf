@@ -1,6 +1,6 @@
 #!/bin/sh
 
-echo 'Measuring low-level stats; this will take around an hour...'
+echo 'Measuring low-level stats; this will take less than an hour...'
 
 # Ensure the papi submodule is cloned
 git submodule update --init --recursive
@@ -38,24 +38,30 @@ fi
 ssh "$TESTER_HOST" "cd $REMOTE_FOLDER_NAME; ./bench-tester.sh flood 2" >/dev/null 2>&1 &
 sleep 30
 
+# assumes pwd is right
+# $1: result folder name, e.g. TinyNF or DPDK-1
+run_nf()
+{
+  for i in $(seq 0 9); do
+    # Remove output before the values themselves, and skip the first 1000 lines since they might have heatup effects
+    LD_LIBRARY_PATH="$PAPI_DIR/src" TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPUS" make -f Makefile.benchmarking run 2>&1 | sed '0,/Counters:/d' | tail -n+1001 >"$RESULTS_DIR/$1/log$i"
+  done
+}
+
 # Collect data on TinyNF
 cd ../../code
   mkdir -p "$RESULTS_DIR/TinyNF"
   TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10001000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build
-  for i in $(seq 1 10); do
-    LD_LIBRARY_PATH="$PAPI_DIR/src" TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPUS" make -f Makefile.benchmarking run >"$RESULTS_DIR/TinyNF/log$i" 2>&1
-  done
+  run_nf 'TinyNF'
 cd - >/dev/null
 
-# Collect data on DPDK
+# Collect data on DPDK, without and with batching
 cd ../baselines/dpdk/measurable-nop
   for batch in 1 32; do
     mkdir -p "$RESULTS_DIR/DPDK-$batch"
-    EXTRA_CFLAGS="-DBATCH_SIZE=$batch -DTN_DEBUG_PERF=10001000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build >/dev/null 2>&1
+    TN_BATCH_SIZE=$batch EXTRA_CFLAGS="-DTN_DEBUG_PERF=10001000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build >/dev/null 2>&1
     ../../../../benchmarking/bind-devices-to-uio.sh $DUT_DEVS
-    for i in $(seq 1 10); do
-      LD_LIBRARY_PATH="$PAPI_DIR/src" taskset -c "$DUT_CPUS" make -f Makefile.benchmarking run >"$RESULTS_DIR/DPDK-$batch/log$i" 2>&1
-    done
+    run_nf "DPDK-$batch"
   done
 cd - >/dev/null
 

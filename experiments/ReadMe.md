@@ -38,7 +38,7 @@ You will also need the following software:
 - GCC 10 (any version should work, but that is the one we used for the paper)
 - The build tools Make and CMake, available under these names in most package repositories
 - The development versions of libC and libNUMA, for instance available in the `libc-dev` and `libnuma-dev` packages in Ubuntu
-- The shell utilities `bc`, `cloc`, and `indent`, available under these names in most package repositories
+- The shell utilities `bc`, `cloc`, `indent` and `ministat`, available under these names in most package repositories
 - The shell utility `cpupower`, available under names such as `linux-tools-common` (Ubuntu) or `kernel-tools` (Fedora) in package repositories
 - Python 3 with the `matplotlib` package
 
@@ -116,4 +116,4 @@ For the numbers of paths: read the `code-metrics/PathsIn...` files.
 
 ### Table 4
 
-In `perf-lowlevel`, run `./measure-stats.sh` then `./tabulate-stats.sh`, which should take <2h in total and use ~30GB of disk space due to the amount of data involved.
+In `perf-lowlevel`, run `./measure-stats.sh` then `./tabulate-stats.sh`, which should take ~1h in total and use ~15GB of disk space due to the amount of data involved.

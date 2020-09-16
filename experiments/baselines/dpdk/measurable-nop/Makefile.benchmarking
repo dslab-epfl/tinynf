@@ -15,6 +15,9 @@ APP := nf
 
 DUT_MEMORY_CHANNELS ?= 2
 
+TN_BATCH_SIZE ?= 1
+CFLAGS += -DBATCH_SIZE=$(TN_BATCH_SIZE)
+
 # DPDK stuff, part 2
 include $(RTE_SDK)/mk/rte.extapp.mk
 
