@@ -26,6 +26,8 @@ PAPI_DIR="$(readlink -e papi)"
 # Build papi if needed, but don't install it, we just want a local version
 cd "$PAPI_DIR/src"
   if [ ! -e "libpapi.so" ]; then
+    # Allow external code to link with internal PAPI functions, see TinyNF's util/perf.h
+    sed -i 's/LIBCFLAGS += -fvisibility=hidden//' Rules.pfm4_pe
     ./configure
     make
   fi
@@ -82,3 +84,6 @@ cd - >/dev/null
 
 # Stop the flood
 ssh "$TESTER_HOST" "sudo pkill -9 MoonGen"
+
+# Since a few of the samples might have negative numbers of cycles or other such oddities...
+echo "Done! If you want to look at the raw data, please read the disclaimer in the util/perf.h file of TinyNF's codebase."
