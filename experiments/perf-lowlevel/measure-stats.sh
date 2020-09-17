@@ -36,7 +36,7 @@ echo 0 | sudo dd status=none of=/proc/sys/kernel/perf_event_paranoid
 
 # Ensure the results folder is deleted so we don't accidentally end up with stale results
 RESULTS_DIR="$(readlink -f results$RESULTS_SUFFIX)"
-#rm -rf "$RESULTS_DIR"
+rm -rf "$RESULTS_DIR"
 
 # Ensure there are no leftover hugepages
 sudo rm -rf /dev/hugepages/*
@@ -64,11 +64,11 @@ run_nf()
 }
 
 # Collect data on TinyNF
-#cd "$TINYNF_DIR"
-#  mkdir -p "$RESULTS_DIR/TinyNF"
-#  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10001000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build
-#  run_nf 'TinyNF'
-#cd - >/dev/null
+cd "$TINYNF_DIR"
+  mkdir -p "$RESULTS_DIR/TinyNF"
+  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10001000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build
+  run_nf 'TinyNF'
+cd - >/dev/null
 
 # Collect data on DPDK, without and with batching
 cd "$DPDK_DIR"
