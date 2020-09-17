@@ -13,6 +13,9 @@ if [ "$1" = 'policer' ]; then
   DPDK_DIR='../baselines/policer/dpdk'
   LAYER='3'
   RESULTS_SUFFIX='-policer'
+  export EXPIRATION_TIME='4000000'
+  export POLICER_BURST='1000000000000'
+  export POLICER_RATE='1000000000000'
   export RTE_SDK="$(pwd)/../baselines/vigor/dpdk"
   export RTE_TARGET=x86_64-native-linuxapp-gcc
 fi
@@ -59,16 +62,31 @@ sleep 30
 # $1: result folder name, e.g. TinyNF or DPDK-1
 run_nf()
 {
-  for i in $(seq 0 9); do
-    # Remove output before the values themselves, and skip the first 1000 lines since they might have heatup effects
-    LD_LIBRARY_PATH="$PAPI_DIR/src" TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPUS" make -f Makefile.benchmarking run 2>&1 | sed '0,/Counters:/d' | tail -n+1001 >"$RESULTS_DIR/$1/log$i"
+  i=0
+  while [ $i -lt 10 ]; do
+    # Remove output before the values themselves
+    LD_LIBRARY_PATH="$PAPI_DIR/src" TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPUS" make -f Makefile.benchmarking run 2>&1 | sed '0,/Counters:/d' >"$RESULTS_DIR/$1/log$i" &
+    nf_name="$(make -f Makefile.benchmarking print-nf-name)"
+    # Wait 5 minutes max before retrying, but don't always wait 5min since that would take too long
+    for t in $(seq 1 60); do
+      sleep 5
+      if ! pgrep -x "$nf_name" >/dev/null ; then
+        break
+      fi
+    done
+    if pgrep -x "$nf_name" >/dev/null ; then
+      echo "NF got stuck; retrying..."
+      sudo pkill -x -9 "$nf_name"
+    else
+      i=$(echo "$i + 1" | bc)
+    fi
   done
 }
 
 # Collect data on TinyNF
 cd "$TINYNF_DIR"
   mkdir -p "$RESULTS_DIR/TinyNF"
-  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10001000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build
+  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10000000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build
   run_nf 'TinyNF'
 cd - >/dev/null
 
@@ -76,7 +94,7 @@ cd - >/dev/null
 cd "$DPDK_DIR"
   for batch in 1 32; do
     mkdir -p "$RESULTS_DIR/DPDK-$batch"
-    TN_BATCH_SIZE=$batch EXTRA_CFLAGS="-DTN_DEBUG_PERF=10001000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build >/dev/null 2>&1
+    TN_BATCH_SIZE=$batch EXTRA_CFLAGS="-DTN_DEBUG_PERF=10000000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build >/dev/null 2>&1
     ../../../../benchmarking/bind-devices-to-uio.sh $DUT_DEVS
     run_nf "DPDK-$batch"
   done

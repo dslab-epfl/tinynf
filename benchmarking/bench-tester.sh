@@ -17,6 +17,8 @@ fi
 
 echo '[bench] Setting up tester...'
 
+# Make sure there are no leftover MoonGen processes
+sudo pkill -9 MoonGen
 # Make sure there are no leftovers from a previous run
 sudo rm -rf /dev/hugepages/*
 

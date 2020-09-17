@@ -98,7 +98,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
 // --- Per-core work ---
 
 static int lcore_main(void* arg) {
-  TN_PERF_PAPI_START();
+  TN_PERF_PAPI_INIT();
 #ifdef TN_2CORE
   unsigned lcore = rte_lcore_id();
   uint16_t rx_id = lcore & 1;

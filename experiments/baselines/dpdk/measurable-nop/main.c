@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
   struct rte_mbuf* bufs[BATCH_SIZE];
   uint16_t nb_rx;
   uint16_t nb_tx;
-  TN_PERF_PAPI_START();
+  TN_PERF_PAPI_INIT();
   while(1) {
     for (uint16_t d = 0; d < 2; d++) {
       TN_PERF_PAPI_RESET();

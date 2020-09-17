@@ -108,7 +108,7 @@ int main(int argc, char** argv)
 	uint8_t* packet;
 	uint16_t packet_length;
 	bool output = true;
-	TN_PERF_PAPI_START();
+	TN_PERF_PAPI_INIT();
 	while(true) {
 		for (uint64_t a = 0; a < 2; a++) {
 			TN_PERF_PAPI_RESET();

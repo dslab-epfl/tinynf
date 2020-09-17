@@ -12,8 +12,11 @@
 // furthermore, by definition, measurement overheads are not independent of measurements, because the measurement code also uses the CPU cache and other internals.
 // Thus, while this code does its best to make overheads deterministic, the resulting values should not be taken as objectively 100% correct.
 // In fact, some individual data points may make little sense: given minimum overhead MIN and average overhead AVG, if a data point is < (AVG-MIN),
-// and the overhead for that data point happens to be MIN, then the resulting data point will be negative!
-// But on average things should be okay.
+// and the overhead for that data point happens to be MIN, then the resulting data point will be negative! But on average things should be okay.
+// Another issue is that of cycles: because measuring cycles requires a serializing instruction to ensure the result makes sense on an out-of-order CPU,
+// the number of cycles is artificially lower when using large batches, since only one such instruction is used per batch and the CPU can reorder instructions within a batch,
+// even though the CPU would also reorder instructions across batches without this measurement code.
+// Thus, while the measured instruction and cache hit counts are accurate, the measured cycle counts should be taken with a pinch of salt.
 
 // Implementation notes:
 // There are a few things one can configure, see "Configuration" below.
@@ -117,9 +120,10 @@ static inline void custompapi_init(void) {
 // Inlined from PAPI_reset
 #define custompapi_reset() papi_reset(papi_context, papi_ctl_state)
 
-// Inlined from _papi_hwi_read, itself inlined from PAPI_read
+// Inlined from _papi_hwi_read, itself inlined from PAPI_read; plus a serializing instruction
 static long long* papi_dp;
 #define custompapi_read(values) do { \
+	__asm__ volatile("CPUID" ::: "eax", "ebx", "ecx", "edx", "memory"); \
 	papi_read(papi_context, papi_ctl_state, &papi_dp, papi_state); \
 	memcpy(values, papi_dp, papi_events_count * sizeof(long long)); \
 } while (0)
@@ -135,7 +139,7 @@ static long long papi_heatup_values[papi_heatup_count][papi_events_count];
 static double papi_heatup_averages[papi_events_count];
 static long long papi_values[TN_DEBUG_PERF+papi_heatup_count][papi_events_count];
 
-static inline void TN_PERF_PAPI_START(void) {
+static inline void TN_PERF_PAPI_INIT(void) {
 	custompapi_init();
 	// Throwaway heatup first
 	for (size_t n = 0; n < papi_heatup_count; n++) {
@@ -187,7 +191,7 @@ static inline void TN_PERF_PAPI_END(void) {
 	} \
 } while(0)
 #else
-#define TN_PERF_PAPI_START()
+#define TN_PERF_PAPI_INIT()
 #define TN_PERF_PAPI_RESET()
 #define TN_PERF_PAPI_RECORD(...)
 #endif
