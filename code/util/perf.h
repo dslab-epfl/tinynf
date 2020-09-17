@@ -17,6 +17,7 @@ static int papi_events[] = {PAPI_REF_CYC, PAPI_TOT_INS, PAPI_LD_INS, PAPI_SR_INS
 static int papi_event_set = PAPI_NULL;
 static uint64_t papi_counter;
 static uint8_t papi_batches[TN_DEBUG_PERF+papi_heatup_count];
+static long long papi_discard_values[papi_events_count];
 static long long papi_heatup_values[papi_heatup_count][papi_events_count];
 static double papi_heatup_averages[papi_events_count];
 static long long papi_values[TN_DEBUG_PERF+papi_heatup_count][papi_events_count];
@@ -38,11 +39,9 @@ static inline void TN_PERF_PAPI_START(void) {
 		printf("Couldn't create a PAPI event set! Error: %s\n", PAPI_strerror(papi_ret));
 		exit(1);
 	}
-	for (uint64_t e = 0; e < papi_events_count; e++) {
-		if ((papi_ret = PAPI_add_event(papi_event_set, papi_events[e])) != PAPI_OK) {
-			printf("Couldn't add an event to the PAPI event set! Error: %s\n", PAPI_strerror(papi_ret));
-			exit(1);
-		}
+	if ((papi_ret = PAPI_add_events(papi_event_set, papi_events, papi_events_count)) != PAPI_OK) {
+		printf("Couldn't add events to the PAPI event set! Error: %s\n", PAPI_strerror(papi_ret));
+		exit(1);
 	}
 	if ((papi_ret = PAPI_start(papi_event_set)) != PAPI_OK) {
 		printf("Couldn't start PAPI! Error: %s\n", PAPI_strerror(papi_ret));
@@ -50,26 +49,27 @@ static inline void TN_PERF_PAPI_START(void) {
 	}
 	// Run heatup iterations first
 	for (uint64_t n = 0; n < papi_heatup_count; n++) {
-		PAPI_read(papi_event_set, papi_heatup_values[0]);
 		PAPI_reset(papi_event_set);
+		PAPI_read(papi_event_set, papi_discard_values);
 	}
 	// Then real iterations
 	for (uint64_t n = 0; n < papi_heatup_count; n++) {
-		PAPI_read(papi_event_set, papi_heatup_values[n]);
 		PAPI_reset(papi_event_set);
+		PAPI_read(papi_event_set, papi_heatup_values[n]);
 	}
 	// Then average that to get the baseline level.
 	// Averaging isn't great since it doesn't capture the exact PAPI overhead, but it's good enough... not much else we can do.
 	for (uint64_t e = 0; e < papi_events_count; e++) {
 		for (uint64_t n = 0; n < papi_heatup_count; n++) {
+//			printf("PAPI HEATUP %lu: %lld\n", e, papi_heatup_values[n][e]);
 			papi_heatup_averages[e] += papi_heatup_values[n][e];
 		}
 		papi_heatup_averages[e] /= papi_heatup_count;
-		printf("PAPI HEATUP: %lf\n", papi_heatup_averages[e]);
 	}
 }
 static inline void TN_PERF_PAPI_END(void) {
 	// This method is not intended to be called directly.
+	PAPI_stop(papi_event_set, papi_discard_values);
 	printf("Counters: cycles, instructions, L1d hits, L2 hits, L3/mem hits\n");
 	for (uint64_t n = papi_heatup_count; n < TN_DEBUG_PERF + papi_heatup_count; n++) {
 		uint64_t m;
@@ -87,7 +87,6 @@ static inline void TN_PERF_PAPI_END(void) {
 	exit(0);
 }
 #define TN_PERF_PAPI_RESET() do { \
-	PAPI_read(papi_event_set, papi_values[papi_counter]); \
 	PAPI_reset(papi_event_set); \
 } while(0)
 #define TN_PERF_PAPI_RECORD(batch_count) do { \
