@@ -8,18 +8,20 @@ tofrac()
 
 summarize()
 {
-  lines="$(cat "$1/latencies-single/1000" | wc -l)"
-  num99="$(echo "$lines - $lines * 0.99 / 1" | bc)"
-  lat50="$(tofrac $(cat "$1/latencies-single/1000" | ministat -A | tail -n 1 | awk '{print $5}'))"
-  lat99="$(tofrac $(cat "$1/latencies-single/1000" | sort -n | tail -n $num99 | ministat -A | tail -n 1 | awk '{print $5}'))"
   tput="$(tofrac $(cat "$1/throughput-single"))"
+  printf '%s\t' "$tput"
 
-  printf "$tput\t$lat50\t$lat99"
+  lines="$(cat "$1/latencies-single/1000" | wc -l)"
+  num50="$(echo "$lines / 2" | bc)"
+  num99="$(echo "$lines * 0.99 / 1" | bc)"
+  for n in $(cat "$1/latencies-single/1000" | sort -n | sed "$num50"'p;'"$num99"'q;d' | tr '\n' ' '); do
+    printf '%s\t' "$(tofrac "$n")"
+  done
 }
 
 printf "\tDPDK\t\t\tTinyNF\n"
 printf "\tTput\tLat50\tLat99\tTput\tLat50\tLat99\n"
 for nf in nat bridge lb pol fw; do
-  printf "$nf\t$(summarize "results/vigor-$nf-dpdk")\t$(summarize "results/vigor-$nf")\n"
+  printf "$nf\t$(summarize "results/vigor-$nf-dpdk")$(summarize "results/vigor-$nf")\n"
 done
 printf "\nTput is in Gb/s, lat in us\n\n"
