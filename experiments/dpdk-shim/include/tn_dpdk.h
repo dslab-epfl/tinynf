@@ -11,9 +11,11 @@ struct tn_dpdk_device
 	struct tn_net_device* device;
 	struct tn_net_agent* agent;
 	bool is_promiscuous;
-	uint8_t buffer[1024]; // must be large enough for struct rte_mbuf to fit in there
 	bool is_processing;
+#ifndef ASSUME_ONE_WAY
 	bool current_outputs[TN_DPDK_DEVICES_MAX_COUNT];
+#endif
+	uint8_t buffer[64]; // must be large enough for struct rte_mbuf to fit in there
 };
 
 extern struct tn_dpdk_device tn_dpdk_devices[TN_DPDK_DEVICES_MAX_COUNT];

@@ -100,8 +100,7 @@ static inline void rte_mbuf_refcnt_set(struct rte_mbuf* m, uint16_t new_value)
 static inline void rte_mbuf_raw_free(struct rte_mbuf* m)
 {
 	// Assume that if freeing, the mbuf is supposed to be dropped
-	bool outputs[TN_DPDK_DEVICES_MAX_COUNT] = {0};
-	m->tn_dpdk_device->is_processing = false;
+	static bool outputs[TN_DPDK_DEVICES_MAX_COUNT] = {0};
 	tn_net_agent_transmit(m->tn_dpdk_device->agent, m->data_len, outputs);
 }
 

@@ -187,10 +187,7 @@ static inline int rte_eth_promiscuous_get(uint16_t port_id)
 static inline uint16_t rte_eth_rx_burst(uint16_t port_id, uint16_t queue_id, struct rte_mbuf** rx_pkts, uint16_t nb_pkts)
 {
 	(void) nb_pkts;
-
-	if (queue_id != 0) {
-		return 0;
-	}
+	(void) queue_id;
 
 	if (tn_dpdk_devices[port_id].is_processing) {
 		return 0;
@@ -201,13 +198,11 @@ static inline uint16_t rte_eth_rx_burst(uint16_t port_id, uint16_t queue_id, str
 	if (tn_net_agent_receive(tn_dpdk_devices[port_id].agent, (uint8_t**) &(rx_pkts[0]->buf_addr), &(rx_pkts[0]->data_len))) {
 		rx_pkts[0]->pkt_len = rx_pkts[0]->data_len;
 		rx_pkts[0]->port = port_id;
-		rx_pkts[0]->refcnt = 1;
 		rx_pkts[0]->tn_dpdk_device = &(tn_dpdk_devices[port_id]);
 		tn_dpdk_devices[port_id].is_processing = true;
 
-#ifdef ASSUME_ONE_WAY
-		memset(tn_dpdk_devices[port_id].current_outputs, 1, TN_DPDK_DEVICES_MAX_COUNT * sizeof(bool));
-#else
+#ifndef ASSUME_ONE_WAY
+		rx_pkts[0]->refcnt = 1;
 		memset(tn_dpdk_devices[port_id].current_outputs, 0, TN_DPDK_DEVICES_MAX_COUNT * sizeof(bool));
 #endif
 		return 1;
@@ -228,7 +223,8 @@ static inline uint16_t rte_eth_tx_burst(uint16_t port_id, uint16_t queue_id, str
 	struct tn_dpdk_device* dev = tx_pkts[0]->tn_dpdk_device;
 
 #ifdef ASSUME_ONE_WAY
-	tn_net_agent_transmit(dev->agent, tx_pkts[0]->data_len, dev->current_outputs);
+	static bool send = true;
+	tn_net_agent_transmit(dev->agent, tx_pkts[0]->data_len, &send);
 	dev->is_processing = false;
 #else
 	dev->current_outputs[port_id] = true;

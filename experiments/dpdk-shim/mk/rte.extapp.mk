@@ -11,5 +11,5 @@ BUILDDIR := ./build
 all:
 	@rm -rf "$(BUILDDIR)"
 	@mkdir -p "$(BUILDDIR)/app"
-	@for file in $(SRCS-y); do $(TN_CC) -c "$$file" $(CFLAGS) $(TN_CFLAGS) -I "$(TN_DPDK_DIR)/include" -o "$(BUILDDIR)/$$(basename $$file).o"; done
-	@$(TN_CC) "$(BUILDDIR)/"*.o "$(TN_DPDK_DIR)/lib/libdpdk.so" $(LDFLAGS) $(TN_CFLAGS) -o "$(BUILDDIR)/app/$(APP)"
+	@for file in $(SRCS-y); do $(TN_CC) $(CFLAGS) $(TN_CFLAGS) -I "$(TN_DPDK_DIR)/include" -c "$$file" -o "$(BUILDDIR)/$$(basename $$file).o"; done
+	@$(TN_CC) $(LDFLAGS) $(TN_CFLAGS) "$(BUILDDIR)/"*.o "$(TN_DPDK_DIR)/lib/libdpdk.so" -o "$(BUILDDIR)/app/$(APP)"
