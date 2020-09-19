@@ -82,7 +82,14 @@ int main(int argc, char** argv)
 				if (!tn_net_agent_receive(agents[a], &packet, &packet_length)) {
 					break;
 				}
-#ifdef TN_DEBUG_PERF_DOCOPY
+#ifdef TN_DEBUG_PERF_DOWRITE
+				packet[0] = 0x12;
+				packet[1] = 0x34;
+				packet[2] = 0x56;
+				packet[3] = 0x78;
+				packet[4] = 0x9A;
+				packet[5] = 0xBC;
+#elif defined(TN_DEBUG_PERF_DOCOPY)
 				packet[0] = packet[6];
 				packet[1] = packet[7];
 				packet[2] = packet[8];

@@ -95,7 +95,17 @@ int main(int argc, char* argv[]) {
     for (uint16_t d = 0; d < 2; d++) {
       TN_PERF_PAPI_RESET();
       nb_rx = rte_eth_rx_burst(devices[d], 0, bufs, BATCH_SIZE);
-#ifdef TN_DEBUG_PERF_DOCOPY
+#ifdef TN_DEBUG_PERF_DOWRITE
+      for (uint16_t n = 0; n < nb_rx; n++) {
+        uint8_t* data = rte_pktmbuf_mtod(bufs[n], uint8_t*);
+        data[0] = 0x12;
+        data[1] = 0x34;
+        data[2] = 0x56;
+        data[3] = 0x78;
+        data[4] = 0x9A;
+        data[5] = 0xBC;
+      }
+#elif defined(TN_DEBUG_PERF_DOCOPY)
       for (uint16_t n = 0; n < nb_rx; n++) {
         uint8_t* data = rte_pktmbuf_mtod(bufs[n], uint8_t*);
         data[0] = data[6];

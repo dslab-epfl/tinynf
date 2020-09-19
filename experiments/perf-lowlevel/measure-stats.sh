@@ -1,19 +1,18 @@
 #!/bin/sh
 
-echo 'Measuring low-level stats; this will take around half an hour...'
-
 TINYNF_DIR='../../code'
 DPDK_DIR='../baselines/dpdk/measurable-nop'
 EXTRACFLAGS=''
 LAYER='2'
 RESULTS_SUFFIX=''
 
-if [ "$1" = 'mac_copy' ]; then
-  echo 'Doing a MAC copy, not just a no-op.'
+if [ "$1" = 'mac_write' ]; then
+  EXTRACFLAGS='-DTN_DEBUG_PERF_DOWRITE'
+  RESULTS_SUFFIX='-mac_write'
+elif [ "$1" = 'mac_copy' ]; then
   EXTRACFLAGS='-DTN_DEBUG_PERF_DOCOPY'
   RESULTS_SUFFIX='-mac_copy'
 elif [ "$1" = 'policer' ]; then
-  echo 'Using policer instead of no-op.'
   TINYNF_DIR='../baselines/policer/tinynf'
   DPDK_DIR='../baselines/policer/dpdk'
   LAYER='3'
@@ -23,7 +22,13 @@ elif [ "$1" = 'policer' ]; then
   export POLICER_RATE='1000000000000'
   export RTE_SDK="$(pwd)/../baselines/vigor/dpdk"
   export RTE_TARGET=x86_64-native-linuxapp-gcc
+elif [ ! -z "$1" ]; then
+  echo 'Unknown parameter.'
+  exit 1
 fi
+
+echo 'Measuring low-level stats; this will take around half an hour...'
+
 
 # Ensure the papi submodule is cloned
 git submodule update --init --recursive
@@ -80,7 +85,6 @@ run_nf()
       fi
     done
     if pgrep -x "$nf_name" >/dev/null ; then
-      echo "NF got stuck; retrying..."
       sudo pkill -x -9 "$nf_name"
     else
       i=$(echo "$i + 1" | bc)
