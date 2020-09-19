@@ -37,7 +37,7 @@ struct rte_mbuf
 
 struct rte_pktmbuf_pool_private
 {
-	// Nothing
+	void* nothing;
 };
 
 

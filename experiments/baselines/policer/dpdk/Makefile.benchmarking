@@ -41,8 +41,8 @@ CFLAGS += -I $(THIS_DIR)/..
 # For util/perf.h
 CFLAGS += -I $(THIS_DIR)/../../../../code
 
-# GCC 10 warnings
-CFLAGS += -Wno-address-of-packed-member
+# Vigor compiles with DPDK makefiles, which do not care about extremely many warnings, so let's not even bother
+CFLAGS += -w
 
 ifdef TN_2CORE
 CFLAGS += -DTN_2CORE

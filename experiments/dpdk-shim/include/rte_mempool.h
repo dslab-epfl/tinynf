@@ -5,7 +5,7 @@
 
 struct rte_mempool
 {
-	// Nothing
+	void* nothing;
 };
 
 typedef void(rte_mempool_ctor_t) (struct rte_mempool*, void*);
