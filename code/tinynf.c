@@ -82,6 +82,14 @@ int main(int argc, char** argv)
 				if (!tn_net_agent_receive(agents[a], &packet, &packet_length)) {
 					break;
 				}
+#ifdef TN_DEBUG_PERF_DOCOPY
+				packet[0] = packet[6];
+				packet[1] = packet[7];
+				packet[2] = packet[8];
+				packet[3] = packet[9];
+				packet[4] = packet[10];
+				packet[5] = packet[11];
+#endif
 				tn_net_agent_transmit(agents[a], packet_length, &output);
 			}
 			TN_PERF_PAPI_RECORD(p);

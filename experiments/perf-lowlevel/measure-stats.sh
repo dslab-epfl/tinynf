@@ -1,14 +1,19 @@
 #!/bin/sh
 
-echo 'Measuring low-level stats; this will take less than an hour...'
+echo 'Measuring low-level stats; this will take around half an hour...'
 
 TINYNF_DIR='../../code'
 DPDK_DIR='../baselines/dpdk/measurable-nop'
+EXTRACFLAGS=''
 LAYER='2'
 RESULTS_SUFFIX=''
 
-if [ "$1" = 'policer' ]; then
-  echo 'Using policer instead of NOP.'
+if [ "$1" = 'mac_copy' ]; then
+  echo 'Doing a MAC copy, not just a no-op.'
+  EXTRACFLAGS='-DTN_DEBUG_PERF_DOCOPY'
+  RESULTS_SUFFIX='-mac_copy'
+elif [ "$1" = 'policer' ]; then
+  echo 'Using policer instead of no-op.'
   TINYNF_DIR='../baselines/policer/tinynf'
   DPDK_DIR='../baselines/policer/dpdk'
   LAYER='3'
@@ -86,7 +91,7 @@ run_nf()
 # Collect data on TinyNF
 cd "$TINYNF_DIR"
   mkdir -p "$RESULTS_DIR/TinyNF"
-  TN_DEBUG=0 TN_CFLAGS="-DTN_DEBUG_PERF=10000000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build
+  TN_DEBUG=0 TN_CFLAGS="$EXTRACFLAGS -DTN_DEBUG_PERF=10000000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build
   run_nf 'TinyNF'
 cd - >/dev/null
 
@@ -94,7 +99,7 @@ cd - >/dev/null
 cd "$DPDK_DIR"
   for batch in 1 32; do
     mkdir -p "$RESULTS_DIR/DPDK-$batch"
-    TN_BATCH_SIZE=$batch EXTRA_CFLAGS="-DTN_DEBUG_PERF=10000000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build >/dev/null 2>&1
+    TN_BATCH_SIZE=$batch EXTRA_CFLAGS="$EXTRACFLAGS -DTN_DEBUG_PERF=10000000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make -f Makefile.benchmarking build >/dev/null 2>&1
     ../../../../benchmarking/bind-devices-to-uio.sh $DUT_DEVS
     run_nf "DPDK-$batch"
   done
