@@ -85,9 +85,8 @@ int main(int argc, char** argv)
 	TN_PERF_PAPI_INIT();
 	while(true) {
 		for (uint64_t a = 0; a < 2; a++) {
-			TN_PERF_PAPI_RESET();
-			uint64_t p;
-			for (p = 0; p < 8; p++) { // sync '8' here with PROCESS_PERIOD in ixgbe
+			for (uint64_t p = 0; p < 8; p++) { // sync '8' here with PROCESS_PERIOD in ixgbe
+				TN_PERF_PAPI_RESET();
 				if (!tn_net_agent_receive(agents[a], &packet, &packet_length)) {
 					break;
 				}
@@ -107,8 +106,8 @@ int main(int argc, char** argv)
 				packet[5] = lookup_table[(packet[11] << 8) | packet[10]];
 #endif
 				tn_net_agent_transmit(agents[a], packet_length, &output);
+				TN_PERF_PAPI_RECORD(1);
 			}
-			TN_PERF_PAPI_RECORD(p);
 		}
 	}
 #endif

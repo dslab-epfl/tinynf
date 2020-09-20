@@ -9,7 +9,7 @@ RESULTS_SUFFIX='/nop'
 if [ "$1" = 'write' ]; then
   EXTRACFLAGS='-DTN_DEBUG_PERF_DOWRITE'
   RESULTS_SUFFIX='/write'
-elif [ "$1" = 'mac_lookup' ]; then
+elif [ "$1" = 'lookup' ]; then
   EXTRACFLAGS='-DTN_DEBUG_PERF_DOLOOKUP'
   RESULTS_SUFFIX='/lookup'
 elif [ "$1" = 'pol' ]; then
@@ -27,7 +27,7 @@ elif [ ! -z "$1" ]; then
   exit 1
 fi
 
-echo 'Measuring low-level stats; this will take around half an hour...'
+echo 'Measuring low-level stats; this will take less than an hour...'
 
 
 # Ensure the papi submodule is cloned
@@ -50,6 +50,7 @@ cd - >/dev/null
 echo 0 | sudo dd status=none of=/proc/sys/kernel/perf_event_paranoid
 
 # Ensure the results folder is deleted so we don't accidentally end up with stale results
+mkdir -p results
 RESULTS_DIR="$(readlink -f results$RESULTS_SUFFIX)"
 rm -rf "$RESULTS_DIR"
 

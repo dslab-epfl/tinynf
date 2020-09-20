@@ -1,6 +1,6 @@
 #!/bin/sh
 
-printf 'Tabulating results... This will take around an hour due to the amount of data involved.\n\n'
+printf 'Tabulating results... This will take around 2h due to the amount of data involved.\n\n'
 
 round()
 {
