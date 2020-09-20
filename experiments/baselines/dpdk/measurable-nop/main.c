@@ -87,6 +87,11 @@ int main(int argc, char* argv[]) {
     rte_exit(EXIT_FAILURE, "Expected 2 devices, but was %u\n", devices_count);
   }
 
+  uint8_t lookup_table[256 * 256];
+  for (uint64_t n = 0; n < sizeof(lookup_table)/sizeof(uint8_t); n++) {
+    lookup_table[n] = (uint8_t) (n * 123);
+  }
+
   struct rte_mbuf* bufs[BATCH_SIZE];
   uint16_t nb_rx;
   uint16_t nb_tx;
@@ -98,22 +103,22 @@ int main(int argc, char* argv[]) {
 #ifdef TN_DEBUG_PERF_DOWRITE
       for (uint16_t n = 0; n < nb_rx; n++) {
         uint8_t* data = rte_pktmbuf_mtod(bufs[n], uint8_t*);
-        data[0] = 0x12;
-        data[1] = 0x34;
-        data[2] = 0x56;
-        data[3] = 0x78;
-        data[4] = 0x9A;
-        data[5] = 0xBC;
+        data[0] = lookup_table[0];
+        data[1] = lookup_table[1];
+        data[2] = lookup_table[2];
+        data[3] = lookup_table[3];
+        data[4] = lookup_table[4];
+        data[5] = lookup_table[5];
       }
-#elif defined(TN_DEBUG_PERF_DOCOPY)
+#elif defined(TN_DEBUG_PERF_DOLOOKUP)
       for (uint16_t n = 0; n < nb_rx; n++) {
         uint8_t* data = rte_pktmbuf_mtod(bufs[n], uint8_t*);
-        data[0] = data[6];
-        data[1] = data[7];
-        data[2] = data[8];
-        data[3] = data[9];
-        data[4] = data[10];
-        data[5] = data[11];
+        data[0] = lookup_table[(data[6] << 8) | data[7]];
+        data[1] = lookup_table[(data[7] << 8) | data[6]];
+        data[2] = lookup_table[(data[8] << 8) | data[9]];
+        data[3] = lookup_table[(data[9] << 8) | data[8]];
+        data[4] = lookup_table[(data[10] << 8) | data[11]];
+        data[5] = lookup_table[(data[11] << 8) | data[10]];
       }
 #endif
       nb_tx = rte_eth_tx_burst(devices[1-d], 0, bufs, nb_rx);

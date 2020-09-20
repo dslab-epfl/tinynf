@@ -69,7 +69,16 @@ int main(int argc, char** argv)
 
 	TN_INFO("TinyNF initialized successfully!");
 
-#ifdef TN_DEBUG_PERF
+#ifndef TN_DEBUG_PERF
+	tn_net_packet_handler* handlers[2] = { tinynf_packet_handler, tinynf_packet_handler };
+	void* states[2] = {0}; // unused
+	tn_net_run(2, agents, handlers, states);
+#else
+	uint8_t lookup_table[256 * 256];
+	for (uint64_t n = 0; n < sizeof(lookup_table)/sizeof(uint8_t); n++) {
+		lookup_table[n] = (uint8_t) (n * 123);
+	}
+
 	uint8_t* packet;
 	uint16_t packet_length;
 	bool output = true;
@@ -83,28 +92,24 @@ int main(int argc, char** argv)
 					break;
 				}
 #ifdef TN_DEBUG_PERF_DOWRITE
-				packet[0] = 0x12;
-				packet[1] = 0x34;
-				packet[2] = 0x56;
-				packet[3] = 0x78;
-				packet[4] = 0x9A;
-				packet[5] = 0xBC;
-#elif defined(TN_DEBUG_PERF_DOCOPY)
-				packet[0] = packet[6];
-				packet[1] = packet[7];
-				packet[2] = packet[8];
-				packet[3] = packet[9];
-				packet[4] = packet[10];
-				packet[5] = packet[11];
+				packet[0] = lookup_table[0];
+				packet[1] = lookup_table[1];
+				packet[2] = lookup_table[2];
+				packet[3] = lookup_table[3];
+				packet[4] = lookup_table[4];
+				packet[5] = lookup_table[5];
+#elif defined(TN_DEBUG_PERF_DOLOOKUP)
+				packet[0] = lookup_table[(packet[6] << 8) | packet[7]];
+				packet[1] = lookup_table[(packet[7] << 8) | packet[6]];
+				packet[2] = lookup_table[(packet[8] << 8) | packet[9]];
+				packet[3] = lookup_table[(packet[9] << 8) | packet[8]];
+				packet[4] = lookup_table[(packet[10] << 8) | packet[11]];
+				packet[5] = lookup_table[(packet[11] << 8) | packet[10]];
 #endif
 				tn_net_agent_transmit(agents[a], packet_length, &output);
 			}
 			TN_PERF_PAPI_RECORD(p);
 		}
 	}
-#else
-	tn_net_packet_handler* handlers[2] = { tinynf_packet_handler, tinynf_packet_handler };
-	void* states[2] = {0}; // unused
-	tn_net_run(2, agents, handlers, states);
 #endif
 }
