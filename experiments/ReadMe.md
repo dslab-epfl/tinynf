@@ -59,13 +59,9 @@ These figures are for illustration purposes, they do not contain data.
 They are based on the source code of DPDK and TinyNF; the paper explains them.
 
 
-### Figures 6, 7, 8, 10, 11 and Table 3
+### Figures 6 to 11 and Table 3
 
-Run `sudo cpupower -c 8-15 frequency-set -f 99GHz`, where `8-15` are all of the cores on the physical CPU on which you will run NFs.
-That is, not only the cores configured in the `benchmarking/config` file, but also the other cores on the same physical CPU.
-`99GHz` simply tells `cpupower` to use the highest possible frequency. You can double-check this by looking at `/proc/cpuinfo`.
-
-In `perf-endtoend`, run `./bench-all.py`, which should take ~4h.
+In `perf-endtoend`, run `./bench-all.py`, which should take under 5h.
 
 Then run the following, which should take a minute:
 
@@ -74,23 +70,12 @@ Then run the following, which should take a minute:
 ./graph-tput-vs-lat.py 'Figure 6' 50 99 vigor-pol-dpdk vigor-pol-dpdk-batched tinynf-pol vigor-parallel-pol-dpdk vigor-parallel-pol-dpdk-batched tinynf-parallel-pol
 ./graph-tput-vs-lat.py 'Figure 7' 99 99 vigor-pol-dpdk vigor-pol-dpdk-batched tinynf-pol vigor-parallel-pol-dpdk vigor-parallel-pol-dpdk-batched tinynf-parallel-pol
 ./graph-tput-vs-lat.py 'Figure 8' 50 99 dpdk-nop-dpdk dpdk-nop-dpdk-batched ixy-nop ixy-nop-batched tinynf-nop
+./graph-tput-vs-lat.py 'Figure 9' 50 99 results-slow/dpdk-nop-dpdk results-slow/dpdk-nop-dpdk-batched results-slow/tinynf-nop
 ./graph-lat-ccdf.py 'Figure 10' dpdk-nop-dpdk/latencies/0 dpdk-nop-dpdk-batched/latencies/0 ixy-nop/latencies/0 ixy-nop-batched/latencies/0 tinynf-nop/latencies/0
 ./graph-lat-ccdf.py 'Figure 11' vigor-nat-dpdk/latencies-single/1000 vigor-nat-dpdk-batched/latencies-single/1000 vigor-nat/latencies-single/1000
 # Table 3
 ./tabulate-verified-nf-perf.sh
 ```
-
-
-### Figure 9
-
-Run `sudo cpupower -c 8-15 frequency-set -f 2GHz`, where `8-15` are all of the cores on the physical CPU on which you will run NFs (same remark as above).
-Note that due to how CPU frequencies work, the actual frequency may be a bit above or below the desired frequency; you can check this by looking at `/proc/cpuinfo`.
-
-Remember to set the frequency back to normal afterwards (using the `99GHz` trick mentioned above), otherwise the results of other experiments will be off.
-
-In `perf-endtoend`, run `./bench-all.py slow-nops`, which should take <1h.
-
-Then run `./graph-tput-vs-lat.py 'Figure 9' 50 99 results-slow/dpdk-nop-dpdk results-slow/dpdk-nop-dpdk-batched results-slow/tinynf-nop`
 
 
 ### Table 1

@@ -24,6 +24,26 @@ BENCH_RESULT_TPUT_PATH = BENCH_RESULTS_PATH + '/throughput'
 BENCH_RESULT_LATS_PATH = BENCH_RESULTS_PATH + '/latencies'
 
 
+# --- CPU throttling ---
+BENCH_CPU = None
+with open(THIS_DIR + '/../../benchmarking/config') as file:
+  for line in file:
+    if 'DUT_CPUS' in line:
+      BENCH_CPU=line.split('=')[1].split(',')[0].strip()
+      break
+if BENCH_CPU is None:
+  print("Could not find DUT CPUs in config...")
+  sys.exit(1)
+BENCH_CPU_CORES = None
+with open('/sys/devices/system/cpu/cpu' + BENCH_CPU + '/topology/core_siblings_list') as file:
+  BENCH_CPU_CORES = file.read().strip()
+
+def cpu_full_power():
+  subprocess.check_call(["sudo", "cpupower", "-c", BENCH_CPU_CORES, "frequency-set", "99GHz"])
+
+def cpu_low_power():
+  subprocess.check_call(["sudo", "cpupower", "-c", BENCH_CPU_CORES, "frequency-set", "2GHz"])
+
 # --- utility ---
 
 def add_suffix(file_or_folder, suffix):
@@ -141,17 +161,8 @@ def bench(path, nf, kind, env, results_folder_name='results'):
 # Overall, because binding DPDK's igb_uio driver has a slight chance of hanging the machine for some reason,
 # each step performs all non-DPDK stuff first then all DPDK stuff
 
-
-# Special for the reduced CPU frequency benchmarks
-if len(sys.argv) > 1:
-  if sys.argv[1] == 'slow-nops':
-    bench('../code', 'nop', 'tinynf', {}, results_folder_name='results-slow')
-    bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET}, results_folder_name='results-slow')
-    bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE}, results_folder_name='results-slow')
-  else:
-    print("The only allowed argument for now is 'slow-nops'")
-  sys.exit(0)
-
+# First ensure the CPU is at max power, just in case
+cpu_full_power()
 
 # DPDK's testpmd no-op, batched or not, vs TinyNF no-op vs Ixy no-op (throughput, zero-loss throughput, detailed latency)
 bench('../code', 'nop', 'tinynf', {})
@@ -176,6 +187,12 @@ for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
   bench_vigor(nf, {'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
 bench_vigor('nat', {'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
+# Slow no-ops
+cpu_low_power()
+bench('../code', 'nop', 'tinynf', {}, results_folder_name='results-slow')
+bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET}, results_folder_name='results-slow')
+bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE}, results_folder_name='results-slow')
+cpu_full_power()
 
 # SANITY CHECK: DPDK l3fwd, which should reach 2x10 Gb/s line rate, as indicated in the DPDK perf reports
 # bench('baselines/dpdk/l3fwd', 'l3fwd', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET})
