@@ -39,10 +39,11 @@ with open('/sys/devices/system/cpu/cpu' + BENCH_CPU + '/topology/core_siblings_l
   BENCH_CPU_CORES = file.read().strip()
 
 def cpu_full_power():
-  subprocess.check_call(["sudo", "cpupower", "-c", BENCH_CPU_CORES, "frequency-set", "99GHz"])
+  subprocess.check_call(["sudo", "cpupower", "-c", BENCH_CPU_CORES, "frequency-set", "-f", "99GHz"], stdout=subprocess.DEVNULL)
 
 def cpu_low_power():
-  subprocess.check_call(["sudo", "cpupower", "-c", BENCH_CPU_CORES, "frequency-set", "2GHz"])
+  subprocess.check_call(["sudo", "cpupower", "-c", BENCH_CPU_CORES, "frequency-set", "-f", "2GHz"], stdout=subprocess.DEVNULL)
+
 
 # --- utility ---
 
@@ -150,9 +151,9 @@ def bench_vigor(nf, env):
   add_suffix(BENCH_RESULT_LATS_PATH, '-single')
   move_into(BENCH_RESULTS_PATH, out_folder)
 
-def bench(path, nf, kind, env, results_folder_name='results'):
+def bench(path, nf, kind, env):
   print('[ !!! ] Benchmarking', kind, nf, 'in', path)
-  out_folder = results_folder_name + '/' + kind + '-' + get_key(nf, env)
+  out_folder = 'results/' + kind + '-' + get_key(nf, env)
   bench_core(nf, THIS_DIR + '/../' + path, ['standard'], env)
   remove(out_folder + '/latencies') # don't keep old latencies around
   move_into(BENCH_RESULTS_PATH, out_folder)
@@ -180,18 +181,17 @@ bench('baselines/policer/dpdk', 'pol', 'vigor', {'RTE_SDK': VIGOR_RTE_SDK, 'RTE_
 bench('baselines/policer/dpdk', 'pol', 'vigor-parallel', {'TN_2CORE': '1', 'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
 bench('baselines/policer/dpdk', 'pol', 'vigor-parallel', {'TN_2CORE': '1', 'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
-# Vigor NFs, as well as batched NAT for latency
+# Vigor NFs
 for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
   bench_vigor(nf, {})
 for nf in ['nat', 'bridge', 'fw', 'pol', 'lb']:
   bench_vigor(nf, {'RTE_SDK': VIGOR_RTE_SDK_VERIFIED, 'RTE_TARGET': RTE_TARGET})
-bench_vigor('nat', {'RTE_SDK': VIGOR_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 
 # Slow no-ops
 cpu_low_power()
-bench('../code', 'nop', 'tinynf', {}, results_folder_name='results-slow')
-bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET}, results_folder_name='results-slow')
-bench('baselines/dpdk', 'nop', 'dpdk', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE}, results_folder_name='results-slow')
+bench('../code', 'nop', 'tinynf-slow', {})
+bench('baselines/dpdk', 'nop', 'dpdk-slow', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET})
+bench('baselines/dpdk', 'nop', 'dpdk-slow', {'RTE_SDK': DPDK_RTE_SDK, 'RTE_TARGET': RTE_TARGET, 'TN_BATCH_SIZE': BATCH_SIZE})
 cpu_full_power()
 
 # SANITY CHECK: DPDK l3fwd, which should reach 2x10 Gb/s line rate, as indicated in the DPDK perf reports

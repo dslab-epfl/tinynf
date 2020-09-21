@@ -1,5 +1,4 @@
 results/
-results-*/
 plots/
 *.log
 __pycache__

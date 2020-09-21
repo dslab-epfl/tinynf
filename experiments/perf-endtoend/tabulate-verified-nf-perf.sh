@@ -12,7 +12,7 @@ summarize()
   printf '%s\t' "$tput"
 
   lines="$(cat "$1/latencies-single/1000" | wc -l)"
-  num50="$(echo "$lines / 2" | bc)"
+  num50="$(echo "$lines / 2 + 1" | bc)"
   num99="$(echo "$lines * 0.99 / 1" | bc)"
   for n in $(cat "$1/latencies-single/1000" | sort -n | sed "$num50"'p;'"$num99"'q;d' | tr '\n' ' '); do
     printf '%s\t' "$(tofrac "$n")"

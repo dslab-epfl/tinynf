@@ -42,6 +42,9 @@ You will also need the following software:
 - The shell utility `cpupower`, available under names such as `linux-tools-common` (Ubuntu) or `kernel-tools` (Fedora) in package repositories
 - Python 3 with the `matplotlib` package
 
+Due to how long some of these scripts take, if you are running them via SSH, you may want to use an utility such as `byobu`, `tmux`, or `screen`,
+allowing you to detach from the SSH session while keeping the scripts running.
+
 
 ## Reproducing figures and tables
 
@@ -51,6 +54,8 @@ All figures and tables in the paper can be reproduced by running scripts, except
 ### Figure 1
 
 In `other-drivers`, run `./graph-dpdk-drivers-loc.py 'Figure 1'`, which should take <2min.
+
+To understand which drivers were excluded from the figure and why, read `other-drivers/dpdk-drivers.md`.
 
 
 ### Figures 2 to 5
@@ -69,10 +74,10 @@ Then run the following, which should take a minute:
 # Figures
 ./graph-tput-vs-lat.py 'Figure 6' 50 99 vigor-pol-dpdk vigor-pol-dpdk-batched tinynf-pol vigor-parallel-pol-dpdk vigor-parallel-pol-dpdk-batched tinynf-parallel-pol
 ./graph-tput-vs-lat.py 'Figure 7' 99 99 vigor-pol-dpdk vigor-pol-dpdk-batched tinynf-pol vigor-parallel-pol-dpdk vigor-parallel-pol-dpdk-batched tinynf-parallel-pol
-./graph-tput-vs-lat.py 'Figure 8' 50 99 dpdk-nop-dpdk dpdk-nop-dpdk-batched ixy-nop ixy-nop-batched tinynf-nop
-./graph-tput-vs-lat.py 'Figure 9' 50 99 results-slow/dpdk-nop-dpdk results-slow/dpdk-nop-dpdk-batched results-slow/tinynf-nop
-./graph-lat-ccdf.py 'Figure 10' dpdk-nop-dpdk/latencies/0 dpdk-nop-dpdk-batched/latencies/0 ixy-nop/latencies/0 ixy-nop-batched/latencies/0 tinynf-nop/latencies/0
-./graph-lat-ccdf.py 'Figure 11' vigor-nat-dpdk/latencies-single/1000 vigor-nat-dpdk-batched/latencies-single/1000 vigor-nat/latencies-single/1000
+./graph-lat-ccdf.py 'Figure 8' vigor-pol-dpdk/latencies/1000 vigor-pol-dpdk-batched/latencies/1000 tinynf-pol/latencies/1000 vigor-parallel-pol-dpdk/latencies/1000 vigor-parallel-pol-dpdk-batched/latencies/1000 tinynf-parallel-pol/latencies/1000
+./graph-tput-vs-lat.py 'Figure 9' 50 99 dpdk-nop-dpdk dpdk-nop-dpdk-batched ixy-nop ixy-nop-batched tinynf-nop
+./graph-tput-vs-lat.py 'Figure 10' 50 99 dpdk-slow-nop-dpdk dpdk-slow-nop-dpdk-batched tinynf-slow-nop
+./graph-lat-ccdf.py 'Figure 11' dpdk-nop-dpdk/latencies/0 dpdk-nop-dpdk-batched/latencies/0 ixy-nop/latencies/0 ixy-nop-batched/latencies/0 tinynf-nop/latencies/0
 # Table 3
 ./tabulate-verified-nf-perf.sh
 ```
