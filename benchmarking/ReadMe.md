@@ -11,6 +11,7 @@ The second machine is the "tester" machine, which runs the MoonGen packet genera
   - Copy `config.template` to `config` and set the values as needed in your setup.
   - Configure the machines' kernels with whatever performance-maximizing options you need, e.g. `isolcpus`
   - Create an SSH key on the DUT and add it to the authorized keys of the tester, to avoid entering your password during script execution
+  - Ensure that your user can run "sudo" without a password, since this is necessary to run NFs
   - Ensure that you are starting these scripts from the DUT
 
 - Create a `Makefile.benchmarking` file in your NF's folder, with the following targets:

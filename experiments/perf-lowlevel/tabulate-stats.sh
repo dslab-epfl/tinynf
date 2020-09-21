@@ -4,15 +4,21 @@ printf 'Tabulating results... This will take around 2h due to the amount of data
 
 round()
 {
-  # use sed to print 0.00 if the number is 0, and the leading zero if the number is >0 and <1
-  echo "scale=2; $1 / 1" | bc | sed 's/^0$/0.00/' | sed 's/^\./0./'
+  digits=3
+  # we only need 2 decimal places after the dot, no point in being more precise than that
+  if echo "$1" | grep -q '^0\.' ; then
+    digits=2
+  fi
+  # round to 3 significant digits, replace exponential notation by an actual exponent
+  full="$(printf '%.'"$digits"'g' "$1" | sed 's/e+/e/' | sed 's/e/*10^/')"
+  # compute said exponent, rounding to 2 digits after the decimal point
+  echo "scale=2; $full / 1" | bc
 }
-
 
 med99()
 {
   lines="$(cat "$1"/log* | wc -l)"
-  num50="$(echo "$lines / 2" | bc)p;"
+  num50="$(echo "$lines / 2 + 1" | bc)p;"
   if [ -z "$3" ]; then
     num99="$(echo "$lines * 0.99 / 1" | bc)q;"
   else

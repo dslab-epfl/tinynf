@@ -20,7 +20,7 @@ To run these benchmarks, you need two machines running Linux:
 - A "device under test" machine with two Intel 82599ES NICs on the same NUMA node, from which you will run the experiment scripts
 - A "tester" machine connected to the other one by two 10G Ethernet cables
 
-As a first step, go to the `benchmarking` folder at the root of this repository, copy `config.template` to `config` and change its values according to your setup.
+As a first step, go to the `benchmarking` folder at the root of this repository, and follow the first list in the instructions ("Get ahold of two machines...").
 
 Assuming a 2-CPU machine whose second CPU has cores 8 to 15, we recommend the following Linux kernel parameters for the two machines (add to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`):
 - `nosmt`: Disable HyperThreading, to avoid contention among threads in benchmarks
@@ -38,7 +38,7 @@ You will also need the following software:
 - GCC 10 (any version should work, but that is the one we used for the paper)
 - The build tools Make and CMake, available under these names in most package repositories
 - The development versions of libC and libNUMA, for instance available in the `libc-dev` and `libnuma-dev` packages in Ubuntu
-- The shell utilities `bc`, `cloc`, `indent` and `ministat`, available under these names in most package repositories
+- The shell utilities `bc`, `cloc`, and `indent`, available under these names in most package repositories
 - The shell utility `cpupower`, available under names such as `linux-tools-common` (Ubuntu) or `kernel-tools` (Fedora) in package repositories
 - Python 3 with the `matplotlib` package
 
@@ -95,16 +95,30 @@ Then run `./graph-tput-vs-lat.py 'Figure 9' 50 99 results-slow/dpdk-nop-dpdk res
 
 ### Table 1
 
-First, clone the `vigor-nf/vigor` repo on GitHub and run its `setup.sh` script as indicated in its readme.
+The easiest way to do this, though it incurs some overhead, is with Docker.
 
-To get the times with TinyNF, in `verification`, run `./measure-verification-times.sh ~/vigor`, changing the location of the Vigor directory to match your setup.
+Run `docker run -it --entrypoint bash dslabepfl/vigor` (you might need `sudo`) to start a container with the Vigor Docker image, then in the container run:
 
-If you want to get the times with Vigor, in `verification`, run `./measure-verification-times.sh ~/vigor original`, again changing the location to match.
-However, this will take multiple hours even on a server with dozens of cores, and those numbers have already been reproduced as part of Vigor's artifact evaluation.
+```
+# Get the right version of Vigor
+rm -rf vigor
+git clone https://github.com/vigor-nf/vigor
+git -C vigor checkout 01deebad8013231e19aa8b2386b1c063d4a739ce
+# Update the PATH with the Vigor toolchain
+. ~/paths.sh
+# Get TinyNF
+git clone https://github.com/dslab-epfl/tinynf
+# Get the verification times with TinyNF
+cd tinynf/experiments/verification
+./measure-verification-times.sh ~/vigor
+```
 
-Alternatively, you can use the Vigor Docker image: run `sudo docker run -it --entrypoint bash dslabepfl/vigor` to start a container,
-then in the container run `rm -rf vigor ; git clone https://github.com/vigor-nf/vigor` to get the latest Vigor and `. ~/paths.sh` to update your PATH with the toolchain,
-then clone the TinyNF repo and proceed as indicated above. This might have some overhead compared to running it directly, though.
+Alternatively, you can run these steps on your own machine, though you'll have to run Vigor's `setup.sh` script after the `checkout` command above, which will build its toolchain and take a few hours.
+
+These instructions were for the TinyNF verification times.
+The times with Vigor are merely replications of the Vigor SOSP'19 paper, whose artifact was judged reproducible already; if you'd like to reproduce these anyway,
+you'll need a machine with at least 100 GB RAM and preferably dozens of CPU cores. Run `./measure-verification-times.sh ~/vigor original` as the last command in the script above.
+
 
 
 ### Table 2
