@@ -38,6 +38,7 @@ taskset -c $TESTER_CPUS sudo ./moongen/build/MoonGen bench-moongen.lua $CROSS_OP
   | grep -Fv --line-buffered 'EAL: Detected' \
   | grep -Fv --line-buffered 'EAL: No free hugepages reported in hugepages-1048576kB' \
   | grep -Fv --line-buffered 'EAL: Probing VFIO support...' \
+  | grep -Fv --line-buffered 'EAL: VFIO support initialized' \
   | grep -Fv --line-buffered 'EAL: PCI device' \
   | grep -Fv --line-buffered 'EAL:   probe driver:' \
   | grep  -v --line-buffered '^   Device' \
