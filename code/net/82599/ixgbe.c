@@ -490,7 +490,8 @@ struct tn_net_device
 {
 	void* addr;
 	bool rx_enabled;
-	uint8_t _padding[7];
+	bool tx_enabled;
+	uint8_t _padding[6];
 };
 
 // -------------------------------------
@@ -950,14 +951,6 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 	// 	Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
 	// We don't need to do anything here by assumption NOWANT
 
-	// Section 4.6.8 Transmit Initialization:
-	// "Enable transmit path by setting DMATXCTL.TE. This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
-	// Do it here already, so that the transmit path does not contain any non-queue-specific registers.
-	reg_set_field(device.addr, REG_DMATXCTL, REG_DMATXCTL_TE);
-	// However... Section 8.2.3.9.10 Transmit Descriptor Control: "When setting the global Tx enable DMATXCTL.TE the ENABLE bit of Tx queue zero is enabled as well."
-	// So we must disable that.
-	reg_clear_field(device.addr, REG_TXDCTL(0), REG_TXDCTL_ENABLE);
-
 	// Do the memory alloc here so we don't have to free it if we fail earlier
 	if (!tn_mem_allocate(sizeof(struct tn_net_device), (void**) out_device)) {
 		TN_DEBUG("Could not allocate device struct");
@@ -1056,33 +1049,6 @@ bool tn_net_agent_init(struct tn_net_agent** out_agent)
 // Section 4.6.7 Receive Initialization
 // ------------------------------------
 
-static bool ixgbe_device_start(const struct tn_net_device* const device) {
-	// This is a logically separate operation from the rest of queue setup; see comments near the end of tn_net_agent_set_input
-
-	//	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
-	reg_set_field(device->addr, REG_SECRXCTRL, REG_SECRXCTRL_RX_DIS);
-	//	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
-	// INTERPRETATION-MISSING: Another undefined timeout, assuming 1s as usual
-	IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(device->addr, REG_SECRXSTAT, REG_SECRXSTAT_SECRX_RDY)) {
-		TN_DEBUG("SECRXSTAT.SECRXRDY timed out, cannot start device");
-		return false;
-	}
-	//	"- Set RXCTRL.RXEN"
-	reg_set_field(device->addr, REG_RXCTRL, REG_RXCTRL_RXEN);
-	//	"- Clear the SECRXCTRL.SECRX_DIS bits to enable receive data path"
-	// INTERPRETATION-TYPO: This refers to RX_DIS, not SECRX_DIS, since it's RX_DIS being cleared that enables the receive data path.
-	reg_clear_field(device->addr, REG_SECRXCTRL, REG_SECRXCTRL_RX_DIS);
-	//	"- If software uses the receive descriptor minimum threshold Interrupt, that value should be set."
-	// We do not have to set this by assumption NOWANT
-
-	// "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
-	// Again, we do the first part here since it's a non-queue-dependent register
-	// Section 8.2.3.1.3 Extended Device Control Register (CTRL_EXT): Bit 16 == "NS_DIS, No Snoop Disable"
-	reg_set_field(device->addr, REG_CTRLEXT, REG_CTRLEXT_NSDIS);
-
-	return true;
-}
-
 bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_device* const device)
 {
 	if (agent->receive_tail_addr != 0) {
@@ -1150,10 +1116,26 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_devi
 	// "- Enable the receive path by setting RXCTRL.RXEN. This should be done only after all other settings are done following the steps below."
 	// INTERPRETATION-MISSING: "after all other settings are done" is ambiguous here, let's assume we can just do it after setting up a receive queue...
 	if (!device->rx_enabled) {
-		if (!ixgbe_device_start(device)) {
-			TN_DEBUG("Cannot start device");
+		//	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
+		reg_set_field(device->addr, REG_SECRXCTRL, REG_SECRXCTRL_RX_DIS);
+		//	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
+		// INTERPRETATION-MISSING: Another undefined timeout, assuming 1s as usual
+		IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(device->addr, REG_SECRXSTAT, REG_SECRXSTAT_SECRX_RDY)) {
+			TN_DEBUG("SECRXSTAT.SECRXRDY timed out, cannot start device");
 			return false;
 		}
+		//	"- Set RXCTRL.RXEN"
+		reg_set_field(device->addr, REG_RXCTRL, REG_RXCTRL_RXEN);
+		//	"- Clear the SECRXCTRL.SECRX_DIS bits to enable receive data path"
+		// INTERPRETATION-TYPO: This refers to RX_DIS, not SECRX_DIS, since it's RX_DIS being cleared that enables the receive data path.
+		reg_clear_field(device->addr, REG_SECRXCTRL, REG_SECRXCTRL_RX_DIS);
+		//	"- If software uses the receive descriptor minimum threshold Interrupt, that value should be set."
+		// We do not have to set this by assumption NOWANT
+		// "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
+		// Again, we do the first part here since it's a non-queue-dependent register
+		// Section 8.2.3.1.3 Extended Device Control Register (CTRL_EXT): Bit 16 == "NS_DIS, No Snoop Disable"
+		reg_set_field(device->addr, REG_CTRLEXT, REG_CTRLEXT_NSDIS);
+
 		device->rx_enabled = true;
 	}
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
@@ -1257,7 +1239,10 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_dev
 	reg_clear_field(device->addr, REG_DCATXCTRL(queue_index), REG_DCATXCTRL_TX_DESC_WB_RO_EN);
 	// "- Enable transmit path by setting DMATXCTL.TE.
 	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
-	// Already done in device initialization
+	if (!device->tx_enabled) {
+		reg_set_field(device->addr, REG_DMATXCTL, REG_DMATXCTL_TE);
+		device->tx_enabled = true;
+	}
 	// "- Enable the queue using TXDCTL.ENABLE.
 	//    Poll the TXDCTL register until the Enable bit is set."
 	// INTERPRETATION-MISSING: No timeout is mentioned here, let's say 1s to be safe.
