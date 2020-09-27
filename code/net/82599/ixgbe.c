@@ -1276,7 +1276,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
 
 	// Since descriptors are 16 bytes, the index must be doubled
-	uint64_t receive_metadata = agent->rings[0][2u*agent->processed_delimiter + 1];
+	uint64_t receive_metadata = tn_le_to_cpu64(agent->rings[0][2u*agent->processed_delimiter + 1]);
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
 	if ((receive_metadata & BITL(32)) == 0) {
@@ -1295,7 +1295,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// This cannot overflow because the packet is by definition in an allocated block of memory
 	*out_packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
-	*out_packet_length = tn_le_to_cpu16(receive_metadata & 0xFFFFu);
+	*out_packet_length = tn_le_to_cpu64(receive_metadata) & 0xFFFFu;
 
 	return true;
 }
@@ -1341,7 +1341,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
 	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < agent->outputs_count; n++) {
-		agent->rings[n][2u*agent->processed_delimiter + 1] = (outputs[n] * (uint64_t) tn_cpu_to_le16(packet_length)) | rs_bit | BITL(24+1) | BITL(24);
+		agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64((outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24));
 	}
 
 	// Increment the processed delimiter, modulo the ring size
