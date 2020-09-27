@@ -1,0 +1,1 @@
+- `no_head_write_back.patch` removes the use of transmit head write-back ("TDWBA"), slightly increasing latency and causing the driver to lose a few packets per million

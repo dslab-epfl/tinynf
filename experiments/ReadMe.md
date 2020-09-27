@@ -3,6 +3,7 @@
 This folder contains experiments used for the OSDI'20 TinyNF paper.
 
 Subfolders:
+- `alternatives`: patches for TinyNF that make it worse but are interesting
 - `baselines`: baseline NFs for various experiments
 - `code-metrics`: scripts and data on code metrics such as number of lines of code
 - `dpdk-shim`: a shim layer allowing DPDK NFs to use TinyNF, assuming they only need the TinyNF model
