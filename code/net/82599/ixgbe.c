@@ -1317,28 +1317,28 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 		// "CSO", bits 16-23: "A Checksum Offset (TDESC.CSO) field indicates where, relative to the start of the packet, to insert a TCP checksum if this mode is enabled"
 			// All zero
 		// "CMD", bits 24-31:
-			// "RSV (bit 7) - Reserved
-			//  VLE (bit 6) - VLAN Packet Enable [...]
-			//  DEXT (bit 5) - Descriptor extension (zero for legacy mode)
-			//  RSV (bit 4) - Reserved
-			//  RS (bit 3) - Report Status: "signals hardware to report the DMA completion status indication"
-			//  IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set.
-			//  IFCS (bit 1) - Insert FCS:
-			//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
-			//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
-			//  EOP (bit 0) - End of Packet"
-		// STA, bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
+			// "RSV (bit 7) - Reserved"
+			// "VLE (bit 6) - VLAN Packet Enable"
+			// "DEXT (bit 5) - Descriptor extension (zero for legacy mode)"
+			// "RSV (bit 4) - Reserved"
+			// "RS (bit 3) - Report Status - RS signals hardware to report the DMA completion status indication [...]"
+			// "IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set."
+			// "IFCS (bit 1) - Insert FCS":
+			//	"There are several cases in which software must set IFCS as follows: Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit. [...]"
+			//      By assumption TXPAD we need this bit set.
+			// "EOP (bit 0) - End of Packet"
+		// "STA", bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
 			// All zero
-		// Rsvd, bits 36-39: "Reserved."
+		// "Rsvd", bits 36-39: "Reserved."
 			// All zero
-		// CSS, bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
+		// "CSS", bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
 			// All zero
-		// VLAN, bits 48-63:
+		// "VLAN", bits 48-63: "The VLAN field is used to provide the 802.1q/802.1ac tagging information."
 			// All zero
-	// INTERPRETATION-INCORRECT: Despite being marked as "reserved", the buffer address does not get clobbered by write-back, so no need to set it again
-	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want to get updated
-	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor
-	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
+	// INTERPRETATION-INCORRECT: Despite being marked as "reserved", the buffer address does not get clobbered by write-back, so no need to set it again.
+	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want write-back.
+	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor.
+	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency.
 	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < agent->outputs_count; n++) {
 		agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64((outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24));
