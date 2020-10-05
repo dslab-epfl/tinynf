@@ -25,6 +25,8 @@ TN_NET ?= 82599
 TN_APP ?= tinynf
 TN_CC ?= gcc
 
+TN_NET = ConnectX-5
+
 # Current directory
 TN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
