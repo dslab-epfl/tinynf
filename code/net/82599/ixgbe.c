@@ -122,6 +122,7 @@
 #define BITL(n) (1ull << (n))
 
 // Section 9.3.2 PCIe Configuration Space Summary: "0x10 Base Address Register 0" (32 bit), "0x14 Base Address Register 1" (32 bit)
+// Section 9.3.6.1 Memory and IO Base Address Registers: BAR 0 is 64-bits, thus it's 0-low and 0-high, not 0 and 1
 #define PCIREG_BAR0_LOW 0x10u
 #define PCIREG_BAR0_HIGH 0x14u
 
@@ -505,6 +506,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 
 	// First make sure the PCI device is really an 82599ES 10-Gigabit SFI/SFP+ Network Connection
 	// According to https://cateee.net/lkddb/web-lkddb/IXGBE.html, this means vendor ID (bottom 16 bits) 8086, device ID (top 16 bits) 10FB
+	// (Section 9.3.3.2 Device ID Register mentions 0x10D8 as the default, but the card has to overwrite that default with its actual ID)
 	uint32_t pci_id = pcireg_read(pci_address, PCIREG_ID);
 	if (pci_id != ((0x10FBu << 16) | 0x8086u)) {
 		TN_DEBUG("PCI device is not what was expected");
