@@ -18,15 +18,15 @@
 # Special behavior when the variable TN_NO_DEFAULT_TARGET is set:
 # - The default target is not defined
 
-# Defaults
-TN_DEBUG ?= 1
-TN_ENV ?= linux-x86
-TN_NET ?= 82599
-TN_APP ?= tinynf
-TN_CC ?= gcc
-
 # Current directory
 TN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
+# Defaults
+TN_DEBUG ?= 1
+TN_CC ?= gcc
+TN_APP ?= tinynf
+TN_ENV ?= $(TN_DIR)/env/linux-x86
+TN_NET ?= $(TN_DIR)/net/82599
 
 # Special behavior when TN_FILES is not set
 ifeq (,$(TN_FILES))
@@ -45,7 +45,7 @@ endif
 endif
 
 # Files
-TN_FILES += $(shell echo $(TN_DIR)/env/$(TN_ENV)/*.c $(TN_DIR)/net/$(TN_NET)/*.c)
+TN_FILES += $(shell echo $(TN_ENV)/*.c $(TN_NET)/*.c)
 
 # Compiler args
 TN_CFLAGS += -std=c11
@@ -61,7 +61,7 @@ TN_CFLAGS += -O3
 endif
 
 # Linux-only compiler flags
-ifeq (linux-x86,$(TN_ENV))
+ifeq ($(TN_DIR)/env/linux-x86,$(TN_ENV))
 TN_CFLAGS += -D_DEFAULT_SOURCE # for MAP_* constants and the syscall function
 endif
 
