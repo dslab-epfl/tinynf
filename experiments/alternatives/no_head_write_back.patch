@@ -1,5 +1,5 @@
---- ixgbe.c
-+++ ixgbe.c
+--- net/82599/ixgbe.c
++++ net/82599/ixgbe.c
 @@ -162,10 +162,6 @@
  // This bit is reserved, has no name, but must be used anyway
  #define REG_DCARXCTRL_UNKNOWN BIT(12)
@@ -24,15 +24,18 @@
  // Section 8.2.3.9.10 Transmit Descriptor Control
  #define REG_TXDCTL(n) (0x06028u + 0x40u*(n))
  #define REG_TXDCTL_PTHRESH BITS(0,6)
-@@ -354,7 +344,7 @@
+@@ -354,9 +344,9 @@
  static_assert(IXGBE_AGENT_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
  
  // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
 -#define IXGBE_AGENT_SYNC_PERIOD 64
 +#define IXGBE_AGENT_SYNC_PERIOD 32
  static_assert(IXGBE_AGENT_SYNC_PERIOD >= 1, "Sync period must be at least 1");
- static_assert(IXGBE_AGENT_SYNC_PERIOD < IXGBE_RING_SIZE, "Sync period must be less than the ring size");
+-static_assert(IXGBE_AGENT_SYNC_PERIOD < IXGBE_RING_SIZE, "Sync period must be less than the ring size");
++static_assert(IXGBE_AGENT_SYNC_PERIOD <= 40, "Sync period must be at most 40 due to the NIC's on-die descriptor queue size");
  static_assert((IXGBE_AGENT_SYNC_PERIOD & (IXGBE_AGENT_SYNC_PERIOD - 1)) == 0, "Sync period must be a power of 2 for fast modulo");
+ 
+ 
 @@ -998,15 +988,10 @@
  	uint8_t* buffer;
  	volatile uint32_t* receive_tail_addr;
@@ -117,3 +120,4 @@
 +		agent->synced_delimiter = (agent->synced_delimiter + IXGBE_AGENT_SYNC_PERIOD) & (IXGBE_RING_SIZE - 1);
  	}
  }
+ 
