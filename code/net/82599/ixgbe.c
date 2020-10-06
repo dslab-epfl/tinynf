@@ -355,10 +355,10 @@ static_assert(IXGBE_AGENT_PROCESS_PERIOD >= 1, "Process period must be at least 
 static_assert(IXGBE_AGENT_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
 
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
-#define IXGBE_AGENT_SYNC_PERIOD 64
-static_assert(IXGBE_AGENT_SYNC_PERIOD >= 1, "Sync period must be at least 1");
-static_assert(IXGBE_AGENT_SYNC_PERIOD < IXGBE_RING_SIZE, "Sync period must be less than the ring size");
-static_assert((IXGBE_AGENT_SYNC_PERIOD & (IXGBE_AGENT_SYNC_PERIOD - 1)) == 0, "Sync period must be a power of 2 for fast modulo");
+#define IXGBE_AGENT_MOVE_PERIOD 64
+static_assert(IXGBE_AGENT_MOVE_PERIOD >= 1, "Move period must be at least 1");
+static_assert(IXGBE_AGENT_MOVE_PERIOD < IXGBE_RING_SIZE, "Move period must be less than the ring size");
+static_assert((IXGBE_AGENT_MOVE_PERIOD & (IXGBE_AGENT_MOVE_PERIOD - 1)) == 0, "Move period must be a power of 2 for fast modulo");
 
 
 // ---------
@@ -1341,7 +1341,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want write-back.
 	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor.
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency.
-	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
+	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_MOVE_PERIOD - 1)) == (IXGBE_AGENT_MOVE_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < agent->outputs_count; n++) {
 		agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64((outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24));
 	}

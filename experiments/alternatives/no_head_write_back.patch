@@ -28,19 +28,19 @@
  static_assert(IXGBE_AGENT_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
  
  // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
--#define IXGBE_AGENT_SYNC_PERIOD 64
-+#define IXGBE_AGENT_SYNC_PERIOD 32
- static_assert(IXGBE_AGENT_SYNC_PERIOD >= 1, "Sync period must be at least 1");
--static_assert(IXGBE_AGENT_SYNC_PERIOD < IXGBE_RING_SIZE, "Sync period must be less than the ring size");
-+static_assert(IXGBE_AGENT_SYNC_PERIOD <= 40, "Sync period must be at most 40 due to the NIC's on-die descriptor queue size");
- static_assert((IXGBE_AGENT_SYNC_PERIOD & (IXGBE_AGENT_SYNC_PERIOD - 1)) == 0, "Sync period must be a power of 2 for fast modulo");
+-#define IXGBE_AGENT_MOVE_PERIOD 64
++#define IXGBE_AGENT_MOVE_PERIOD 32
+ static_assert(IXGBE_AGENT_MOVE_PERIOD >= 1, "Move period must be at least 1");
+-static_assert(IXGBE_AGENT_MOVE_PERIOD < IXGBE_RING_SIZE, "Move period must be less than the ring size");
++static_assert(IXGBE_AGENT_MOVE_PERIOD <= 40, "Move period must be at most 40 due to the NIC's on-die descriptor queue size");
+ static_assert((IXGBE_AGENT_MOVE_PERIOD & (IXGBE_AGENT_MOVE_PERIOD - 1)) == 0, "Move period must be a power of 2 for fast modulo");
  
  
 @@ -998,15 +988,10 @@
  	uint8_t* buffer;
  	volatile uint32_t* receive_tail_addr;
  	uint64_t processed_delimiter;
-+	uint64_t synced_delimiter;
++	uint64_t moved_delimiter;
  	uint64_t outputs_count;
  	uint64_t flush_counter;
 -	uint8_t _padding[3*8];
@@ -58,7 +58,7 @@
  		}
  	}
  
-+	agent->synced_delimiter = IXGBE_AGENT_SYNC_PERIOD - 1;
++	agent->moved_delimiter = IXGBE_AGENT_MOVE_PERIOD - 1;
 +
  	*out_agent = agent;
  	return true;
@@ -109,15 +109,15 @@
 -			if (diff <= min_diff) {
 -				earliest_transmit_head = head;
 -				min_diff = diff;
-+			uint64_t transmit_metadata = agent->rings[n][2u*agent->synced_delimiter + 1];
++			uint64_t transmit_metadata = agent->rings[n][2u*agent->moved_delimiter + 1];
 +			if ((transmit_metadata & BITL(32)) == 0) {
 +				return;
  			}
  		}
 -
 -		reg_write_raw(agent->receive_tail_addr, (earliest_transmit_head - 1) & (IXGBE_RING_SIZE - 1));
-+		reg_write_raw(agent->receive_tail_addr, (uint32_t) agent->synced_delimiter);
-+		agent->synced_delimiter = (agent->synced_delimiter + IXGBE_AGENT_SYNC_PERIOD) & (IXGBE_RING_SIZE - 1);
++		reg_write_raw(agent->receive_tail_addr, (uint32_t) agent->moved_delimiter);
++		agent->moved_delimiter = (agent->moved_delimiter + IXGBE_AGENT_MOVE_PERIOD) & (IXGBE_RING_SIZE - 1);
  	}
  }
  
