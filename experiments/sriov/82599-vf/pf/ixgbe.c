@@ -349,7 +349,7 @@ static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be
 
 // Maximum number of transmit queues assigned to an agent.
 // No constraints here... can be basically anything, the agent struct is allocated as a hugepage so taking up space is not a problem
-#define IXGBE_AGENT_OUTPUTS_MAX 16u
+#define IXGBE_AGENT_OUTPUTS_MAX 4u
 
 // Max number of packets before updating the transmit tail
 #define IXGBE_AGENT_PROCESS_PERIOD 32
