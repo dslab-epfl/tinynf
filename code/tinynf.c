@@ -34,8 +34,8 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, v
 int main(int argc, char** argv)
 {
 	struct tn_pci_address pci_addresses[2];
-	if (argc - 1 != 1 || !tn_util_parse_pci(1, argv + 1, pci_addresses)) {
-		TN_INFO("Couldn't parse one PCI device from argv");
+	if (argc - 1 != 2 || !tn_util_parse_pci(2, argv + 1, pci_addresses)) {
+		TN_INFO("Couldn't parse two PCI devices from argv");
 		return 1;
 	}
 
@@ -43,26 +43,26 @@ int main(int argc, char** argv)
 	struct tn_net_device* devices[2];
 	for (uint8_t n = 0; n < 2; n++) {
 		if (!tn_net_agent_init(&(agents[n]))) {
-			TN_INFO("Couldn't init agent %d", n);
+			TN_INFO("Couldn't init agent for agent[%d]", n);
 			return 2 + 100*n;
 		}
 		if (!tn_net_device_init(pci_addresses[n], &(devices[n]))) {
-			TN_INFO("Couldn't init device %d", n);
+			TN_INFO("Couldn't init device for devices[%d]", n);
 			return 3 + 100*n;
 		}
 		if (!tn_net_device_set_promiscuous(devices[n])) {
-			TN_INFO("Couldn't make device promiscuous %d", n);
+			TN_INFO("Couldn't make device promiscuous for devices[%d]", n);
 			return 4 + 100*n;
 		}
 		if (!tn_net_agent_set_input(agents[n], devices[n])) {
-			TN_INFO("Couldn't set agent RX");
+			TN_INFO("Couldn't set agent RX for devices[%d]", n);
 			return 5 + 100*n;
 		}
 	}
 
 	for (uint8_t n = 0; n < 2; n++) {
 		if (!tn_net_agent_add_output(agents[n], devices[1 - n])) {
-			TN_INFO("Couldn't set agent TX");
+			TN_INFO("Couldn't set agent TX for devices[%d]", n);
 			return 6 + 100*n;
 		}
 	}
