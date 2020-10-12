@@ -43,15 +43,15 @@ int main(int argc, char** argv)
 	struct tn_net_device* devices[2];
 	for (uint8_t n = 0; n < 2; n++) {
 		if (!tn_net_agent_init(&(agents[n]))) {
-			TN_INFO("Couldn't init agent");
+			TN_INFO("Couldn't init agent %d", n);
 			return 2 + 100*n;
 		}
 		if (!tn_net_device_init(pci_addresses[n], &(devices[n]))) {
-			TN_INFO("Couldn't init device");
+			TN_INFO("Couldn't init device %d", n);
 			return 3 + 100*n;
 		}
 		if (!tn_net_device_set_promiscuous(devices[n])) {
-			TN_INFO("Couldn't make device promiscuous");
+			TN_INFO("Couldn't make device promiscuous %d", n);
 			return 4 + 100*n;
 		}
 		if (!tn_net_agent_set_input(agents[n], devices[n])) {
