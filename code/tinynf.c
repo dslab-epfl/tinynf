@@ -34,8 +34,8 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, v
 int main(int argc, char** argv)
 {
 	struct tn_pci_address pci_addresses[2];
-	if (argc - 1 != 2 || !tn_util_parse_pci(2, argv + 1, pci_addresses)) {
-		TN_INFO("Couldn't parse two PCI devices from argv");
+	if (argc - 1 != 1 || !tn_util_parse_pci(1, argv + 1, pci_addresses)) {
+		TN_INFO("Couldn't parse one PCI device from argv");
 		return 1;
 	}
 
