@@ -13,19 +13,14 @@
 #define static_assert _Static_assert
 #endif
 
-
-
-// PCI Device ID ConnectX-5 (Physical Function) - Table 1 PCI Device ID, page 103
-#define PCIREG_ID 4119u // TODO is this the right value ?
-
-
+#define PCIREG_ID 0x02u
 
 // ---------------------
 // Operations on the NIC
 // ---------------------
 
 // Get the value of PCI register 'reg' on the device at address 'addr'
-static uint32_t pcireg_read(struct tn_pci_address addr, uint16_t reg) // todo unint16_t or uint8_t
+static uint32_t pcireg_read(struct tn_pci_address addr, uint8_t reg)
 {
   uint32_t value = tn_pci_read(addr, reg);
   TN_VERBOSE("IXGBE PCI read: 0x%02" PRIx8 " -> 0x%08" PRIx32, reg, value);
