@@ -1359,7 +1359,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	}
 
 	// Move transmitted descriptors back to receiving
-	// This should happen as rarely as the update period since that's the period controlling transmit head updates from the NIC
+	// This should happen as rarely as the move period since that's the period controlling transmit head updates from the NIC, thus we reuse rs_bit
 	if (rs_bit != 0) {
 		uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
 		uint64_t min_diff = (uint64_t) -1;
