@@ -94,7 +94,7 @@ This is also the case for the detailed latency graphs close to the 99.99% mark, 
 
 ### Table 1
 
-The easiest way to do this, though it incurs some overhead, is with Docker.
+The easiest way to do this, though it incurs some overhead, is with Docker. This should take less than an hour.
 
 Run `docker run -it --entrypoint bash dslabepfl/vigor` (you might need `sudo`) to start a container with the Vigor Docker image, then in the container run:
 
