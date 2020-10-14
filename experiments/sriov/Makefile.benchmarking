@@ -2,7 +2,7 @@ THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 TN_FILES := $(THIS_DIR)/main.c
 
-TN_CFLAGS := -s -flto
+TN_CFLAGS += -s -flto
 
 TN_NET := $(THIS_DIR)/82599-vf
 

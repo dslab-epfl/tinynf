@@ -12,10 +12,32 @@
 
 static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, void* state, bool* outputs)
 {
+#ifdef TN_SRIOV_NOP
+	(void) state;
+
+	// DST MAC
+	packet[0] = 0;
+	packet[1] = 0;
+	packet[2] = 0;
+	packet[3] = 0;
+	packet[4] = 0;
+	packet[5] = 1;
+	// SRC MAC
+	packet[6] = 0;
+	packet[7] = 0;
+	packet[8] = 0;
+	packet[9] = 0;
+	packet[10] = 0;
+	packet[11] = 0;
+
+	outputs[0] = true;
+	return packet_length;
+#else
 	uint16_t device = (uint16_t) state;
 	int vigor_output = nf_process(device, packet, packet_length, current_time());
 	outputs[0] = vigor_output != device;
 	return packet_length;
+#endif
 }
 
 int main(int argc, char** argv)
@@ -64,6 +86,7 @@ int main(int argc, char** argv)
 		}
 	}
 
+#ifndef TN_SRIOV_NOP
 	// The policer ask DPDK for the devices count
 	tn_dpdk_devices_count = PF_COUNT;
 	nf_config_init(argc - PF_COUNT - 1, argv + PF_COUNT + 1); // skip the 0th (program name) and the PCI addresses
@@ -71,6 +94,7 @@ int main(int argc, char** argv)
 	if (!nf_init()) {
 		return 7;
 	}
+#endif
 
 	TN_INFO("TinyNF on SR-IOV initialized successfully!");
 
