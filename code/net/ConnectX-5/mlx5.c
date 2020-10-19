@@ -15,9 +15,32 @@
 
 #define PCIREG_ID 0x00u
 
+// https://en.wikipedia.org/wiki/Find_first_set
+static uint32_t find_first_set(uint32_t value)
+{
+  if (value == 0) {
+    return 0;
+  }
+  uint32_t n = 0;
+  while (((value >> n) & 1) == 0)
+  {
+    n = n + 1;
+  }
+  return n;
+}
+
 // ---------------------
 // Operations on the NIC
 // ---------------------
+
+// Get the value of register 'reg' on NIC at address 'addr'
+static uint32_t reg_read(void* addr, uint32_t reg)
+{
+	uint32_t val_le = *((volatile uint32_t*)((uint8_t*) addr + reg));
+	uint32_t result = tn_le_to_cpu32(val_le);
+	TN_VERBOSE("IXGBE read (addr %p): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
+	return result;
+}
 
 // Get the value of PCI register 'reg' on the device at address 'addr'
 static uint32_t pcireg_read(struct tn_pci_address addr, uint8_t reg)
@@ -27,6 +50,27 @@ static uint32_t pcireg_read(struct tn_pci_address addr, uint8_t reg)
   return value;
 }
 
+// Write 'value' to the given register address 'reg_addr'; this is the sum of a NIC address and a register offset
+static void reg_write_raw(volatile uint32_t* reg_addr, uint32_t value)
+{
+  *reg_addr = tn_cpu_to_le32(value);
+}
+
+// Write 'value' to register 'reg' on NIC at address 'addr'
+static void reg_write(void* addr, uint32_t reg, uint32_t value)
+{
+  reg_write_raw((volatile uint32_t*) ((uint8_t*)addr + reg), value);
+  TN_VERBOSE("IXGBE write (addr %p): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
+}
+
+// Write 'value' to the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
+static void reg_write_field(void* addr, uint32_t reg, uint32_t field, uint32_t field_value)
+{
+  uint32_t old_value = reg_read(addr, reg);
+  uint32_t shift = find_first_set(field);
+  uint32_t new_value = (old_value & ~field) | (field_value << shift);
+  reg_write(addr, reg, new_value);
+}
 
 
 // -------------------------------------
@@ -78,8 +122,15 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 
   // First make sure the PCI device is really an Mellanox ConnectX-5 Network Connection
   uint32_t pci_id = pcireg_read(pci_address, PCIREG_ID);
-  if (pci_id != ((0x10FBu << 16) | 0x8086u)) {
-    TN_DEBUG("PCI device is not what was expected");
+  uint32_t tmp1 = pcireg_read(pci_address, 0x01);
+  uint32_t tmp2 = pcireg_read(pci_address, 0x02);
+  uint32_t tmp3 = pcireg_read(pci_address, 0x03);
+  uint32_t tmp4 = pcireg_read(pci_address, 0x04);
+
+
+  TN_DEBUG(" pci_id, tmp1, tmp2, tmp3, tmp4  = %x %x %x %x %x", pci_id, tmp1, tmp2, tmp3, tmp4);
+  if (pci_id != ((0x1017u << 16) | 0x15b3u)) {
+    TN_DEBUG("PCI device is not what was expected pci_id %x", pci_id);
     return false;
   }
 
