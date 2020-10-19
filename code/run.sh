@@ -1,3 +1,3 @@
 #!/bin/bash
 
-make && ./tinynf 02:00.0 81:00.0
+sudo taskset -c 2 ./tinynf 02:00.0 02:00.0

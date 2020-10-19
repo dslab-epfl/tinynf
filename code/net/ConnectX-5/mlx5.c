@@ -13,7 +13,7 @@
 #define static_assert _Static_assert
 #endif
 
-#define PCIREG_ID 0x02u
+#define PCIREG_ID 0x00u
 
 // ---------------------
 // Operations on the NIC
