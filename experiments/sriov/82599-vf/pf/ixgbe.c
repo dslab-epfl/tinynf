@@ -6,9 +6,9 @@
 // and Section 7.2.3.1 Transmit Descriptors - Introduction:
 // "Legacy descriptors are not supported together with [...] virtualization [...]"
 // No source for TDWBA besides "it doesn't work experimentally"
+//
+// Also, ring size set to 256 to avoid thrashing the cache with many VFs
 // !!!
-
-
 
 // All references in this file are to the Intel 82599 Data Sheet unless otherwise noted.
 // It can be found at https://www.intel.com/content/www/us/en/design/products-and-solutions/networking-and-io/82599-10-gigabit-ethernet-controller/technical-library.html
@@ -134,6 +134,7 @@
 #define BITL(n) (1ull << (n))
 
 // Section 9.3.2 PCIe Configuration Space Summary: "0x10 Base Address Register 0" (32 bit), "0x14 Base Address Register 1" (32 bit)
+// Section 9.3.6.1 Memory and IO Base Address Registers: BAR 0 is 64-bits, thus it's 0-low and 0-high, not 0 and 1
 #define PCIREG_BAR0_LOW 0x10u
 #define PCIREG_BAR0_HIGH 0x14u
 
@@ -342,25 +343,27 @@ static_assert(PACKET_BUFFER_SIZE % 1024u == 0, "Packet buffer size should be a r
 static_assert(PACKET_BUFFER_SIZE < 16 * 1024u, "Packet buffer size cannot be more than 15.5 KB");
 
 // Section 7.2.3.3 Transmit Descriptor Ring:
-// "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
-#define IXGBE_RING_SIZE 256u
+// "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128. "
+// Also, 8.2.3.9.7 Transmit Descriptor Length: "Validated Lengths up to 128K (8K descriptors)."
+#define IXGBE_RING_SIZE 1024u
 static_assert(IXGBE_RING_SIZE % 128 == 0, "Ring size must be 0 modulo 128");
 static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2 for fast modulo");
+static_assert(IXGBE_RING_SIZE <= 8096, "Ring size cannot be above 8K");
 
 // Maximum number of transmit queues assigned to an agent.
 // No constraints here... can be basically anything, the agent struct is allocated as a hugepage so taking up space is not a problem
 #define IXGBE_AGENT_OUTPUTS_MAX 4u
 
 // Max number of packets before updating the transmit tail
-#define IXGBE_AGENT_PROCESS_PERIOD 32
-static_assert(IXGBE_AGENT_PROCESS_PERIOD >= 1, "Process period must be at least 1");
-static_assert(IXGBE_AGENT_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
+#define IXGBE_AGENT_FLUSH_PERIOD 8
+static_assert(IXGBE_AGENT_FLUSH_PERIOD >= 1, "Flush period must be at least 1");
+static_assert(IXGBE_AGENT_FLUSH_PERIOD < IXGBE_RING_SIZE, "Flush period must be less than the ring size");
 
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
-#define IXGBE_AGENT_SYNC_PERIOD 32
-static_assert(IXGBE_AGENT_SYNC_PERIOD >= 1, "Sync period must be at least 1");
-static_assert(IXGBE_AGENT_SYNC_PERIOD < IXGBE_RING_SIZE, "Sync period must be less than the ring size");
-static_assert((IXGBE_AGENT_SYNC_PERIOD & (IXGBE_AGENT_SYNC_PERIOD - 1)) == 0, "Sync period must be a power of 2 for fast modulo");
+#define IXGBE_AGENT_RECYCLE_PERIOD 32
+static_assert(IXGBE_AGENT_RECYCLE_PERIOD >= 1, "Recycle period must be at least 1");
+static_assert(IXGBE_AGENT_RECYCLE_PERIOD <= 40, "Recycle period must be 40 or less due to the NIC's on-die descriptor queue size");
+static_assert((IXGBE_AGENT_RECYCLE_PERIOD & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == 0, "Recycle period must be a power of 2 for fast modulo");
 
 
 // ---------
@@ -508,6 +511,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 
 	// First make sure the PCI device is really an 82599ES 10-Gigabit SFI/SFP+ Network Connection
 	// According to https://cateee.net/lkddb/web-lkddb/IXGBE.html, this means vendor ID (bottom 16 bits) 8086, device ID (top 16 bits) 10FB
+	// (Section 9.3.3.2 Device ID Register mentions 0x10D8 as the default, but the card has to overwrite that default with its actual ID)
 	uint32_t pci_id = pcireg_read(pci_address, PCIREG_ID);
 	if (pci_id != ((0x10FBu << 16) | 0x8086u)) {
 		TN_DEBUG("PCI device is not what was expected");
@@ -1001,7 +1005,7 @@ struct tn_net_agent
 	uint8_t* buffer;
 	volatile uint32_t* receive_tail_addr;
 	uint64_t processed_delimiter;
-	uint64_t synced_delimiter;
+	uint64_t recycled_delimiter;
 	uint64_t outputs_count;
 	uint64_t flush_counter;
 	uintptr_t buffer_phys_addr;
@@ -1047,7 +1051,7 @@ bool tn_net_agent_init(struct tn_net_agent** out_agent)
 		}
 	}
 
-	agent->synced_delimiter = IXGBE_AGENT_SYNC_PERIOD - 1;
+	agent->recycled_delimiter = IXGBE_AGENT_RECYCLE_PERIOD - 1;
 
 	*out_agent = agent;
 	return true;
@@ -1254,7 +1258,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// Not great; but less assumptions than Vigor makes in the DPDK driver patches
 	// The core reason is the same: KLEE cannot reason about "any descriptor in the ring", the descriptor index must be concrete
 	agent->processed_delimiter = 0;
-	agent->flush_counter = IXGBE_AGENT_PROCESS_PERIOD - 1;
+	agent->flush_counter = IXGBE_AGENT_FLUSH_PERIOD - 1;
 #endif
 
 	// INTERPRETATION-MISSING: The data sheet does not specify the endianness of receive descriptor metadata fields.
@@ -1296,6 +1300,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 {
 	// INTERPRETATION-MISSING: The data sheet does not specify the endianness of transmit descriptor metadata fields, nor of the written-back head pointer.
 	// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
+
 	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
 	// "Address (64)", 1st line
 	// 2nd line:
@@ -1318,7 +1323,6 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 			//      By assumption TXPAD we need this bit set.
 			// "EOP (bit 0) - End of Packet"
 		// "STA", bits 32-35: "Rsv (bit 3:1) - Reserved. DD (bit 0) - Descriptor Done."
-			// All zero
 		// "IDX", bits 36-38: "[...] If no offload is required and the CC bit is cleared, this field is not relevant"
 			// All zero
 		// "CC", bit 39: "When set, a Tx context descriptor indicated by IDX index should be used for this packet(s)."
@@ -1326,10 +1330,11 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 		// "POPTS", bits 40-45: "Rsv (bits 5:3) - Reserved. IPSEC (bit 2) - Ipsec offload request. TXSM (bit 1) - Insert TCP/UDP Checksum. IXSM (bit 0) - Insert IP Checksum."
 			// All zero
 		// "PAYLEN", bits 46-63: "[...] In a single-send packet, PAYLEN defines the entire packet size fetched from host memory."
+			// All zero
 	// INTERPRETATION-INCORRECT: Despite being marked as "reserved", the buffer address does not get clobbered by write-back, so no need to set it again.
 	// This means all we have to do is set two lengths to the same value, bits 0,1,5 of DCMD, bits 0,1 of DTYP, and bit 3 of DCMD if we want write-back.
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency.
-	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
+	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < agent->outputs_count; n++) {
 		agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64(
 			(outputs[n] * (uint64_t) packet_length) |
@@ -1343,24 +1348,24 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 
 	// Flush if we need to; not doing so every time is a huge performance win
 	agent->flush_counter = agent->flush_counter + 1;
-	if (agent->flush_counter == IXGBE_AGENT_PROCESS_PERIOD) {
+	if (agent->flush_counter == IXGBE_AGENT_FLUSH_PERIOD) {
 		for (uint64_t n = 0; n < agent->outputs_count; n++) {
 			reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
 		agent->flush_counter = 0;
 	}
 
-	// Move transmitted descriptors back to receiving
-	// This should happen as rarely as the update period since that's the period controlling transmit head updates from the NIC
+	// Recycle transmitted descriptors back to receiving
+	// This should happen as rarely as asking the NIC for transmit head updates, thus we reuse rs_bit
 	if (rs_bit != 0) {
 		for (uint64_t n = 0; n < agent->outputs_count; n++) {
-			uint64_t transmit_metadata = agent->rings[n][2u*agent->synced_delimiter + 1];
+			uint64_t transmit_metadata = agent->rings[n][2u*agent->recycled_delimiter + 1];
 			if ((transmit_metadata & BITL(32)) == 0) {
 				return;
 			}
 		}
-		reg_write_raw(agent->receive_tail_addr, (uint32_t) agent->synced_delimiter);
-		agent->synced_delimiter = (agent->synced_delimiter + IXGBE_AGENT_SYNC_PERIOD) & (IXGBE_RING_SIZE - 1);
+		reg_write_raw(agent->receive_tail_addr, (uint32_t) agent->recycled_delimiter);
+		agent->recycled_delimiter = (agent->recycled_delimiter + IXGBE_AGENT_RECYCLE_PERIOD) & (IXGBE_RING_SIZE - 1);
 	}
 }
 
@@ -1373,7 +1378,7 @@ void tn_net_run(uint64_t agents_count, struct tn_net_agent** agents, tn_net_pack
 	bool outputs[IXGBE_AGENT_OUTPUTS_MAX] = {0};
 	while (true) {
 		for (uint64_t n = 0; n < agents_count; n++) {
-			for (uint64_t p = 0; p < IXGBE_AGENT_PROCESS_PERIOD; p++) {
+			for (uint64_t p = 0; p < IXGBE_AGENT_FLUSH_PERIOD; p++) {
 				uint8_t* packet;
 				uint16_t receive_packet_length;
 				if (!tn_net_agent_receive(agents[n], &packet, &receive_packet_length)) {
