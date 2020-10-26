@@ -28,8 +28,12 @@
 #define PCIREG_BAR0_LOW 0x10u
 #define PCIREG_BAR0_HIGH 0x14u
 
-// Driver constants
+#define PCIREG_COMMAND 0x04u
+#define PCIREG_COMMAND_MEMORY_ACCESS_ENABLE BIT(1)
+#define PCIREG_COMMAND_BUS_MASTER_ENABLE BIT(2)
+#define PCIREG_COMMAND_INTERRUPT_DISABLE BIT(10)
 
+// Driver constants
 #define PCI_ID_HIGH 0x1017u
 #define PCI_ID_LOW 0x15b3u
 
@@ -38,6 +42,14 @@
 #define CMD_INTERFACE_REVISION 0xAC0F
 #define FW_REV_SUBMINOR 0x0500
 
+#define CMDQ_SIZE 4096 // 8.24.1 HCA Command Queue size
+#define CMDQ_PHY_ADDR_LOW BITS(12,31)
+#define NIC_INTERFACE BITS(8,10)
+#define LOG_CMDQ_SIZE BITS(4,7)
+#define LOG_CMDQ_STRIDE BITS(0,3)
+
+#define INITIALIZING_TIMEOUT 10 // in seconds
+#define INITIALIZING BIT(31)
 
 // ---------
 // Utilities
@@ -167,9 +179,9 @@ static void pcireg_set_field(struct tn_pci_address addr, uint8_t reg, uint32_t f
 
 struct tn_net_device
 {
-    void* addr;
-    bool rx_enabled;
-    uint8_t _padding[7];
+    void* addr; // virtual address , adress 0 - init seg
+    bool rx_enabled; // intel related stuff
+    uint8_t _padding[7]; // bollean in structure
 };
 
 
@@ -228,12 +240,16 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
-//  // The bus master may not be enabled; enable it just in case.
-//  pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_BUS_MASTER_ENABLE);
+  // TODO Check if connectx5 have these settings by default:
+
+  // Section 7.1:
+  // The driver should ensure that the Bus Master bit in the Command Register is set in the PCI
+  // configuration header
+  pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_BUS_MASTER_ENABLE);
 //  // Same for memory reads, i.e. actually using the BARs.
-//  pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_MEMORY_ACCESS_ENABLE);
+  pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_MEMORY_ACCESS_ENABLE);
 //  // Finally, since we don't want interrupts and certainly not legacy ones, make sure they're disabled
-//  pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_INTERRUPT_DISABLE);
+  pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_INTERRUPT_DISABLE);
 
 
   uint32_t pci_bar0low = pcireg_read(pci_address, PCIREG_BAR0_LOW);
@@ -244,6 +260,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   }
   uint32_t pci_bar0high = pcireg_read(pci_address, PCIREG_BAR0_HIGH);
   // No need to detect the size, since we know exactly which device we're dealing with. (This also means no writes to BARs, one less chance to mess everything up)
+  // BARs ==  actual pointer
 
   struct tn_net_device device = { 0 };
   // Section 9.3.6.1 Memory and IO Base Address Registers:
@@ -264,19 +281,14 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
    * The driver must match the command interface revision number.
    * The format of the initialization segment is in Table 12, “Initialization Segment,” on page 168
    * */
+  TN_VERBOSE("### Init - step 1");
+
   uint32_t fw_rev = reg_read(device.addr, 0x00);
   uint32_t cmd_rev_fw_rev_subminor = reg_read(device.addr, 0x04);
   uint16_t fw_rev_minor = fw_rev >> 16;
   uint16_t fw_rev_major = (uint16_t) fw_rev & 0x0000FFFF;
   uint16_t cmd_int_rev = cmd_rev_fw_rev_subminor >> 16;
   uint16_t fw_rev_subminor = (uint16_t) cmd_rev_fw_rev_subminor & 0x0000FFFF;
-
-//  TN_DEBUG("fw_rev %x", fw_rev);
-//  TN_DEBUG("cmd_rev_fw_rev_subminor %x", cmd_rev_fw_rev_subminor);
-//  TN_DEBUG("fw_rev_minor %x", fw_rev_minor);
-//  TN_DEBUG("fw_rev_major %x", fw_rev_major);
-//  TN_DEBUG("cmd_int_rev %x", cmd_int_rev);
-//  TN_DEBUG("fw_rev_subminor %x", fw_rev_subminor);
 
   if (fw_rev_minor != FW_REV_MINOR) {
     TN_DEBUG("Firmware revision minor is %x, expected value is %x", fw_rev_minor, FW_REV_MINOR);
@@ -305,21 +317,60 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
    *  The nic_interface field is part of the least significant word
    *  and must be set to zero (Full NIC/HCA driver), as are the log_cmdq_size and log_cmdq_stride fields
    * */
-  // TODO
+  TN_VERBOSE("### Init - step 2");
 
+  void* command_queues_virt_addr;
+  uintptr_t command_queues_phys_addr;
+  TN_DEBUG("size of command_queues_phys_addr %ld", sizeof(command_queues_phys_addr));
+
+  TN_VERBOSE("Trying to allocate %d bytes for command queues", CMDQ_SIZE);
+  if (!tn_mem_allocate(CMDQ_SIZE, &command_queues_virt_addr)) {
+    TN_DEBUG("Could not allocate memory for command queues");
+    return false;
+  }
+
+  if (!tn_mem_virt_to_phys(command_queues_virt_addr, &command_queues_phys_addr)) {
+    TN_DEBUG("Could not get a command_queues's physical address");
+    return false;
+  }
+
+  reg_write(device.addr, 0x10, (uint32_t)command_queues_phys_addr>>32);
+  reg_write_field(device.addr, 0x14, CMDQ_PHY_ADDR_LOW, (uint32_t) command_queues_phys_addr & 0x00000000FFFFFFFF);
+
+  reg_clear_field(device.addr, 0x14, NIC_INTERFACE);
+  reg_clear_field(device.addr, 0x14, LOG_CMDQ_SIZE);
+  reg_clear_field(device.addr, 0x14, LOG_CMDQ_STRIDE);
 
   /**
    * Step 3.
    * Read the initializing field from the initialization segment.
    * Repeat until it is cleared (INIT_SEGMENT.initializing become 0).
    * */
-  // TODO
+  TN_VERBOSE("### Init - step 3");
+
+  IF_AFTER_TIMEOUT(INITIALIZING_TIMEOUT * 1000 * 1000, !reg_is_field_cleared(device.addr, 0x1FC, INITIALIZING)) {
+    TN_DEBUG("INIT_SEGMENT.initializing did not clear, cannot complete init setup");
+    return false;
+  }
 
   /**
    * Step 4.
    * Execute ENABLE_HCA command.
    * */
    // TODO
+
+  /**
+  * Step 5.
+  *  Execute QUERY_ISSI command.
+  * */
+  // TODO
+
+
+  /**
+  * Step 6.
+  *  Execute SET_ISSI command.
+  * */
+  // TODO
 
   return true;
 }

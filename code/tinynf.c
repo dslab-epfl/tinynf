@@ -31,6 +31,9 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, v
 }
 #endif
 
+
+#define NUMBER_OF_DEVICES 1
+
 int main(int argc, char** argv)
 {
 	struct tn_pci_address pci_addresses[2];
@@ -41,7 +44,9 @@ int main(int argc, char** argv)
 
 	struct tn_net_agent* agents[2];
 	struct tn_net_device* devices[2];
-	for (uint8_t n = 0; n < 2; n++) {
+	for (uint8_t n = 0; n < NUMBER_OF_DEVICES; n++) {
+
+    TN_INFO("    --- Device %d ---    ", n);
 		if (!tn_net_agent_init(&(agents[n]))) {
 			TN_INFO("Couldn't init agent for agent[%d]", n);
 			return 2 + 100*n;
@@ -58,6 +63,7 @@ int main(int argc, char** argv)
 			TN_INFO("Couldn't set agent RX for devices[%d]", n);
 			return 5 + 100*n;
 		}
+
 	}
 
 	for (uint8_t n = 0; n < 2; n++) {
