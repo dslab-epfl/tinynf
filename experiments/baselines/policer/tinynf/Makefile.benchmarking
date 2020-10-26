@@ -10,8 +10,10 @@ VIGOR_DIR := $(THIS_DIR)/../../vigor/vigor
 # Vigor baseline setup script if needed
 _IGNORED := $(shell cd $(VIGOR_DIR)/..; ./setup.sh 2>/dev/null)
 
+ifeq (,$(TN_FILES))
 # Our main file
 TN_FILES += $(THIS_DIR)/main.c
+endif
 # Policer files (but not policer_main, which we modify, nor verif-only 'loop' files)
 TN_FILES += $(THIS_DIR)/../policer_main.c $(shell echo $(VIGOR_DIR)/vigpol/!(policer_main|loop).c)
 # Vigor utility file (but not nf.c, since we have our own main!)

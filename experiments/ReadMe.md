@@ -3,6 +3,7 @@
 This folder contains experiments used for the OSDI'20 TinyNF paper.
 
 Subfolders:
+- `alternatives`: patches for TinyNF that make it worse but are interesting
 - `baselines`: baseline NFs for various experiments
 - `code-metrics`: scripts and data on code metrics such as number of lines of code
 - `dpdk-shim`: a shim layer allowing DPDK NFs to use TinyNF, assuming they only need the TinyNF model
@@ -72,20 +73,28 @@ Then run the following, which should take a minute:
 
 ```
 # Figures
-./graph-tput-vs-lat.py 'Figure 6' 50 99 vigor-pol-dpdk vigor-pol-dpdk-batched tinynf-pol vigor-parallel-pol-dpdk vigor-parallel-pol-dpdk-batched tinynf-parallel-pol
-./graph-tput-vs-lat.py 'Figure 7' 99 99 vigor-pol-dpdk vigor-pol-dpdk-batched tinynf-pol vigor-parallel-pol-dpdk vigor-parallel-pol-dpdk-batched tinynf-parallel-pol
-./graph-lat-ccdf.py 'Figure 8' vigor-pol-dpdk/latencies/1000 vigor-pol-dpdk-batched/latencies/1000 tinynf-pol/latencies/1000 vigor-parallel-pol-dpdk/latencies/1000 vigor-parallel-pol-dpdk-batched/latencies/1000 tinynf-parallel-pol/latencies/1000
+./graph-tput-vs-lat.py 'Figure 6' 50 99 vigor-pol-dpdk vigor-pol-dpdk-batched tinynf-pol \
+                                        vigor-parallel-pol-dpdk vigor-parallel-pol-dpdk-batched tinynf-parallel-pol
+./graph-tput-vs-lat.py 'Figure 7' 99 99 vigor-pol-dpdk vigor-pol-dpdk-batched tinynf-pol \
+                                        vigor-parallel-pol-dpdk vigor-parallel-pol-dpdk-batched tinynf-parallel-pol
+./graph-lat-ccdf.py 'Figure 8' vigor-pol-dpdk/latencies/1000 vigor-pol-dpdk-batched/latencies/1000 \
+                               tinynf-pol/latencies/1000 vigor-parallel-pol-dpdk/latencies/1000 \
+                               vigor-parallel-pol-dpdk-batched/latencies/1000 tinynf-parallel-pol/latencies/1000
 ./graph-tput-vs-lat.py 'Figure 9' 50 99 dpdk-nop-dpdk dpdk-nop-dpdk-batched ixy-nop ixy-nop-batched tinynf-nop
 ./graph-tput-vs-lat.py 'Figure 10' 50 99 dpdk-slow-nop-dpdk dpdk-slow-nop-dpdk-batched tinynf-slow-nop
-./graph-lat-ccdf.py 'Figure 11' dpdk-nop-dpdk/latencies/0 dpdk-nop-dpdk-batched/latencies/0 ixy-nop/latencies/0 ixy-nop-batched/latencies/0 tinynf-nop/latencies/0
+./graph-lat-ccdf.py 'Figure 11' dpdk-nop-dpdk/latencies/0 dpdk-nop-dpdk-batched/latencies/0 \
+                                ixy-nop/latencies/0 ixy-nop-batched/latencies/0 tinynf-nop/latencies/0
 # Table 3
 ./tabulate-verified-nf-perf.sh
 ```
 
+Please note that the latency of functions when the background load is close to their breaking point in terms of throughput can vary across runs, especially DPDK without batching.
+This is also the case for the detailed latency graphs close to the 99.99% mark, when NIC timestamping stops being accurate as reported by [Primorac et al.](https://dl.acm.org/doi/10.1145/3098583.3098590).
+
 
 ### Table 1
 
-The easiest way to do this, though it incurs some overhead, is with Docker.
+The easiest way to do this, though it incurs some overhead, is with Docker. This should take less than an hour.
 
 Run `docker run -it --entrypoint bash dslabepfl/vigor` (you might need `sudo`) to start a container with the Vigor Docker image, then in the container run:
 
@@ -108,7 +117,6 @@ Alternatively, you can run these steps on your own machine, though you'll have t
 These instructions were for the TinyNF verification times.
 The times with Vigor are merely replications of the Vigor SOSP'19 paper, whose artifact was judged reproducible already; if you'd like to reproduce these anyway,
 you'll need a machine with at least 100 GB RAM and preferably dozens of CPU cores. Run `./measure-verification-times.sh ~/vigor original` as the last command in the script above.
-
 
 
 ### Table 2

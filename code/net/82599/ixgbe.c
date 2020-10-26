@@ -122,6 +122,7 @@
 #define BITL(n) (1ull << (n))
 
 // Section 9.3.2 PCIe Configuration Space Summary: "0x10 Base Address Register 0" (32 bit), "0x14 Base Address Register 1" (32 bit)
+// Section 9.3.6.1 Memory and IO Base Address Registers: BAR 0 is 64-bits, thus it's 0-low and 0-high, not 0 and 1
 #define PCIREG_BAR0_LOW 0x10u
 #define PCIREG_BAR0_HIGH 0x14u
 
@@ -354,10 +355,10 @@ static_assert(IXGBE_AGENT_PROCESS_PERIOD >= 1, "Process period must be at least 
 static_assert(IXGBE_AGENT_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
 
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
-#define IXGBE_AGENT_SYNC_PERIOD 64
-static_assert(IXGBE_AGENT_SYNC_PERIOD >= 1, "Sync period must be at least 1");
-static_assert(IXGBE_AGENT_SYNC_PERIOD < IXGBE_RING_SIZE, "Sync period must be less than the ring size");
-static_assert((IXGBE_AGENT_SYNC_PERIOD & (IXGBE_AGENT_SYNC_PERIOD - 1)) == 0, "Sync period must be a power of 2 for fast modulo");
+#define IXGBE_AGENT_MOVE_PERIOD 64
+static_assert(IXGBE_AGENT_MOVE_PERIOD >= 1, "Move period must be at least 1");
+static_assert(IXGBE_AGENT_MOVE_PERIOD < IXGBE_RING_SIZE, "Move period must be less than the ring size");
+static_assert((IXGBE_AGENT_MOVE_PERIOD & (IXGBE_AGENT_MOVE_PERIOD - 1)) == 0, "Move period must be a power of 2 for fast modulo");
 
 
 // ---------
@@ -490,7 +491,8 @@ struct tn_net_device
 {
 	void* addr;
 	bool rx_enabled;
-	uint8_t _padding[7];
+	bool tx_enabled;
+	uint8_t _padding[6];
 };
 
 // -------------------------------------
@@ -504,6 +506,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 
 	// First make sure the PCI device is really an 82599ES 10-Gigabit SFI/SFP+ Network Connection
 	// According to https://cateee.net/lkddb/web-lkddb/IXGBE.html, this means vendor ID (bottom 16 bits) 8086, device ID (top 16 bits) 10FB
+	// (Section 9.3.3.2 Device ID Register mentions 0x10D8 as the default, but the card has to overwrite that default with its actual ID)
 	uint32_t pci_id = pcireg_read(pci_address, PCIREG_ID);
 	if (pci_id != ((0x10FBu << 16) | 0x8086u)) {
 		TN_DEBUG("PCI device is not what was expected");
@@ -950,14 +953,6 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 	// 	Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
 	// We don't need to do anything here by assumption NOWANT
 
-	// Section 4.6.8 Transmit Initialization:
-	// "Enable transmit path by setting DMATXCTL.TE. This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
-	// Do it here already, so that the transmit path does not contain any non-queue-specific registers.
-	reg_set_field(device.addr, REG_DMATXCTL, REG_DMATXCTL_TE);
-	// However... Section 8.2.3.9.10 Transmit Descriptor Control: "When setting the global Tx enable DMATXCTL.TE the ENABLE bit of Tx queue zero is enabled as well."
-	// So we must disable that.
-	reg_clear_field(device.addr, REG_TXDCTL(0), REG_TXDCTL_ENABLE);
-
 	// Do the memory alloc here so we don't have to free it if we fail earlier
 	if (!tn_mem_allocate(sizeof(struct tn_net_device), (void**) out_device)) {
 		TN_DEBUG("Could not allocate device struct");
@@ -1056,33 +1051,6 @@ bool tn_net_agent_init(struct tn_net_agent** out_agent)
 // Section 4.6.7 Receive Initialization
 // ------------------------------------
 
-static bool ixgbe_device_start(const struct tn_net_device* const device) {
-	// This is a logically separate operation from the rest of queue setup; see comments near the end of tn_net_agent_set_input
-
-	//	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
-	reg_set_field(device->addr, REG_SECRXCTRL, REG_SECRXCTRL_RX_DIS);
-	//	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
-	// INTERPRETATION-MISSING: Another undefined timeout, assuming 1s as usual
-	IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(device->addr, REG_SECRXSTAT, REG_SECRXSTAT_SECRX_RDY)) {
-		TN_DEBUG("SECRXSTAT.SECRXRDY timed out, cannot start device");
-		return false;
-	}
-	//	"- Set RXCTRL.RXEN"
-	reg_set_field(device->addr, REG_RXCTRL, REG_RXCTRL_RXEN);
-	//	"- Clear the SECRXCTRL.SECRX_DIS bits to enable receive data path"
-	// INTERPRETATION-TYPO: This refers to RX_DIS, not SECRX_DIS, since it's RX_DIS being cleared that enables the receive data path.
-	reg_clear_field(device->addr, REG_SECRXCTRL, REG_SECRXCTRL_RX_DIS);
-	//	"- If software uses the receive descriptor minimum threshold Interrupt, that value should be set."
-	// We do not have to set this by assumption NOWANT
-
-	// "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
-	// Again, we do the first part here since it's a non-queue-dependent register
-	// Section 8.2.3.1.3 Extended Device Control Register (CTRL_EXT): Bit 16 == "NS_DIS, No Snoop Disable"
-	reg_set_field(device->addr, REG_CTRLEXT, REG_CTRLEXT_NSDIS);
-
-	return true;
-}
-
 bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_device* const device)
 {
 	if (agent->receive_tail_addr != 0) {
@@ -1150,10 +1118,26 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_devi
 	// "- Enable the receive path by setting RXCTRL.RXEN. This should be done only after all other settings are done following the steps below."
 	// INTERPRETATION-MISSING: "after all other settings are done" is ambiguous here, let's assume we can just do it after setting up a receive queue...
 	if (!device->rx_enabled) {
-		if (!ixgbe_device_start(device)) {
-			TN_DEBUG("Cannot start device");
+		//	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
+		reg_set_field(device->addr, REG_SECRXCTRL, REG_SECRXCTRL_RX_DIS);
+		//	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
+		// INTERPRETATION-MISSING: Another undefined timeout, assuming 1s as usual
+		IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(device->addr, REG_SECRXSTAT, REG_SECRXSTAT_SECRX_RDY)) {
+			TN_DEBUG("SECRXSTAT.SECRXRDY timed out, cannot start device");
 			return false;
 		}
+		//	"- Set RXCTRL.RXEN"
+		reg_set_field(device->addr, REG_RXCTRL, REG_RXCTRL_RXEN);
+		//	"- Clear the SECRXCTRL.SECRX_DIS bits to enable receive data path"
+		// INTERPRETATION-TYPO: This refers to RX_DIS, not SECRX_DIS, since it's RX_DIS being cleared that enables the receive data path.
+		reg_clear_field(device->addr, REG_SECRXCTRL, REG_SECRXCTRL_RX_DIS);
+		//	"- If software uses the receive descriptor minimum threshold Interrupt, that value should be set."
+		// We do not have to set this by assumption NOWANT
+		// "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
+		// Again, we do the first part here since it's a non-queue-dependent register
+		// Section 8.2.3.1.3 Extended Device Control Register (CTRL_EXT): Bit 16 == "NS_DIS, No Snoop Disable"
+		reg_set_field(device->addr, REG_CTRLEXT, REG_CTRLEXT_NSDIS);
+
 		device->rx_enabled = true;
 	}
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
@@ -1257,7 +1241,10 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_dev
 	reg_clear_field(device->addr, REG_DCATXCTRL(queue_index), REG_DCATXCTRL_TX_DESC_WB_RO_EN);
 	// "- Enable transmit path by setting DMATXCTL.TE.
 	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
-	// Already done in device initialization
+	if (!device->tx_enabled) {
+		reg_set_field(device->addr, REG_DMATXCTL, REG_DMATXCTL_TE);
+		device->tx_enabled = true;
+	}
 	// "- Enable the queue using TXDCTL.ENABLE.
 	//    Poll the TXDCTL register until the Enable bit is set."
 	// INTERPRETATION-MISSING: No timeout is mentioned here, let's say 1s to be safe.
@@ -1291,7 +1278,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
 
 	// Since descriptors are 16 bytes, the index must be doubled
-	uint64_t receive_metadata = agent->rings[0][2u*agent->processed_delimiter + 1];
+	uint64_t receive_metadata = tn_le_to_cpu64(agent->rings[0][2u*agent->processed_delimiter + 1]);
 	// Section 7.1.5 Legacy Receive Descriptor Format:
 	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
 	if ((receive_metadata & BITL(32)) == 0) {
@@ -1310,7 +1297,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// This cannot overflow because the packet is by definition in an allocated block of memory
 	*out_packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
-	*out_packet_length = tn_le_to_cpu16(receive_metadata & 0xFFFFu);
+	*out_packet_length = tn_le_to_cpu64(receive_metadata) & 0xFFFFu;
 
 	return true;
 }
@@ -1332,31 +1319,31 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 		// "CSO", bits 16-23: "A Checksum Offset (TDESC.CSO) field indicates where, relative to the start of the packet, to insert a TCP checksum if this mode is enabled"
 			// All zero
 		// "CMD", bits 24-31:
-			// "RSV (bit 7) - Reserved
-			//  VLE (bit 6) - VLAN Packet Enable [...]
-			//  DEXT (bit 5) - Descriptor extension (zero for legacy mode)
-			//  RSV (bit 4) - Reserved
-			//  RS (bit 3) - Report Status: "signals hardware to report the DMA completion status indication"
-			//  IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set.
-			//  IFCS (bit 1) - Insert FCS:
-			//	"There are several cases in which software must set IFCS as follows: -Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit."
-			//      Section 8.2.3.22.8 MAC Core Control 0 Register (HLREG0): "TXPADEN, init val 1b; 1b = Pad frames"
-			//  EOP (bit 0) - End of Packet"
-		// STA, bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
+			// "RSV (bit 7) - Reserved"
+			// "VLE (bit 6) - VLAN Packet Enable"
+			// "DEXT (bit 5) - Descriptor extension (zero for legacy mode)"
+			// "RSV (bit 4) - Reserved"
+			// "RS (bit 3) - Report Status - RS signals hardware to report the DMA completion status indication [...]"
+			// "IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set."
+			// "IFCS (bit 1) - Insert FCS":
+			//	"There are several cases in which software must set IFCS as follows: Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit. [...]"
+			//      By assumption TXPAD we need this bit set.
+			// "EOP (bit 0) - End of Packet"
+		// "STA", bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
 			// All zero
-		// Rsvd, bits 36-39: "Reserved."
+		// "Rsvd", bits 36-39: "Reserved."
 			// All zero
-		// CSS, bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
+		// "CSS", bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
 			// All zero
-		// VLAN, bits 48-63:
+		// "VLAN", bits 48-63: "The VLAN field is used to provide the 802.1q/802.1ac tagging information."
 			// All zero
-	// INTERPRETATION-INCORRECT: Despite being marked as "reserved", the buffer address does not get clobbered by write-back, so no need to set it again
-	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want to get updated
-	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor
-	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency
-	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_SYNC_PERIOD - 1)) == (IXGBE_AGENT_SYNC_PERIOD - 1)) << (24+3);
+	// INTERPRETATION-INCORRECT: Despite being marked as "reserved", the buffer address does not get clobbered by write-back, so no need to set it again.
+	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want write-back.
+	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor.
+	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency.
+	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_MOVE_PERIOD - 1)) == (IXGBE_AGENT_MOVE_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < agent->outputs_count; n++) {
-		agent->rings[n][2u*agent->processed_delimiter + 1] = (outputs[n] * (uint64_t) tn_cpu_to_le16(packet_length)) | rs_bit | BITL(24+1) | BITL(24);
+		agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64((outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24));
 	}
 
 	// Increment the processed delimiter, modulo the ring size
@@ -1372,7 +1359,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	}
 
 	// Move transmitted descriptors back to receiving
-	// This should happen as rarely as the update period since that's the period controlling transmit head updates from the NIC
+	// This should happen as rarely as the move period since that's the period controlling transmit head updates from the NIC, thus we reuse rs_bit
 	if (rs_bit != 0) {
 		uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
 		uint64_t min_diff = (uint64_t) -1;

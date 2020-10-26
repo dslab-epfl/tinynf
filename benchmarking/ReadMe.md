@@ -19,6 +19,7 @@ The second machine is the "tester" machine, which runs the MoonGen packet genera
   - `run` to run the NF, with the PCI addresses of the network cards to use passed as `$(TN_ARGS)`
   - `print-nf-name` to print the name of the NF process, e.g. `@echo my-nf`
   - If your NF is based on DPDK, create an empty target `is-dpdk`
+  - If your NF needs something done after it starts, such as sleeping for a while because it is slow to start, put this in a target `init`
 
 - Double-check your NF's configuration:
   - If your NF tracks packet flows, it should be configured with a capacity of 65536 flows (only 60000 will be used)
@@ -31,4 +32,5 @@ The second machine is the "tester" machine, which runs the MoonGen packet genera
     - `--latencyload X` where `X` is either a number of MBits/s to use as the only latency measurement or `-1` to disable latency measurement entirely.
       (By default, the script measures latency from 0 to max throughput in 1 Gb/s increments)
     - `--acceptableloss X` where `X` is the fraction of loss that is acceptable in the throughput benchmark, `0.003` by default.
+    - `--flows X` where `X` is the number of different flows the packets should belong to
     - `--reverseheatup` for `standard-single` to also heat up in the other direction, useful for some NFs like a load balancer that gets heartbeat packets from backends
