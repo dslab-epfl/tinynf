@@ -9,3 +9,5 @@ Structure:
 Build with `make`; tested with GCC and clang.
 
 Read the comments at the top of the `Makefile` for additional configuration; you likely want to add `-flto` to the compiler flags.
+
+Depending on the size of your CPU cache, and on how many NICs/queues you use, you may want to adjust `IXGBE_RING_SIZE` in `net/82599/ixgbe.c` to avoid cache thrashing.
