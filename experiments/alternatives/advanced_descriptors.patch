@@ -1,5 +1,5 @@
---- /home/solal/lala.c	2020-10-26 18:25:28.511754031 +0100
-+++ net/82599/ixgbe.c	2020-10-26 18:35:00.665325122 +0100
+--- net/82599/ixgbe.c
++++ net/82599/ixgbe.c
 @@ -284,6 +284,7 @@
  // Section 8.2.3.8.7 Split Receive Control Registers
  #define REG_SRRCTL(n) ((n) <= 63u ? (0x01014u + 0x40u*(n)) : (0x0D014u + 0x40u*((n)-64u)))

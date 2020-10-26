@@ -1,6 +1,6 @@
 --- net/82599/ixgbe.c
 +++ net/82599/ixgbe.c
-@@ -162,10 +162,6 @@
+@@ -163,10 +163,6 @@
  // This bit is reserved, has no name, but must be used anyway
  #define REG_DCARXCTRL_UNKNOWN BIT(12)
  
@@ -11,7 +11,7 @@
  // Section 8.2.3.9.2 DMA Tx Control
  #define REG_DMATXCTL 0x04A80u
  #define REG_DMATXCTL_TE BIT(0)
-@@ -301,12 +297,6 @@
+@@ -302,12 +298,6 @@
  // Section 8.2.3.9.9 Transmit Descriptor Tail
  #define REG_TDT(n) (0x06018u + 0x40u*(n))
  
@@ -24,23 +24,23 @@
  // Section 8.2.3.9.10 Transmit Descriptor Control
  #define REG_TXDCTL(n) (0x06028u + 0x40u*(n))
  #define REG_TXDCTL_PTHRESH BITS(0,6)
-@@ -354,9 +344,9 @@
- static_assert(IXGBE_AGENT_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
+@@ -357,9 +347,9 @@
+ static_assert(IXGBE_AGENT_FLUSH_PERIOD < IXGBE_RING_SIZE, "Flush period must be less than the ring size");
  
  // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
--#define IXGBE_AGENT_MOVE_PERIOD 64
-+#define IXGBE_AGENT_MOVE_PERIOD 32
- static_assert(IXGBE_AGENT_MOVE_PERIOD >= 1, "Move period must be at least 1");
--static_assert(IXGBE_AGENT_MOVE_PERIOD < IXGBE_RING_SIZE, "Move period must be less than the ring size");
-+static_assert(IXGBE_AGENT_MOVE_PERIOD <= 40, "Move period must be at most 40 due to the NIC's on-die descriptor queue size");
- static_assert((IXGBE_AGENT_MOVE_PERIOD & (IXGBE_AGENT_MOVE_PERIOD - 1)) == 0, "Move period must be a power of 2 for fast modulo");
+-#define IXGBE_AGENT_RECYCLE_PERIOD 64
++#define IXGBE_AGENT_RECYCLE_PERIOD 32
+ static_assert(IXGBE_AGENT_RECYCLE_PERIOD >= 1, "Recycle period must be at least 1");
+-static_assert(IXGBE_AGENT_RECYCLE_PERIOD < IXGBE_RING_SIZE, "Recycle period must be less than the ring size");
++static_assert(IXGBE_AGENT_RECYCLE_PERIOD <= 40, "Recycle period must be 40 or less due to the NIC's on-die descriptor queue size");
+ static_assert((IXGBE_AGENT_RECYCLE_PERIOD & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == 0, "Recycle period must be a power of 2 for fast modulo");
  
  
-@@ -998,15 +988,10 @@
+@@ -1002,15 +992,10 @@
  	uint8_t* buffer;
  	volatile uint32_t* receive_tail_addr;
  	uint64_t processed_delimiter;
-+	uint64_t moved_delimiter;
++	uint64_t recycled_delimiter;
  	uint64_t outputs_count;
  	uint64_t flush_counter;
 -	uint8_t _padding[3*8];
@@ -54,16 +54,16 @@
  	volatile uint64_t* rings[IXGBE_AGENT_OUTPUTS_MAX]; // 0 == shared receive/transmit, rest are exclusive transmit
  	volatile uint32_t* transmit_tail_addrs[IXGBE_AGENT_OUTPUTS_MAX];
  };
-@@ -1041,6 +1026,8 @@
+@@ -1045,6 +1030,8 @@
  		}
  	}
  
-+	agent->moved_delimiter = IXGBE_AGENT_MOVE_PERIOD - 1;
++	agent->recycled_delimiter = IXGBE_AGENT_RECYCLE_PERIOD - 1;
 +
  	*out_agent = agent;
  	return true;
  }
-@@ -1212,31 +1199,6 @@
+@@ -1216,31 +1203,6 @@
  	// PERFORMANCE: This is required to forward 10G traffic on a single NIC.
  	reg_write_field(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_PTHRESH, 60);
  	reg_write_field(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_HTHRESH, 4);
@@ -95,9 +95,9 @@
  	// "- Enable transmit path by setting DMATXCTL.TE.
  	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
  	if (!device->tx_enabled) {
-@@ -1359,20 +1321,14 @@
- 	// Move transmitted descriptors back to receiving
- 	// This should happen as rarely as the update period since that's the period controlling transmit head updates from the NIC
+@@ -1363,20 +1325,14 @@
+ 	// Recycle transmitted descriptors back to receiving
+ 	// This should happen as rarely as asking the NIC for transmit head updates, thus we reuse rs_bit
  	if (rs_bit != 0) {
 -		uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
 -		uint64_t min_diff = (uint64_t) -1;
@@ -109,15 +109,15 @@
 -			if (diff <= min_diff) {
 -				earliest_transmit_head = head;
 -				min_diff = diff;
-+			uint64_t transmit_metadata = agent->rings[n][2u*agent->moved_delimiter + 1];
++			uint64_t transmit_metadata = agent->rings[n][2u*agent->recycled_delimiter + 1];
 +			if ((transmit_metadata & BITL(32)) == 0) {
 +				return;
  			}
  		}
 -
 -		reg_write_raw(agent->receive_tail_addr, (earliest_transmit_head - 1) & (IXGBE_RING_SIZE - 1));
-+		reg_write_raw(agent->receive_tail_addr, (uint32_t) agent->moved_delimiter);
-+		agent->moved_delimiter = (agent->moved_delimiter + IXGBE_AGENT_MOVE_PERIOD) & (IXGBE_RING_SIZE - 1);
++		reg_write_raw(agent->receive_tail_addr, (uint32_t) agent->recycled_delimiter);
++		agent->recycled_delimiter = (agent->recycled_delimiter + IXGBE_AGENT_RECYCLE_PERIOD) & (IXGBE_RING_SIZE - 1);
  	}
  }
  
