@@ -350,15 +350,15 @@ static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be
 #define IXGBE_AGENT_OUTPUTS_MAX 4u
 
 // Max number of packets before updating the transmit tail
-#define IXGBE_AGENT_PROCESS_PERIOD 8
-static_assert(IXGBE_AGENT_PROCESS_PERIOD >= 1, "Process period must be at least 1");
-static_assert(IXGBE_AGENT_PROCESS_PERIOD < IXGBE_RING_SIZE, "Process period must be less than the ring size");
+#define IXGBE_AGENT_FLUSH_PERIOD 8
+static_assert(IXGBE_AGENT_FLUSH_PERIOD >= 1, "Flush period must be at least 1");
+static_assert(IXGBE_AGENT_FLUSH_PERIOD < IXGBE_RING_SIZE, "Flush period must be less than the ring size");
 
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
-#define IXGBE_AGENT_MOVE_PERIOD 64
-static_assert(IXGBE_AGENT_MOVE_PERIOD >= 1, "Move period must be at least 1");
-static_assert(IXGBE_AGENT_MOVE_PERIOD < IXGBE_RING_SIZE, "Move period must be less than the ring size");
-static_assert((IXGBE_AGENT_MOVE_PERIOD & (IXGBE_AGENT_MOVE_PERIOD - 1)) == 0, "Move period must be a power of 2 for fast modulo");
+#define IXGBE_AGENT_RECYCLE_PERIOD 64
+static_assert(IXGBE_AGENT_RECYCLE_PERIOD >= 1, "Recycle period must be at least 1");
+static_assert(IXGBE_AGENT_RECYCLE_PERIOD < IXGBE_RING_SIZE, "Recycle period must be less than the ring size");
+static_assert((IXGBE_AGENT_RECYCLE_PERIOD & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == 0, "Recycle period must be a power of 2 for fast modulo");
 
 
 // ---------
@@ -1271,7 +1271,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// Not great; but less assumptions than Vigor makes in the DPDK driver patches
 	// The core reason is the same: KLEE cannot reason about "any descriptor in the ring", the descriptor index must be concrete
 	agent->processed_delimiter = 0;
-	agent->flush_counter = IXGBE_AGENT_PROCESS_PERIOD - 1;
+	agent->flush_counter = IXGBE_AGENT_FLUSH_PERIOD - 1;
 #endif
 
 	// INTERPRETATION-MISSING: The data sheet does not specify the endianness of receive descriptor metadata fields.
@@ -1341,7 +1341,7 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want write-back.
 	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor.
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency.
-	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_MOVE_PERIOD - 1)) == (IXGBE_AGENT_MOVE_PERIOD - 1)) << (24+3);
+	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < agent->outputs_count; n++) {
 		agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64((outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24));
 	}
@@ -1351,15 +1351,15 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 
 	// Flush if we need to; not doing so every time is a huge performance win
 	agent->flush_counter = agent->flush_counter + 1;
-	if (agent->flush_counter == IXGBE_AGENT_PROCESS_PERIOD) {
+	if (agent->flush_counter == IXGBE_AGENT_FLUSH_PERIOD) {
 		for (uint64_t n = 0; n < agent->outputs_count; n++) {
 			reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
 		agent->flush_counter = 0;
 	}
 
-	// Move transmitted descriptors back to receiving
-	// This should happen as rarely as the move period since that's the period controlling transmit head updates from the NIC, thus we reuse rs_bit
+	// Recycle transmitted descriptors back to receiving
+	// This should happen as rarely as asking the NIC for transmit head updates, thus we reuse rs_bit
 	if (rs_bit != 0) {
 		uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
 		uint64_t min_diff = (uint64_t) -1;
@@ -1387,7 +1387,7 @@ void tn_net_run(uint64_t agents_count, struct tn_net_agent** agents, tn_net_pack
 	bool outputs[IXGBE_AGENT_OUTPUTS_MAX] = {0};
 	while (true) {
 		for (uint64_t n = 0; n < agents_count; n++) {
-			for (uint64_t p = 0; p < IXGBE_AGENT_PROCESS_PERIOD; p++) {
+			for (uint64_t p = 0; p < IXGBE_AGENT_FLUSH_PERIOD; p++) {
 				uint8_t* packet;
 				uint16_t receive_packet_length;
 				if (!tn_net_agent_receive(agents[n], &packet, &receive_packet_length)) {
