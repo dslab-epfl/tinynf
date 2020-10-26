@@ -10,6 +10,7 @@ Subfolders:
 - `other-drivers`: scripts and data on other drivers, such as DPDK network drivers
 - `perf-endtoend`: scripts for measuring "end to end" performance
 - `perf-lowlevel`: scripts for measuring low-level performance metrics such as cache misses
+- `sriov`: SR-IOV prototype
 - `verification`: experiments related to formally verifying NFs running on TinyNF
 
 
