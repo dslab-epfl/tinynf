@@ -13,8 +13,8 @@
 
 #include <sys/mman.h>
 
-// We only support 2MB hugepages
-#define HUGEPAGE_SIZE_POWER (10 + 10 + 1)
+// We only support 1GB hugepages
+#define HUGEPAGE_SIZE_POWER (10 + 10 + 10)
 #define HUGEPAGE_SIZE (1u << HUGEPAGE_SIZE_POWER)
 
 // glibc defines it but musl doesn't
