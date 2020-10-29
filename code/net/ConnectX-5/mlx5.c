@@ -34,22 +34,34 @@
 #define PCIREG_COMMAND_INTERRUPT_DISABLE BIT(10)
 
 // Driver constants
-#define PCI_ID_HIGH 0x1017u
-#define PCI_ID_LOW 0x15b3u
+#define PCI_ID_HIGH 0x1017u // Device ID: https://pci-ids.ucw.cz/read/PC/15b3/1017
+#define PCI_ID_LOW 0x15b3u  // Vendor ID: Table 1245
 
-#define FW_REV_MINOR 0x1000
-#define FW_REV_MAJOR 0x1A00
-#define CMD_INTERFACE_REVISION 0xAC0F
-#define FW_REV_SUBMINOR 0x0500
+// These values were read from the card when the driver was written
+#define REG_FW_REV_MINOR_VAL 0x1000
+#define REG_FW_REV_MAJOR_VAL 0x1A00
+#define REG_CMD_INTERFACE_REVISION_VAL 0xAC0F
+#define REG_FW_REV_SUBMINOR_VAL 0x0500
+
+// Table 12 Initialization Segment
+#define REG_FW_REV 0x00
+#define REG_FW_REV_MINOR BITS(16,31)
+#define REG_FW_REV_MAJOR BITS(0,15)
+#define REG_FW_REV2 0x04
+#define REG_FW_REV2_CMD_INTERFACE_REVISION BITS(16,31)
+#define REG_FW_REV2_SUBMINOR BITS(0,15)
+
 
 #define CMDQ_SIZE 4096 // 8.24.1 HCA Command Queue size
-#define CMDQ_PHY_ADDR_LOW BITS(12,31)
-#define NIC_INTERFACE BITS(8,10)
-#define LOG_CMDQ_SIZE BITS(4,7)
-#define LOG_CMDQ_STRIDE BITS(0,3)
+#define REG_CMDQ_PHY_ADDR_LOW BITS(12,31)
+#define REG_NIC_INTERFACE BITS(8,10)
+#define REG_LOG_CMDQ_SIZE BITS(4,7)
+#define REG_LOG_CMDQ_STRIDE BITS(0,3)
 
-#define INITIALIZING_TIMEOUT 10 // in seconds
-#define INITIALIZING BIT(31)
+#define INITIALIZING_TIMEOUT 1 // in seconds, experimentally determined
+
+#define REG_INITIALIZING_OFFSET 0x1FC
+#define REG_INITIALIZING BIT(31)
 
 // ---------
 // Utilities
@@ -93,7 +105,7 @@ static uint32_t reg_read(void* addr, uint32_t reg)
 {
   uint32_t val_le = *((volatile uint32_t*)((uint8_t*) addr + reg));
   uint32_t result = tn_le_to_cpu32(val_le);
-  TN_VERBOSE("IXGBE read (addr %p): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
+  TN_VERBOSE("MLX5 read (addr %p): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
   return result;
 }
 // Get the value of field 'field' (from the REG_... macros) of register 'reg' on NIC at address 'addr'
@@ -114,7 +126,7 @@ static void reg_write_raw(volatile uint32_t* reg_addr, uint32_t value)
 static void reg_write(void* addr, uint32_t reg, uint32_t value)
 {
   reg_write_raw((volatile uint32_t*) ((uint8_t*)addr + reg), value);
-  TN_VERBOSE("IXGBE write (addr %p): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
+  TN_VERBOSE("MLX5 write (addr %p): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
 // Write 'value' to the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
 static void reg_write_field(void* addr, uint32_t reg, uint32_t field, uint32_t field_value)
@@ -154,7 +166,7 @@ static bool reg_is_field_cleared(void* addr, uint32_t reg, uint32_t field)
 static uint32_t pcireg_read(struct tn_pci_address addr, uint8_t reg)
 {
   uint32_t value = tn_pci_read(addr, reg);
-  TN_VERBOSE("IXGBE PCI read: 0x%02" PRIx8 " -> 0x%08" PRIx32, reg, value);
+  TN_VERBOSE("MLX5 PCI read: 0x%02" PRIx8 " -> 0x%08" PRIx32, reg, value);
   return value;
 }
 
@@ -170,7 +182,7 @@ static void pcireg_set_field(struct tn_pci_address addr, uint8_t reg, uint32_t f
   uint32_t old_value = pcireg_read(addr, reg);
   uint32_t new_value = old_value | field;
   tn_pci_write(addr, reg, new_value);
-  TN_VERBOSE("IXGBE PCI write: 0x%02" PRIx8 " := 0x%08" PRIx32, reg, new_value);
+  TN_VERBOSE("MLX5 PCI write: 0x%02" PRIx8 " := 0x%08" PRIx32, reg, new_value);
 }
 
 // -----------------
@@ -283,30 +295,28 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
    * */
   TN_VERBOSE("### Init - step 1");
 
-  uint32_t fw_rev = reg_read(device.addr, 0x00);
-  uint32_t cmd_rev_fw_rev_subminor = reg_read(device.addr, 0x04);
-  uint16_t fw_rev_minor = fw_rev >> 16;
-  uint16_t fw_rev_major = (uint16_t) fw_rev & 0x0000FFFF;
-  uint16_t cmd_int_rev = cmd_rev_fw_rev_subminor >> 16;
-  uint16_t fw_rev_subminor = (uint16_t) cmd_rev_fw_rev_subminor & 0x0000FFFF;
+  uint16_t fw_rev_minor = reg_read_field(device.addr, REG_FW_REV, REG_FW_REV_MINOR);
+  uint16_t fw_rev_major = reg_read_field(device.addr, REG_FW_REV, REG_FW_REV_MAJOR);
+  uint16_t cmd_int_rev = reg_read_field(device.addr, REG_FW_REV2, REG_FW_REV2_CMD_INTERFACE_REVISION);
+  uint16_t fw_rev_subminor = reg_read_field(device.addr, REG_FW_REV2, REG_FW_REV2_SUBMINOR);
 
-  if (fw_rev_minor != FW_REV_MINOR) {
-    TN_DEBUG("Firmware revision minor is %x, expected value is %x", fw_rev_minor, FW_REV_MINOR);
+  if (fw_rev_minor != REG_FW_REV_MINOR_VAL) {
+    TN_DEBUG("Firmware revision minor is %x, expected value is %x", fw_rev_minor, REG_FW_REV_MINOR_VAL);
     return false;
   }
 
-  if (fw_rev_major != FW_REV_MAJOR) {
-    TN_DEBUG("Firmware revision is major %x expected value is %x", fw_rev_major, FW_REV_MAJOR);
+  if (fw_rev_major != REG_FW_REV_MAJOR_VAL) {
+    TN_DEBUG("Firmware revision is major %x expected value is %x", fw_rev_major, REG_FW_REV_MAJOR_VAL);
     return false;
   }
 
-  if (cmd_int_rev != CMD_INTERFACE_REVISION) {
-    TN_DEBUG("Firmware revision is %x expected value is %x", cmd_int_rev, CMD_INTERFACE_REVISION);
+  if (cmd_int_rev != REG_CMD_INTERFACE_REVISION_VAL) {
+    TN_DEBUG("Firmware revision is %x expected value is %x", cmd_int_rev, REG_CMD_INTERFACE_REVISION_VAL);
     return false;
   }
 
-  if (fw_rev_subminor != FW_REV_SUBMINOR) {
-    TN_DEBUG("Firmware revision is %x expected value is %x", fw_rev_subminor, FW_REV_SUBMINOR);
+  if (fw_rev_subminor != REG_FW_REV_SUBMINOR_VAL) {
+    TN_DEBUG("Firmware revision is %x expected value is %x", fw_rev_subminor, REG_FW_REV_SUBMINOR_VAL);
     return false;
   }
 
@@ -321,9 +331,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 
   void* command_queues_virt_addr;
   uintptr_t command_queues_phys_addr;
-  TN_DEBUG("size of command_queues_phys_addr %ld", sizeof(command_queues_phys_addr));
 
-  TN_VERBOSE("Trying to allocate %d bytes for command queues", CMDQ_SIZE);
   if (!tn_mem_allocate(CMDQ_SIZE, &command_queues_virt_addr)) {
     TN_DEBUG("Could not allocate memory for command queues");
     return false;
@@ -334,12 +342,19 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
-  reg_write(device.addr, 0x10, (uint32_t)command_queues_phys_addr>>32);
-  reg_write_field(device.addr, 0x14, CMDQ_PHY_ADDR_LOW, (uint32_t) command_queues_phys_addr & 0x00000000FFFFFFFF);
+  // Since CMDQ_PHY_ADDR_LOW is not 32 bits but 20, the lower 12 bits
+  // of the command_queues_phys_addr should be 0
+  if ((command_queues_phys_addr & BITS(0, 12)) != 0) {
+    TN_DEBUG("The physical address has not the lower 12 bits set to 0!");
+    return false;
+  }
 
-  reg_clear_field(device.addr, 0x14, NIC_INTERFACE);
-  reg_clear_field(device.addr, 0x14, LOG_CMDQ_SIZE);
-  reg_clear_field(device.addr, 0x14, LOG_CMDQ_STRIDE);
+
+  reg_write(device.addr, 0x10, (uint32_t)(command_queues_phys_addr>>32));
+  reg_write_field(device.addr, 0x14, REG_CMDQ_PHY_ADDR_LOW, (uint32_t) (command_queues_phys_addr & 0x00000000FFFFFFFF));
+  reg_clear_field(device.addr, 0x14, REG_NIC_INTERFACE);
+  reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_SIZE);
+  reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_STRIDE);
 
   /**
    * Step 3.
@@ -348,7 +363,8 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
    * */
   TN_VERBOSE("### Init - step 3");
 
-  IF_AFTER_TIMEOUT(INITIALIZING_TIMEOUT * 1000 * 1000, !reg_is_field_cleared(device.addr, 0x1FC, INITIALIZING)) {
+  IF_AFTER_TIMEOUT(INITIALIZING_TIMEOUT * 1000 * 1000,
+         !reg_is_field_cleared(device.addr, REG_INITIALIZING_OFFSET, REG_INITIALIZING)) {
     TN_DEBUG("INIT_SEGMENT.initializing did not clear, cannot complete init setup");
     return false;
   }
