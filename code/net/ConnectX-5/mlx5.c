@@ -351,7 +351,8 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 
 
   reg_write(device.addr, 0x10, (uint32_t)(command_queues_phys_addr>>32));
-  reg_write_field(device.addr, 0x14, REG_CMDQ_PHY_ADDR_LOW, (uint32_t) (command_queues_phys_addr & 0x00000000FFFFFFFF));
+  // shift the command_queues_phys_addr to write only the top 20 bits of the bottom 32 bits
+  reg_write_field(device.addr, 0x14, REG_CMDQ_PHY_ADDR_LOW, ((uint32_t) (command_queues_phys_addr & 0x00000000FFFFFFFF)) >> 12);
   reg_clear_field(device.addr, 0x14, REG_NIC_INTERFACE);
   reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_SIZE);
   reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_STRIDE);
