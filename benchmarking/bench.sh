@@ -85,6 +85,8 @@ trap_cleanup()
 trap 'trap_cleanup' 2
 
 TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPUS" make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" run >>"$LOG_FILE" 2>&1 &
+# Initialize if needed, but ignore all output including a missing target
+make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" init >'/dev/null' 2>&1
 # Sleep (as little as possible) if the NF needs a while to start
 for i in $(seq 1 30); do
   sleep 1

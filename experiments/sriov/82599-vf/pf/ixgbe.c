@@ -1,3 +1,15 @@
+// !!!
+// This is a version of ixgbe.c with both the "advanced descriptors" and "no transmit head write-back" patches applied, because the 82599's VFs do not support it.
+// See Section 7.1.5 Legacy Receive Descriptor Format:
+// "Legacy descriptors should not be used when advanced features are enabled: [...] Virtualization [...].
+//  Packets that match these cases might be dropped from queues that use legacy receive descriptors."
+// and Section 7.2.3.1 Transmit Descriptors - Introduction:
+// "Legacy descriptors are not supported together with [...] virtualization [...]"
+// No source for TDWBA besides "it doesn't work experimentally"
+//
+// Also, ring size set to 256 to avoid thrashing the cache with many VFs
+// !!!
+
 // All references in this file are to the Intel 82599 Data Sheet unless otherwise noted.
 // It can be found at https://www.intel.com/content/www/us/en/design/products-and-solutions/networking-and-io/82599-10-gigabit-ethernet-controller/technical-library.html
 
@@ -163,10 +175,6 @@
 // This bit is reserved, has no name, but must be used anyway
 #define REG_DCARXCTRL_UNKNOWN BIT(12)
 
-// Section 8.2.3.11.2 Tx DCA Control Registers
-#define REG_DCATXCTRL(n) (0x0600Cu + 0x40u*(n))
-#define REG_DCATXCTRL_TX_DESC_WB_RO_EN BIT(11)
-
 // Section 8.2.3.9.2 DMA Tx Control
 #define REG_DMATXCTL 0x04A80u
 #define REG_DMATXCTL_TE BIT(0)
@@ -284,6 +292,7 @@
 // Section 8.2.3.8.7 Split Receive Control Registers
 #define REG_SRRCTL(n) ((n) <= 63u ? (0x01014u + 0x40u*(n)) : (0x0D014u + 0x40u*((n)-64u)))
 #define REG_SRRCTL_BSIZEPACKET BITS(0,4)
+#define REG_SRRCTL_DESCTYPE BITS(25,27)
 #define REG_SRRCTL_DROP_EN BIT(28)
 
 // Section 8.2.3.1.2 Device Status Register
@@ -301,12 +310,6 @@
 
 // Section 8.2.3.9.9 Transmit Descriptor Tail
 #define REG_TDT(n) (0x06018u + 0x40u*(n))
-
-// Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address High
-#define REG_TDWBAH(n) (0x0603Cu + 0x40u*(n))
-
-// Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low
-#define REG_TDWBAL(n) (0x06038u + 0x40u*(n))
 
 // Section 8.2.3.9.10 Transmit Descriptor Control
 #define REG_TXDCTL(n) (0x06028u + 0x40u*(n))
@@ -357,9 +360,9 @@ static_assert(IXGBE_AGENT_FLUSH_PERIOD >= 1, "Flush period must be at least 1");
 static_assert(IXGBE_AGENT_FLUSH_PERIOD < IXGBE_RING_SIZE, "Flush period must be less than the ring size");
 
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it.
-#define IXGBE_AGENT_RECYCLE_PERIOD 64
+#define IXGBE_AGENT_RECYCLE_PERIOD 32
 static_assert(IXGBE_AGENT_RECYCLE_PERIOD >= 1, "Recycle period must be at least 1");
-static_assert(IXGBE_AGENT_RECYCLE_PERIOD < IXGBE_RING_SIZE, "Recycle period must be less than the ring size");
+static_assert(IXGBE_AGENT_RECYCLE_PERIOD <= 40, "Recycle period must be 40 or less due to the NIC's on-die descriptor queue size");
 static_assert((IXGBE_AGENT_RECYCLE_PERIOD & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == 0, "Recycle period must be a power of 2 for fast modulo");
 
 
@@ -1002,15 +1005,11 @@ struct tn_net_agent
 	uint8_t* buffer;
 	volatile uint32_t* receive_tail_addr;
 	uint64_t processed_delimiter;
+	uint64_t recycled_delimiter;
 	uint64_t outputs_count;
 	uint64_t flush_counter;
-	uint8_t _padding[3*8];
-	// transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
-	// (there is also a runtime check to make sure the array itself is aligned properly)
-	// plus, we want each head on its own cache line to avoid conflicts
-	// thus, using assumption CACHE, we multiply indices by 16
-	#define TRANSMIT_HEAD_MULTIPLIER 16
-	volatile uint32_t transmit_heads[IXGBE_AGENT_OUTPUTS_MAX * TRANSMIT_HEAD_MULTIPLIER];
+	uintptr_t buffer_phys_addr;
+	uint8_t _padding[1*8];
 	volatile uint64_t* rings[IXGBE_AGENT_OUTPUTS_MAX]; // 0 == shared receive/transmit, rest are exclusive transmit
 	volatile uint32_t* transmit_tail_addrs[IXGBE_AGENT_OUTPUTS_MAX];
 };
@@ -1033,6 +1032,13 @@ bool tn_net_agent_init(struct tn_net_agent** out_agent)
 		return false;
 	}
 
+	if (!tn_mem_virt_to_phys(agent->buffer, &(agent->buffer_phys_addr))) {
+		TN_DEBUG("Could not get the agent buffer's physical address");
+		tn_mem_free(agent->buffer);
+		tn_mem_free(agent);
+		return false;
+	}
+
 	for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
 		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, (void**) &(agent->rings[n]))) { // 16 bytes per descriptor, i.e. 2x64bits
 			TN_DEBUG("Could not allocate ring");
@@ -1044,6 +1050,8 @@ bool tn_net_agent_init(struct tn_net_agent** out_agent)
 			return false;
 		}
 	}
+
+	agent->recycled_delimiter = IXGBE_AGENT_RECYCLE_PERIOD - 1;
 
 	*out_agent = agent;
 	return true;
@@ -1101,6 +1109,8 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_devi
 	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
 	// Enable this because of assumption DROP
 	reg_set_field(device->addr, REG_SRRCTL(queue_index), REG_SRRCTL_DROP_EN);
+	// Use advanced receive descriptors
+	reg_write_field(device->addr, REG_SRRCTL(queue_index), REG_SRRCTL_DESCTYPE, 1);
 	// "- If header split is required for this queue, program the appropriate PSRTYPE for the appropriate headers."
 	// Section 7.1.10 Header Splitting: "Header Splitting mode might cause unpredictable behavior and should not be used with the 82599."
 	// "- Program RSC mode for the queue via the RSCCTL register."
@@ -1216,31 +1226,6 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_dev
 	// PERFORMANCE: This is required to forward 10G traffic on a single NIC.
 	reg_write_field(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_PTHRESH, 60);
 	reg_write_field(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_HTHRESH, 4);
-	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
-	uintptr_t head_phys_addr;
-	if (!tn_mem_virt_to_phys((void*) &(agent->transmit_heads[agent->outputs_count * TRANSMIT_HEAD_MULTIPLIER]), &head_phys_addr)) {
-		TN_DEBUG("Could not get the physical address of the transmit head");
-		return false;
-	}
-	//	Section 7.2.3.5.2 Tx Head Pointer Write Back:
-	//	"The low register's LSB hold the control bits.
-	// 	 * The Head_WB_EN bit enables activation of tail write back. In this case, no descriptor write back is executed.
-	// 	 * The 30 upper bits of this register hold the lowest 32 bits of the head write-back address, assuming that the two last bits are zero."
-	//	"software should [...] make sure the TDBAL value is Dword-aligned."
-	//	Section 8.2.3.9.11 Tx Descriptor completion Write Back Address Low (TDWBAL[n]): "the actual address is Qword aligned"
-	// INTERPRETATION-CONTRADICTION: There is an obvious contradiction here; qword-aligned seems like a safe option since it will also be dword-aligned.
-	// INTERPRETATION-INCORRECT: Empirically, the answer is... 16 bytes. Write-back has no effect otherwise. So both versions are wrong.
-	if (head_phys_addr % 16u != 0) {
-		TN_DEBUG("Transmit head's physical address is not aligned properly");
-		return false;
-	}
-	//	Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low (TDWBAL[n]):
-	//	"Head_WB_En, bit 0 [...] 1b = Head write-back is enabled."
-	//	"Reserved, bit 1"
-	reg_write(device->addr, REG_TDWBAH(queue_index), (uint32_t) (head_phys_addr >> 32));
-	reg_write(device->addr, REG_TDWBAL(queue_index), (uint32_t) head_phys_addr | 1u);
-	// INTERPRETATION-MISSING: We must disable relaxed ordering of head pointer write-back, since it could cause the head pointer to be updated backwards
-	reg_clear_field(device->addr, REG_DCATXCTRL(queue_index), REG_DCATXCTRL_TX_DESC_WB_RO_EN);
 	// "- Enable transmit path by setting DMATXCTL.TE.
 	//    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
 	if (!device->tx_enabled) {
@@ -1281,9 +1266,9 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 
 	// Since descriptors are 16 bytes, the index must be doubled
 	uint64_t receive_metadata = tn_le_to_cpu64(agent->rings[0][2u*agent->processed_delimiter + 1]);
-	// Section 7.1.5 Legacy Receive Descriptor Format:
-	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
-	if ((receive_metadata & BITL(32)) == 0) {
+	// Section 7.1.6.2 Advanced Receive Descriptors - Write-Back Format:
+	// "Extended Status / NEXTP (20-bit offset 0, 2nd line)": Bit 0 = DD, "Descriptor Done."
+	if ((receive_metadata & BITL(0)) == 0) {
 		// No packet; flush if we need to.
 		// This is technically a part of transmission, but we must eventually flush after processing a packet even if no more packets are received
 		if (agent->flush_counter != 0) {
@@ -1296,10 +1281,13 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 		return false;
 	}
 
+	// The first line gets clobbered by write-back, so we must write the (physical!) address agin.
+	agent->rings[0][2u*agent->processed_delimiter] = tn_cpu_to_le64(agent->buffer_phys_addr + (PACKET_BUFFER_SIZE * agent->processed_delimiter));
+
 	// This cannot overflow because the packet is by definition in an allocated block of memory
 	*out_packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
-	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
-	*out_packet_length = tn_le_to_cpu64(receive_metadata) & 0xFFFFu;
+	// "PKT_LEN (16-bit offset 32, 2nd line): "PKT_LEN holds the number of bytes posted to the packet buffer."
+	*out_packet_length = (tn_le_to_cpu64(receive_metadata) >> 32) & 0xFFFFu;
 
 	return true;
 }
@@ -1313,39 +1301,46 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// INTERPRETATION-MISSING: The data sheet does not specify the endianness of transmit descriptor metadata fields, nor of the written-back head pointer.
 	// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
 
-	// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
-	// "Buffer Address (64)", 1st line
+	// Section 7.2.3.2.4 Advanced Transmit Data Descriptor:
+	// "Address (64)", 1st line
 	// 2nd line:
-		// "Length", bits 0-15: "Length (TDESC.LENGTH) specifies the length in bytes to be fetched from the buffer address provided"
-			// "Note: Descriptors with zero length (null descriptors) transfer no data."
-		// "CSO", bits 16-23: "A Checksum Offset (TDESC.CSO) field indicates where, relative to the start of the packet, to insert a TCP checksum if this mode is enabled"
+		// "DTALEN", bits 0-15: "length in bytes of data buffer at the address pointed to by this specific descriptor"
+			// "Note: Descriptors with zero length, transfer no data."
+		// "RSV", bits 16-17: "Reserved."
 			// All zero
-		// "CMD", bits 24-31:
-			// "RSV (bit 7) - Reserved"
+		// "MAC", bits 18-19: "ILSec (bit 0) - Apply LinkSec on packet. 1588 (bit 1) - IEEE1588 time stamp packet."
+			// All zero
+		// "DTYP", bits 20-23: "0011b for advanced data descriptor."
+		// "DCMD", bits 24-31:
+			// "TSE (bit 7) - Transmit Segmentation Enable"
 			// "VLE (bit 6) - VLAN Packet Enable"
-			// "DEXT (bit 5) - Descriptor extension (zero for legacy mode)"
+			// "DEXT (bit 5) - This bit must be one to indicate advanced descriptor format (as opposed to legacy)."
 			// "RSV (bit 4) - Reserved"
 			// "RS (bit 3) - Report Status - RS signals hardware to report the DMA completion status indication [...]"
-			// "IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set."
+			// "RSV (bit 2) - Reserved"
 			// "IFCS (bit 1) - Insert FCS":
 			//	"There are several cases in which software must set IFCS as follows: Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit. [...]"
 			//      By assumption TXPAD we need this bit set.
 			// "EOP (bit 0) - End of Packet"
-		// "STA", bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
+		// "STA", bits 32-35: "Rsv (bit 3:1) - Reserved. DD (bit 0) - Descriptor Done."
+		// "IDX", bits 36-38: "[...] If no offload is required and the CC bit is cleared, this field is not relevant"
 			// All zero
-		// "Rsvd", bits 36-39: "Reserved."
+		// "CC", bit 39: "When set, a Tx context descriptor indicated by IDX index should be used for this packet(s)."
+			// Zero
+		// "POPTS", bits 40-45: "Rsv (bits 5:3) - Reserved. IPSEC (bit 2) - Ipsec offload request. TXSM (bit 1) - Insert TCP/UDP Checksum. IXSM (bit 0) - Insert IP Checksum."
 			// All zero
-		// "CSS", bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
-			// All zero
-		// "VLAN", bits 48-63: "The VLAN field is used to provide the 802.1q/802.1ac tagging information."
+		// "PAYLEN", bits 46-63: "[...] In a single-send packet, PAYLEN defines the entire packet size fetched from host memory."
 			// All zero
 	// INTERPRETATION-INCORRECT: Despite being marked as "reserved", the buffer address does not get clobbered by write-back, so no need to set it again.
-	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want write-back.
-	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor.
+	// This means all we have to do is set two lengths to the same value, bits 0,1,5 of DCMD, bits 0,1 of DTYP, and bit 3 of DCMD if we want write-back.
 	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency.
 	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1)) << (24+3);
 	for (uint64_t n = 0; n < agent->outputs_count; n++) {
-		agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64((outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24));
+		agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64(
+			(outputs[n] * (uint64_t) packet_length) |
+			rs_bit | BITL(20) | BITL(20+1) | BITL(24) | BITL(24+1) | BITL(24+5) |
+			((outputs[n] * (uint64_t) packet_length) << 46)
+		);
 	}
 
 	// Increment the processed delimiter, modulo the ring size
@@ -1363,20 +1358,14 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 	// Recycle transmitted descriptors back to receiving
 	// This should happen as rarely as asking the NIC for transmit head updates, thus we reuse rs_bit
 	if (rs_bit != 0) {
-		uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
-		uint64_t min_diff = (uint64_t) -1;
-		// There is an implicit race condition with the hardware: a transmit head could be updated just after we've read it
-		// but before we write to the receive tail. This is fine; it just means our "earliest transmit head" is not as high as it could be.
 		for (uint64_t n = 0; n < agent->outputs_count; n++) {
-			uint32_t head = tn_le_to_cpu32(agent->transmit_heads[n * TRANSMIT_HEAD_MULTIPLIER]);
-			uint64_t diff = head - agent->processed_delimiter;
-			if (diff <= min_diff) {
-				earliest_transmit_head = head;
-				min_diff = diff;
+			uint64_t transmit_metadata = agent->rings[n][2u*agent->recycled_delimiter + 1];
+			if ((transmit_metadata & BITL(32)) == 0) {
+				return;
 			}
 		}
-
-		reg_write_raw(agent->receive_tail_addr, (earliest_transmit_head - 1) & (IXGBE_RING_SIZE - 1));
+		reg_write_raw(agent->receive_tail_addr, (uint32_t) agent->recycled_delimiter);
+		agent->recycled_delimiter = (agent->recycled_delimiter + IXGBE_AGENT_RECYCLE_PERIOD) & (IXGBE_RING_SIZE - 1);
 	}
 }
 

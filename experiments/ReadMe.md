@@ -3,12 +3,14 @@
 This folder contains experiments used for the OSDI'20 TinyNF paper.
 
 Subfolders:
+- `alternatives`: patches for TinyNF that make it worse but are interesting
 - `baselines`: baseline NFs for various experiments
 - `code-metrics`: scripts and data on code metrics such as number of lines of code
 - `dpdk-shim`: a shim layer allowing DPDK NFs to use TinyNF, assuming they only need the TinyNF model
 - `other-drivers`: scripts and data on other drivers, such as DPDK network drivers
 - `perf-endtoend`: scripts for measuring "end to end" performance
 - `perf-lowlevel`: scripts for measuring low-level performance metrics such as cache misses
+- `sriov`: SR-IOV prototype
 - `verification`: experiments related to formally verifying NFs running on TinyNF
 
 
@@ -93,7 +95,7 @@ This is also the case for the detailed latency graphs close to the 99.99% mark, 
 
 ### Table 1
 
-The easiest way to do this, though it incurs some overhead, is with Docker.
+The easiest way to do this, though it incurs some overhead, is with Docker. This should take less than an hour.
 
 Run `docker run -it --entrypoint bash dslabepfl/vigor` (you might need `sudo`) to start a container with the Vigor Docker image, then in the container run:
 
