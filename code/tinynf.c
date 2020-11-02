@@ -11,14 +11,14 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, v
 {
 	(void) state;
 
-	// SRC MAC
+	// DST MAC
 	packet[0] = 0;
 	packet[1] = 0;
 	packet[2] = 0;
 	packet[3] = 0;
 	packet[4] = 0;
 	packet[5] = 1;
-	// DST MAC
+	// SRC MAC
 	packet[6] = 0;
 	packet[7] = 0;
 	packet[8] = 0;
@@ -42,15 +42,9 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	struct tn_net_agent* agents[2];
 	struct tn_net_device* devices[2];
-	for (uint8_t n = 0; n < NUMBER_OF_DEVICES; n++) {
 
-    TN_INFO("    --- Device %d ---    ", n);
-		if (!tn_net_agent_init(&(agents[n]))) {
-			TN_INFO("Couldn't init agent for agent[%d]", n);
-			return 2 + 100*n;
-		}
+	for (uint8_t n = 0; n < 2; n++) {
 		if (!tn_net_device_init(pci_addresses[n], &(devices[n]))) {
 			TN_INFO("Couldn't init device for devices[%d]", n);
 			return 3 + 100*n;
@@ -59,11 +53,18 @@ int main(int argc, char** argv)
 			TN_INFO("Couldn't make device promiscuous for devices[%d]", n);
 			return 4 + 100*n;
 		}
+	}
+
+	struct tn_net_agent* agents[2];
+	for (uint8_t n = 0; n < 2; n++) {
+		if (!tn_net_agent_init(&(agents[n]))) {
+			TN_INFO("Couldn't init agent");
+			return 2 + 100*n;
+		}
 		if (!tn_net_agent_set_input(agents[n], devices[n])) {
 			TN_INFO("Couldn't set agent RX for devices[%d]", n);
 			return 5 + 100*n;
 		}
-
 	}
 
 	for (uint8_t n = 0; n < 2; n++) {
