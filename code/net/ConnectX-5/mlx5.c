@@ -7,6 +7,7 @@
 #include "env/memory.h"
 #include "env/time.h"
 #include "util/log.h"
+#include <string.h>
 
 #ifndef __cplusplus
 // Don't include <assert.h> since that's not allowed in freestanding implementations
@@ -51,14 +52,15 @@
 #define REG_FW_REV2_CMD_INTERFACE_REVISION BITS(16,31)
 #define REG_FW_REV2_SUBMINOR BITS(0,15)
 
-
 #define CMDQ_SIZE 4096 // 8.24.1 HCA Command Queue size
 #define REG_CMDQ_PHY_ADDR_LOW BITS(12,31)
 #define REG_NIC_INTERFACE BITS(8,10)
 #define REG_LOG_CMDQ_SIZE BITS(4,7)
 #define REG_LOG_CMDQ_STRIDE BITS(0,3)
+#define REG_COMMAND_DOORBELL_VECTOR_OFFSET 0X18
 
 #define INITIALIZING_TIMEOUT 1 // in seconds, experimentally determined
+#define ENABLE_HCA_DELAY 10 // in seconds, experimentally determined
 
 #define REG_INITIALIZING_OFFSET 0x1FC
 #define REG_INITIALIZING BIT(31)
@@ -195,6 +197,41 @@ struct tn_net_device
     bool rx_enabled; // intel related stuff
     uint8_t _padding[7]; // bollean in structure
 };
+
+struct __attribute__((packed, aligned(4))) CommandQueueEntry {
+  uint8_t _padding_type[3];
+  uint8_t type;
+
+  uint32_t input_length;
+  uint32_t input_mailbox_pointer_high;
+
+  uint8_t _padding_mailbox_pointer;
+  uint8_t input_mailbox_pointer_low[3];
+  // 0x10
+  uint32_t command_input_inline_data[4];
+  uint32_t command_output_inline_data[4];
+  uint32_t output_mailbox_pointer_high;
+
+  uint8_t _padding;
+  uint8_t output_mailbox_pointer_low[3];
+  uint32_t output_length;
+  // 0x3C
+  uint8_t status; // includes the ownership bit
+  uint8_t signature;
+  uint8_t _padding2;
+  uint8_t token;
+};
+
+struct __attribute__((packed, aligned(4))) Enable_HCA {
+    uint16_t opcode : 16;
+    uint16_t _padding : 16;
+    uint16_t _padding2 : 16;
+    uint16_t op_mod : 16;
+    uint16_t embedded_cpu_function : 1;
+    uint16_t _padding3 : 15;
+    uint16_t function_id : 16;
+};
+
 
 
 // -------------------------------------
@@ -374,7 +411,50 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
    * Step 4.
    * Execute ENABLE_HCA command.
    * */
-   // TODO
+  struct CommandQueueEntry commandQueueEntryEnableHCA;
+
+  memset(&commandQueueEntryEnableHCA, 0, sizeof(commandQueueEntryEnableHCA));  // init all fields with 0
+  commandQueueEntryEnableHCA.type = 0x07;  // Table 247
+  commandQueueEntryEnableHCA.input_length = 12;  // Length of ENABLE_HCA
+  commandQueueEntryEnableHCA.status = 1;  //Table 247.  SW should set to 1 when posting the command
+
+  struct Enable_HCA enableHca;
+  memset(&enableHca, 0, sizeof(enableHca));  // init all fields with 0
+  enableHca.opcode = 0x104; //23.1 Introduction - Table 1153
+
+  memcpy(&commandQueueEntryEnableHCA.command_input_inline_data, &enableHca, sizeof(enableHca));
+
+  // Check what was written in the command_input_inline_data
+  for (int i = 0; i < 4; ++i) {
+    TN_DEBUG("command_input_inline_data[%d]  = %x", i, commandQueueEntryEnableHCA.command_input_inline_data[i]);
+  }
+
+  // Writing the command entry to the command queue
+  memcpy(&command_queues_virt_addr, &commandQueueEntryEnableHCA, sizeof(commandQueueEntryEnableHCA));
+
+  // Check what was written to the command queue
+  uint32_t aux[16] = {};
+  memcpy(&aux, &command_queues_virt_addr, sizeof(commandQueueEntryEnableHCA));
+  for (int i = 0; i < 16; ++i) {
+    TN_DEBUG("Command queue byte[%d] = %x", i, aux[i]);
+  }
+
+  // Set the corresponding bit (0 for Enable_HCA as this is the first command in the queue)
+  // from command_doorbell_vector to 1
+  // OBS When driver is in No DRAM NIC mode, this field must not be written. TODO: should I check this ?
+  reg_write(device.addr, 0x18, 1);
+
+  IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
+                   !reg_is_field_cleared(&command_queues_virt_addr, 0x3C, BIT(0))) {
+    TN_DEBUG("command_queues_virt_addr.ownership did not clear, ENABLE_HCA did not finished");
+    return false;
+  }
+
+  // Read output
+  memcpy(&aux, &command_queues_virt_addr, sizeof(commandQueueEntryEnableHCA));
+  for (int i = 0; i < 16; ++i) {
+    TN_DEBUG(" -- command_output_inline_data[%d]  = %x", i, aux[i]);
+  }
 
   /**
   * Step 5.
