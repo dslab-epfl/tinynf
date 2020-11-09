@@ -25,6 +25,9 @@ TN_NET ?= 82599
 TN_APP ?= tinynf
 TN_CC ?= gcc
 
+TN_NET = ConnectX-5
+TN_DEBUG = 3
+
 # Current directory
 TN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
@@ -45,7 +48,7 @@ endif
 endif
 
 # Files
-TN_FILES += $(shell echo $(TN_ENV)/*.c $(TN_NET)/*.c)
+TN_FILES += $(shell echo $(TN_DIR)/env/$(TN_ENV)/*.c $(TN_DIR)/net/$(TN_NET)/*.c)
 
 # Compiler args
 TN_CFLAGS += -std=c11
@@ -61,7 +64,7 @@ TN_CFLAGS += -O3
 endif
 
 # Linux-only compiler flags
-ifeq ($(TN_DIR)/env/linux-x86,$(TN_ENV))
+ifeq (linux-x86,$(TN_ENV))
 TN_CFLAGS += -D_DEFAULT_SOURCE # for MAP_* constants and the syscall function
 endif
 

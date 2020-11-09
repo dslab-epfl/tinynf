@@ -65,6 +65,20 @@
 #define REG_INITIALIZING_OFFSET 0x1FC
 #define REG_INITIALIZING BIT(31)
 
+// Command opcodes - Table 1153
+#define OPCODE_QUERY_HCA_CAP 0x100
+#define OPCODE_INIT_HCA 0x102
+#define OPCODE_ENABLE_HCA 0x104
+#define OPCODE_QUERY_PAGES 0x107
+#define OPCODE_MANAGE_PAGES 0x108
+#define OPCODE_SET_HCA_CAP 0x109
+#define OPCODE_QUERY_ISSI 0x10A
+#define OPCODE_SET_ISSI 0x10B
+#define OPCODE_SET_DRIVER_VERSION 0x10D
+#define OPCODE_QUERY_VPORT_STATE 0x750
+
+
+
 // ---------
 // Utilities
 // ---------
@@ -199,14 +213,16 @@ struct tn_net_device
 };
 
 struct __attribute__((packed, aligned(4))) CommandQueueEntry {
-  uint8_t _padding_type[3];
   uint8_t type;
+  uint8_t _padding_type[3];
 
   uint32_t input_length;
+
   uint32_t input_mailbox_pointer_high;
 
-  uint8_t _padding_mailbox_pointer;
   uint8_t input_mailbox_pointer_low[3];
+  uint8_t _padding_mailbox_pointer;
+
   // 0x10
   uint32_t command_input_inline_data[4];
   uint32_t command_output_inline_data[4];
@@ -232,6 +248,12 @@ struct __attribute__((packed, aligned(4))) Enable_HCA {
     uint16_t function_id : 16;
 };
 
+struct __attribute__((packed, aligned(4))) Query_Issi {
+    uint16_t opcode : 16;
+    uint16_t _padding : 16;
+    uint16_t _padding2 : 16;
+    uint16_t op_mod : 16;
+};
 
 
 // -------------------------------------
@@ -390,7 +412,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   reg_write(device.addr, 0x10, (uint32_t)(command_queues_phys_addr>>32));
   // shift the command_queues_phys_addr to write only the top 20 bits of the bottom 32 bits
   reg_write_field(device.addr, 0x14, REG_CMDQ_PHY_ADDR_LOW, ((uint32_t) (command_queues_phys_addr & 0x00000000FFFFFFFF)) >> 12);
-  reg_clear_field(device.addr, 0x14, REG_NIC_INTERFACE);
+  reg_clear_field(device.addr, 0x14, REG_NIC_INTERFACE); // Full driver mode
   reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_SIZE);
   reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_STRIDE);
 
@@ -407,52 +429,77 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
+//  uint32_t test_endianess = 0x12345678;
+//
+//  memcpy(&command_queues_virt_addr, &test_endianess, sizeof(test_endianess));
+//  uint8_t aux3[4] = { 0 };
+//  memcpy(&aux3, &command_queues_virt_addr, 4);
+//  for (int i = 0; i < 4; ++i) {
+//    TN_DEBUG("test endianess command queue byte[%d] = %x", i, aux3[i]);
+//  }
+
+
   /**
    * Step 4.
    * Execute ENABLE_HCA command.
    * */
-  struct CommandQueueEntry commandQueueEntryEnableHCA;
+  TN_VERBOSE("### Init - step 4");
 
-  memset(&commandQueueEntryEnableHCA, 0, sizeof(commandQueueEntryEnableHCA));  // init all fields with 0
-  commandQueueEntryEnableHCA.type = 0x07;  // Table 247
-  commandQueueEntryEnableHCA.input_length = 12;  // Length of ENABLE_HCA
-  commandQueueEntryEnableHCA.status = 1;  //Table 247.  SW should set to 1 when posting the command
+  uint8_t commandQueueEntryEnableHCA[64] = {0};
+  commandQueueEntryEnableHCA[0] = 0x07; // type --  Table 247
+  commandQueueEntryEnableHCA[7] = 12; // Length of ENABLE_HCA
 
-  struct Enable_HCA enableHca;
-  memset(&enableHca, 0, sizeof(enableHca));  // init all fields with 0
-  enableHca.opcode = 0x104; //23.1 Introduction - Table 1153
+  // writing the OPCODE_ENABLE_HCA (0x104) at command_input_inline_data field
+  commandQueueEntryEnableHCA[16] = 1;
+  commandQueueEntryEnableHCA[17] = 4;
+//  struct CommandQueueEntry commandQueueEntryEnableHCA = { 0 };
+//
+//  commandQueueEntryEnableHCA.type = 0x07;  // Table 247
+//  commandQueueEntryEnableHCA.input_length = 12;  // Length of ENABLE_HCA
 
-  memcpy(&commandQueueEntryEnableHCA.command_input_inline_data, &enableHca, sizeof(enableHca));
-
-  // Check what was written in the command_input_inline_data
-  for (int i = 0; i < 4; ++i) {
-    TN_DEBUG("command_input_inline_data[%d]  = %x", i, commandQueueEntryEnableHCA.command_input_inline_data[i]);
-  }
+  commandQueueEntryEnableHCA[63] = 1; //Table 247.  SW should set the ownership bit to 1 when posting the command
+//  commandQueueEntryEnableHCA.status = 1;  //Table 247.  SW should set to 1 when posting the command
+//
+//  struct Enable_HCA enableHca = { 0 };
+//  enableHca.opcode = OPCODE_ENABLE_HCA;
+//
+//  memcpy(&commandQueueEntryEnableHCA.command_input_inline_data, &enableHca, sizeof(enableHca));
+//
+//  // Check what was written in the command_input_inline_data
+//  for (int i = 0; i < 4; ++i) {
+//    TN_DEBUG("command_input_inline_data[%d]  = %x", i, commandQueueEntryEnableHCA.command_input_inline_data[i]);
+//  }
 
   // Writing the command entry to the command queue
+  TN_DEBUG("sizeof(commandQueueEntryEnableHCA) = %ld", sizeof(commandQueueEntryEnableHCA));
   memcpy(&command_queues_virt_addr, &commandQueueEntryEnableHCA, sizeof(commandQueueEntryEnableHCA));
 
+  //TN_DEBUG("Attempt 1.8 INITIALIZATION [0x14] = %x ", reg_read(device.addr, 0x14));
   // Check what was written to the command queue
-  uint32_t aux[16] = {};
+  uint8_t aux[64] = { 0 };
   memcpy(&aux, &command_queues_virt_addr, sizeof(commandQueueEntryEnableHCA));
-  for (int i = 0; i < 16; ++i) {
+  for (int i = 0; i < 64; ++i) {
     TN_DEBUG("Command queue byte[%d] = %x", i, aux[i]);
   }
 
   // Set the corresponding bit (0 for Enable_HCA as this is the first command in the queue)
   // from command_doorbell_vector to 1
-  // OBS When driver is in No DRAM NIC mode, this field must not be written. TODO: should I check this ?
-  reg_write(device.addr, 0x18, 1);
+  reg_write(device.addr, 0x18, 1); // - SEG fault
+  // TN_DEBUG("Attempt 2 INITIALIZATION [0x14] = %x ", reg_read(device.addr, 0x14));
 
   IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
-                   !reg_is_field_cleared(&command_queues_virt_addr, 0x3C, BIT(0))) {
+                   !reg_is_field_cleared(&command_queues_virt_addr, 0x3C, BIT(24))) {
     TN_DEBUG("command_queues_virt_addr.ownership did not clear, ENABLE_HCA did not finished");
     return false;
   }
 
   // Read output
   memcpy(&aux, &command_queues_virt_addr, sizeof(commandQueueEntryEnableHCA));
-  for (int i = 0; i < 16; ++i) {
+  for (int i = 32; i < 16+32; ++i) {
+    TN_DEBUG(" -- command_output_inline_data[%d]  = %x", i, aux[i]);
+  }
+
+  for (int i = 60; i < 64; ++i) {
     TN_DEBUG(" -- command_output_inline_data[%d]  = %x", i, aux[i]);
   }
 
@@ -460,7 +507,20 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   * Step 5.
   *  Execute QUERY_ISSI command.
   * */
-  // TODO
+//  struct CommandQueueEntry commandQueueEntryQuerryIssi = { 0 };
+//  commandQueueEntryQuerryIssi.type = 0x07;  // Table 247
+//  commandQueueEntryQuerryIssi.input_length = 8;  // Length of QUERY_ISSI
+//  commandQueueEntryQuerryIssi.status = 1;  //Table 247.  SW should set to 1 when posting the command
+//
+//  struct Query_Issi queryIssi = { 0 };
+//  queryIssi.opcode = OPCODE_QUERY_ISSI;
+//
+//  int stride = 64; // TODO read this
+//
+//  memcpy(&commandQueueEntryQuerryIssi.command_input_inline_data + sizeof(commandQueueEntryEnableHCA) + stride, &queryIssi, sizeof(queryIssi));
+
+  //  QUERY_ISSI command returns with BAD_OPCODE, this indicates that the supported_issi is only 0,
+  //  and there is no need to perform SET_ISSI.
 
 
   /**
@@ -468,6 +528,10 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   *  Execute SET_ISSI command.
   * */
   // TODO
+
+//  set the actual_issi informing the device on which ISSI to run, using
+//  SET_ISSI command
+// so the actual_issi which software should set for the device must be = min (sw issi, max supported_issi).
 
   return true;
 }
