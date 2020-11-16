@@ -59,7 +59,7 @@
 #define REG_LOG_CMDQ_STRIDE BITS(0,3)
 #define REG_COMMAND_DOORBELL_VECTOR_OFFSET 0X18
 
-#define INITIALIZING_TIMEOUT 1 // in seconds, experimentally determined
+#define INITIALIZING_TIMEOUT 2 // in seconds, FW_INIT_TIMEOUT_MILI value from official driver sources for linux
 #define ENABLE_HCA_DELAY 10 // in seconds, experimentally determined
 
 #define REG_INITIALIZING_OFFSET 0x1FC
@@ -112,6 +112,13 @@ static uint32_t find_first_set(uint32_t value)
   return n;
 }
 
+uint32_t le_to_be_32(uint32_t val) {
+  return ((val>>24)&0xff) | // move byte 3 to byte 0
+         ((val<<8)&0xff0000) | // move byte 1 to byte 2
+         ((val>>8)&0xff00) | // move byte 2 to byte 1
+         ((val<<24)&0xff000000); // byte 0 to byte 3
+}
+
 // ---------------------
 // Operations on the NIC
 // ---------------------
@@ -120,7 +127,7 @@ static uint32_t find_first_set(uint32_t value)
 static uint32_t reg_read(void* addr, uint32_t reg)
 {
   uint32_t val_le = *((volatile uint32_t*)((uint8_t*) addr + reg));
-  uint32_t result = tn_le_to_cpu32(val_le);
+  uint32_t result = le_to_be_32(val_le);
   TN_VERBOSE("MLX5 read (addr %p): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
   return result;
 }
@@ -135,7 +142,7 @@ static uint32_t reg_read_field(void* addr, uint32_t reg, uint32_t field)
 // Write 'value' to the given register address 'reg_addr'; this is the sum of a NIC address and a register offset
 static void reg_write_raw(volatile uint32_t* reg_addr, uint32_t value)
 {
-  *reg_addr = tn_cpu_to_le32(value);
+  *reg_addr = le_to_be_32(value);
 }
 
 // Write 'value' to register 'reg' on NIC at address 'addr'
@@ -359,25 +366,25 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   uint16_t cmd_int_rev = reg_read_field(device.addr, REG_FW_REV2, REG_FW_REV2_CMD_INTERFACE_REVISION);
   uint16_t fw_rev_subminor = reg_read_field(device.addr, REG_FW_REV2, REG_FW_REV2_SUBMINOR);
 
-  if (fw_rev_minor != REG_FW_REV_MINOR_VAL) {
-    TN_DEBUG("Firmware revision minor is %x, expected value is %x", fw_rev_minor, REG_FW_REV_MINOR_VAL);
-    return false;
-  }
-
-  if (fw_rev_major != REG_FW_REV_MAJOR_VAL) {
-    TN_DEBUG("Firmware revision is major %x expected value is %x", fw_rev_major, REG_FW_REV_MAJOR_VAL);
-    return false;
-  }
-
-  if (cmd_int_rev != REG_CMD_INTERFACE_REVISION_VAL) {
-    TN_DEBUG("Firmware revision is %x expected value is %x", cmd_int_rev, REG_CMD_INTERFACE_REVISION_VAL);
-    return false;
-  }
-
-  if (fw_rev_subminor != REG_FW_REV_SUBMINOR_VAL) {
-    TN_DEBUG("Firmware revision is %x expected value is %x", fw_rev_subminor, REG_FW_REV_SUBMINOR_VAL);
-    return false;
-  }
+//  if (fw_rev_minor != REG_FW_REV_MINOR_VAL) {
+//    TN_DEBUG("Firmware revision minor is %x, expected value is %x", fw_rev_minor, REG_FW_REV_MINOR_VAL);
+//    return false;
+//  }
+//
+//  if (fw_rev_major != REG_FW_REV_MAJOR_VAL) {
+//    TN_DEBUG("Firmware revision is major %x expected value is %x", fw_rev_major, REG_FW_REV_MAJOR_VAL);
+//    return false;
+//  }
+//
+//  if (cmd_int_rev != REG_CMD_INTERFACE_REVISION_VAL) {
+//    TN_DEBUG("Firmware revision is %x expected value is %x", cmd_int_rev, REG_CMD_INTERFACE_REVISION_VAL);
+//    return false;
+//  }
+//
+//  if (fw_rev_subminor != REG_FW_REV_SUBMINOR_VAL) {
+//    TN_DEBUG("Firmware revision is %x expected value is %x", fw_rev_subminor, REG_FW_REV_SUBMINOR_VAL);
+//    return false;
+//  }
 
   /**
    * Step 2.
@@ -401,20 +408,32 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
+  TN_DEBUG("command_queues_phys_addr = %p", command_queues_phys_addr);
+
   // Since CMDQ_PHY_ADDR_LOW is not 32 bits but 20, the lower 12 bits
   // of the command_queues_phys_addr should be 0
   if ((command_queues_phys_addr & BITS(0, 12)) != 0) {
-    TN_DEBUG("The physical address has not the lower 12 bits set to 0!");
+    TN_DEBUG("Invalid command queue address. The physical address has not the lower 12 bits set to 0!");
     return false;
   }
 
 
+  // Equivalent to `iowrite32be(cmd_h, &dev->iseg->cmdq_addr_h);`
   reg_write(device.addr, 0x10, (uint32_t)(command_queues_phys_addr>>32));
   // shift the command_queues_phys_addr to write only the top 20 bits of the bottom 32 bits
-  reg_write_field(device.addr, 0x14, REG_CMDQ_PHY_ADDR_LOW, ((uint32_t) (command_queues_phys_addr & 0x00000000FFFFFFFF)) >> 12);
-  reg_clear_field(device.addr, 0x14, REG_NIC_INTERFACE); // Full driver mode
-  reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_SIZE);
-  reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_STRIDE);
+
+  // Equivalent to `iowrite32be(cmd_l, &dev->iseg->cmdq_addr_l_sz);`
+
+  reg_clear(device.addr, 0x14); // insteaf of the below lines
+  reg_write(device.addr, 0x14, ((uint32_t) (command_queues_phys_addr & 0x00000000FFFFFFFF)));
+
+//  reg_clear_field(device.addr, 0x14, REG_NIC_INTERFACE); // Full driver mode
+//  reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_SIZE);
+//  reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_STRIDE);
+
+  TN_DEBUG("Check if the values were written correctly on initialization segment");
+  reg_read(device.addr, 0x10);
+  reg_read(device.addr, 0x14);
 
   /**
    * Step 3.
