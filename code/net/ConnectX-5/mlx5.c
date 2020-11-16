@@ -262,6 +262,107 @@ struct __attribute__((packed, aligned(4))) Query_Issi {
     uint16_t op_mod : 16;
 };
 
+enum {
+    MLX5_CMD_STAT_OK			= 0x0,
+    MLX5_CMD_STAT_INT_ERR			= 0x1,
+    MLX5_CMD_STAT_BAD_OP_ERR		= 0x2,
+    MLX5_CMD_STAT_BAD_PARAM_ERR		= 0x3,
+    MLX5_CMD_STAT_BAD_SYS_STATE_ERR		= 0x4,
+    MLX5_CMD_STAT_BAD_RES_ERR		= 0x5,
+    MLX5_CMD_STAT_RES_BUSY			= 0x6,
+    MLX5_CMD_STAT_LIM_ERR			= 0x8,
+    MLX5_CMD_STAT_BAD_RES_STATE_ERR		= 0x9,
+    MLX5_CMD_STAT_IX_ERR			= 0xa,
+    MLX5_CMD_STAT_NO_RES_ERR		= 0xf,
+    MLX5_CMD_STAT_BAD_INP_LEN_ERR		= 0x50,
+    MLX5_CMD_STAT_BAD_OUTP_LEN_ERR		= 0x51,
+    MLX5_CMD_STAT_BAD_QP_STATE_ERR		= 0x10,
+    MLX5_CMD_STAT_BAD_PKT_ERR		= 0x30,
+    MLX5_CMD_STAT_BAD_SIZE_OUTS_CQES_ERR	= 0x40,
+};
+
+static const char *cmd_status_str(uint8_t status)
+{
+  switch (status) {
+    case MLX5_CMD_STAT_OK:
+      return "OK";
+    case MLX5_CMD_STAT_INT_ERR:
+      return "internal error";
+    case MLX5_CMD_STAT_BAD_OP_ERR:
+      return "bad operation";
+    case MLX5_CMD_STAT_BAD_PARAM_ERR:
+      return "bad parameter";
+    case MLX5_CMD_STAT_BAD_SYS_STATE_ERR:
+      return "bad system state";
+    case MLX5_CMD_STAT_BAD_RES_ERR:
+      return "bad resource";
+    case MLX5_CMD_STAT_RES_BUSY:
+      return "resource busy";
+    case MLX5_CMD_STAT_LIM_ERR:
+      return "limits exceeded";
+    case MLX5_CMD_STAT_BAD_RES_STATE_ERR:
+      return "bad resource state";
+    case MLX5_CMD_STAT_IX_ERR:
+      return "bad index";
+    case MLX5_CMD_STAT_NO_RES_ERR:
+      return "no resources";
+    case MLX5_CMD_STAT_BAD_INP_LEN_ERR:
+      return "bad input length";
+    case MLX5_CMD_STAT_BAD_OUTP_LEN_ERR:
+      return "bad output length";
+    case MLX5_CMD_STAT_BAD_QP_STATE_ERR:
+      return "bad QP state";
+    case MLX5_CMD_STAT_BAD_PKT_ERR:
+      return "bad packet (discarded)";
+    case MLX5_CMD_STAT_BAD_SIZE_OUTS_CQES_ERR:
+      return "bad size too many outstanding CQEs";
+    default:
+      return "unknown status";
+  }
+}
+
+// Table Table 247 - Command delivery status
+#define SUCCESS_STATUS 0x00
+#define SIGNATURE_ERR_STATUS 0x01
+#define TOKEN_ERR_STATUS 0x02
+#define BAD_BLOCK_NUMBER_STATUS 0x03
+#define BAD_OUTPUT_POINTER_STATUS 0x04
+#define BAD_INPUT_POINTER_STATUS 0x05
+#define INTERNAL_ERR_STATUS 0x06
+#define INPUT_LEN_ERR_STATUS 0x07
+#define OUTPUT_LEN_ERR_STATUS 0x08
+#define RESERVED_NOT_ZERO_STATUS 0x09
+#define BAD_COMMAND_TYPE_STATUS 0x10
+
+static inline const char *command_delivery_status_str (uint8_t status)
+{
+  switch (status) {
+    case SUCCESS_STATUS:
+      return "SUCCESS - no errors";
+    case SIGNATURE_ERR_STATUS:
+      return "SIGNATURE_ERR";
+    case TOKEN_ERR_STATUS:
+      return "TOKEN_ERR";
+    case BAD_BLOCK_NUMBER_STATUS:
+      return "BAD_BLOCK_NUMBER";
+    case BAD_OUTPUT_POINTER_STATUS:
+      return "BAD_OUTPUT_POINTER - pointer not aligned to mailbox size";
+    case BAD_INPUT_POINTER_STATUS:
+      return "BAD_INPUT_POINTER - pointer not aligned to mailbox size";
+    case INTERNAL_ERR_STATUS:
+      return "INTERNAL_ERR";
+    case INPUT_LEN_ERR_STATUS:
+      return "INPUT_LEN_ERR - input length less than 0x8";
+    case OUTPUT_LEN_ERR_STATUS:
+      return "OUTPUT_LEN_ERR- output length less than 0x8";
+    case RESERVED_NOT_ZERO_STATUS:
+      return "RESERVED_NOT_ZERO";
+    case BAD_COMMAND_TYPE_STATUS:
+      return "BAD_COMMAND_TYPE";
+    default:
+      return "Unrecognized status";
+  }
+}
 
 // -------------------------------------
 // Section 7.2 HCA Driver Start-up
@@ -361,10 +462,10 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
    * */
   TN_VERBOSE("### Init - step 1");
 
-  uint16_t fw_rev_minor = reg_read_field(device.addr, REG_FW_REV, REG_FW_REV_MINOR);
-  uint16_t fw_rev_major = reg_read_field(device.addr, REG_FW_REV, REG_FW_REV_MAJOR);
-  uint16_t cmd_int_rev = reg_read_field(device.addr, REG_FW_REV2, REG_FW_REV2_CMD_INTERFACE_REVISION);
-  uint16_t fw_rev_subminor = reg_read_field(device.addr, REG_FW_REV2, REG_FW_REV2_SUBMINOR);
+//  uint16_t fw_rev_minor = reg_read_field(device.addr, REG_FW_REV, REG_FW_REV_MINOR);
+//  uint16_t fw_rev_major = reg_read_field(device.addr, REG_FW_REV, REG_FW_REV_MAJOR);
+//  uint16_t cmd_int_rev = reg_read_field(device.addr, REG_FW_REV2, REG_FW_REV2_CMD_INTERFACE_REVISION);
+//  uint16_t fw_rev_subminor = reg_read_field(device.addr, REG_FW_REV2, REG_FW_REV2_SUBMINOR);
 
 //  if (fw_rev_minor != REG_FW_REV_MINOR_VAL) {
 //    TN_DEBUG("Firmware revision minor is %x, expected value is %x", fw_rev_minor, REG_FW_REV_MINOR_VAL);
@@ -403,6 +504,11 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
+  // Write zeros in the command_queues
+  for (int i = 0; i < CMDQ_SIZE; ++i) {
+    ((volatile uint32_t *) command_queues_virt_addr)[i] = 0;
+  }
+
   if (!tn_mem_virt_to_phys(command_queues_virt_addr, &command_queues_phys_addr)) {
     TN_DEBUG("Could not get a command_queues's physical address");
     return false;
@@ -422,10 +528,9 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   reg_write(device.addr, 0x10, (uint32_t)(command_queues_phys_addr>>32));
   // shift the command_queues_phys_addr to write only the top 20 bits of the bottom 32 bits
 
-  // Equivalent to `iowrite32be(cmd_l, &dev->iseg->cmdq_addr_l_sz);`
-
-  reg_clear(device.addr, 0x14); // insteaf of the below lines
+  reg_clear(device.addr, 0x14); // instead of the below lines
   reg_write(device.addr, 0x14, ((uint32_t) (command_queues_phys_addr & 0x00000000FFFFFFFF)));
+  // write in the nic_interface 0
 
 //  reg_clear_field(device.addr, 0x14, REG_NIC_INTERFACE); // Full driver mode
 //  reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_SIZE);
@@ -434,7 +539,8 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   TN_DEBUG("Check if the values were written correctly on initialization segment");
   reg_read(device.addr, 0x10);
   reg_read(device.addr, 0x14);
-
+  TN_DEBUG("Check health status");
+  reg_read(device.addr, 0x1010);
   /**
    * Step 3.
    * Read the initializing field from the initialization segment.
@@ -448,109 +554,178 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
-//  uint32_t test_endianess = 0x12345678;
-//
-//  memcpy(&command_queues_virt_addr, &test_endianess, sizeof(test_endianess));
-//  uint8_t aux3[4] = { 0 };
-//  memcpy(&aux3, &command_queues_virt_addr, 4);
-//  for (int i = 0; i < 4; ++i) {
-//    TN_DEBUG("test endianess command queue byte[%d] = %x", i, aux3[i]);
-//  }
 
+  uint32_t command_index = 0;
+  uint32_t cmdq_addr_l_sz = reg_read(device.addr, 0x14) & 0xff;
+  uint32_t log_cmdq_size = cmdq_addr_l_sz >> 4 & 0xf;
+  uint32_t log_stride = cmdq_addr_l_sz & 0xf;
+
+  TN_INFO("log_cmdq_size = %d, log_stride = %d", log_cmdq_size, log_stride);
 
   /**
    * Step 4.
    * Execute ENABLE_HCA command.
    * */
   TN_VERBOSE("### Init - step 4");
+  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
+  ((volatile uint32_t *) command_queues_virt_addr)[0] = le_to_be_32(0x07000000);
+  // input_length for ENABLE_HCA length is 12 bytes: Table 1255
+  ((volatile uint32_t *) command_queues_virt_addr)[1] = le_to_be_32(0x0C);
+  // OPCODE_ENABLE_HCA - Table 1153
+  ((volatile uint32_t *) command_queues_virt_addr)[4] = le_to_be_32(0x01040000);
+  // output_length - Table 1153
+  ((volatile uint32_t *) command_queues_virt_addr)[14] = le_to_be_32(0x0C);
+  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
+  ((volatile uint32_t *) command_queues_virt_addr)[15] = le_to_be_32(0x01);
 
-  uint8_t commandQueueEntryEnableHCA[64] = {0};
-  commandQueueEntryEnableHCA[0] = 0x07; // type --  Table 247
-  commandQueueEntryEnableHCA[7] = 12; // Length of ENABLE_HCA
-
-  // writing the OPCODE_ENABLE_HCA (0x104) at command_input_inline_data field
-  commandQueueEntryEnableHCA[16] = 1;
-  commandQueueEntryEnableHCA[17] = 4;
-//  struct CommandQueueEntry commandQueueEntryEnableHCA = { 0 };
-//
-//  commandQueueEntryEnableHCA.type = 0x07;  // Table 247
-//  commandQueueEntryEnableHCA.input_length = 12;  // Length of ENABLE_HCA
-
-  commandQueueEntryEnableHCA[63] = 1; //Table 247.  SW should set the ownership bit to 1 when posting the command
-//  commandQueueEntryEnableHCA.status = 1;  //Table 247.  SW should set to 1 when posting the command
-//
-//  struct Enable_HCA enableHca = { 0 };
-//  enableHca.opcode = OPCODE_ENABLE_HCA;
-//
-//  memcpy(&commandQueueEntryEnableHCA.command_input_inline_data, &enableHca, sizeof(enableHca));
-//
-//  // Check what was written in the command_input_inline_data
-//  for (int i = 0; i < 4; ++i) {
-//    TN_DEBUG("command_input_inline_data[%d]  = %x", i, commandQueueEntryEnableHCA.command_input_inline_data[i]);
-//  }
-
-  // Writing the command entry to the command queue
-  TN_DEBUG("sizeof(commandQueueEntryEnableHCA) = %ld", sizeof(commandQueueEntryEnableHCA));
-  memcpy(&command_queues_virt_addr, &commandQueueEntryEnableHCA, sizeof(commandQueueEntryEnableHCA));
-
-  //TN_DEBUG("Attempt 1.8 INITIALIZATION [0x14] = %x ", reg_read(device.addr, 0x14));
-  // Check what was written to the command queue
-  uint8_t aux[64] = { 0 };
-  memcpy(&aux, &command_queues_virt_addr, sizeof(commandQueueEntryEnableHCA));
-  for (int i = 0; i < 64; ++i) {
-    TN_DEBUG("Command queue byte[%d] = %x", i, aux[i]);
-  }
-
-  // Set the corresponding bit (0 for Enable_HCA as this is the first command in the queue)
-  // from command_doorbell_vector to 1
-  reg_write(device.addr, 0x18, 1); // - SEG fault
-  // TN_DEBUG("Attempt 2 INITIALIZATION [0x14] = %x ", reg_read(device.addr, 0x14));
+  // Set the corresponding bit (0 for Enable_HCA as this is the first command in the queue) from command_doorbell_vector to 1
+  reg_write(device.addr, 0x18, 1 << command_index);
 
   IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
-                   !reg_is_field_cleared(&command_queues_virt_addr, 0x3C, BIT(24))) {
+                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
     TN_DEBUG("command_queues_virt_addr.ownership did not clear, ENABLE_HCA did not finished");
     return false;
   }
 
-  // Read output
-  memcpy(&aux, &command_queues_virt_addr, sizeof(commandQueueEntryEnableHCA));
-  for (int i = 32; i < 16+32; ++i) {
-    TN_DEBUG(" -- command_output_inline_data[%d]  = %x", i, aux[i]);
+  // Read Command delivery status
+  uint8_t status = (uint8_t) ((le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[15]) & 0x000000FF) >> 1);
+  if (status != 0x0) {
+    TN_DEBUG("ENABLE_HCA command delivery status is 0x%02X, %s", status, command_delivery_status_str(status));
+    return false;
   }
 
-  for (int i = 60; i < 64; ++i) {
-    TN_DEBUG(" -- command_output_inline_data[%d]  = %x", i, aux[i]);
+  // Read output status (output length is 12)
+  uint8_t output_status = (uint8_t) (le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[8]) & 0x000000FF);
+  if (output_status != 0x0) {
+    TN_DEBUG("ENABLE_HCA output status is 0x%02X, %s", status, cmd_status_str(output_status));
+    return false;
+  }
+
+
+  for (int i = 0; i < 16; ++i) {
+    TN_DEBUG("command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
+  }
+
+  // Clean space in command queue
+  for (int i = 0; i < 16; ++i) {
+    ((volatile uint32_t *) (command_queues_virt_addr))[i] = 0;
   }
 
   /**
   * Step 5.
   *  Execute QUERY_ISSI command.
   * */
-//  struct CommandQueueEntry commandQueueEntryQuerryIssi = { 0 };
-//  commandQueueEntryQuerryIssi.type = 0x07;  // Table 247
-//  commandQueueEntryQuerryIssi.input_length = 8;  // Length of QUERY_ISSI
-//  commandQueueEntryQuerryIssi.status = 1;  //Table 247.  SW should set to 1 when posting the command
-//
-//  struct Query_Issi queryIssi = { 0 };
-//  queryIssi.opcode = OPCODE_QUERY_ISSI;
-//
-//  int stride = 64; // TODO read this
-//
-//  memcpy(&commandQueueEntryQuerryIssi.command_input_inline_data + sizeof(commandQueueEntryEnableHCA) + stride, &queryIssi, sizeof(queryIssi));
-
-  //  QUERY_ISSI command returns with BAD_OPCODE, this indicates that the supported_issi is only 0,
+  TN_VERBOSE("### Init - step 5");
+  uint32_t current_issi = 0;
+  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
+  ((volatile uint32_t *) command_queues_virt_addr)[0] = le_to_be_32(0x07000000);
+  // input_length for QUERY_ISSI length is 12 bytes: Table 1255
+  ((volatile uint32_t *) command_queues_virt_addr)[1] = le_to_be_32(0x0C);
+  // OPCODE_QUERY_ISSI - Table 1153
+  ((volatile uint32_t *) command_queues_virt_addr)[4] = le_to_be_32(0x010A0000);
+  // output_length - Table 1153
+  ((volatile uint32_t *) command_queues_virt_addr)[14] = le_to_be_32(0x0C);
+  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
+  ((volatile uint32_t *) command_queues_virt_addr)[15] = le_to_be_32(0x01);
+  //  If QUERY_ISSI command returns with BAD_OPCODE, this indicates that the supported_issi is only 0,
   //  and there is no need to perform SET_ISSI.
+  // Set the corresponding bit (0 for QUERY_ISSI as this is the first command in the queue) from command_doorbell_vector to 1
+  reg_write(device.addr, 0x18, 1 << command_index);
+
+  IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
+                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+    TN_DEBUG("command_queues_virt_addr.ownership did not clear, QUERY_ISSI did not finished");
+    return false;
+  }
+
+  // Read Command delivery status
+  status = (uint8_t) ((le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[15]) & 0x000000FF) >> 1);
+  if (status != 0x0) {
+    TN_DEBUG("QUERY_ISSI command delivery status is 0x%02X, %s", status, command_delivery_status_str(status));
+    return false;
+  }
+
+  // Read output status (output length is 12)
+  output_status = (uint8_t) (le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[8]) & 0x000000FF);
+  if (output_status != 0x0) {
+    TN_DEBUG("QUERY_ISSI output status is 0x%02X, %s", status, cmd_status_str(output_status));
+    return false;
+  }
+
+  current_issi = ((volatile uint32_t *) command_queues_virt_addr)[10];
+  for (int i = 0; i < 16; ++i) {
+    TN_DEBUG("command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
+  }
+
+  // Clean space in command queue
+  for (int i = 0; i < 16; ++i) {
+    ((volatile uint32_t *) (command_queues_virt_addr))[i] = 0;
+  }
 
 
   /**
   * Step 6.
   *  Execute SET_ISSI command.
   * */
-  // TODO
+  // TODO: check supported issi
+  TN_VERBOSE("### Init - step 6");
+  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
+  ((volatile uint32_t *) command_queues_virt_addr)[0] = le_to_be_32(0x07000000);
+  // input_length for SET_ISSI length is 12 bytes: Table 1255
+  ((volatile uint32_t *) command_queues_virt_addr)[1] = le_to_be_32(0x0C);
+  // OPCODE_SET_ISSI - Table 1267
+  ((volatile uint32_t *) command_queues_virt_addr)[4] = le_to_be_32(0x010B0000);
+  // OPCODE_SET_ISSI - Table 1267
+  ((volatile uint32_t *) command_queues_virt_addr)[6] = current_issi;
+  // output_length - Table 1269
+  ((volatile uint32_t *) command_queues_virt_addr)[14] = le_to_be_32(0x0C);
+  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
+  ((volatile uint32_t *) command_queues_virt_addr)[15] = le_to_be_32(0x01);
 
-//  set the actual_issi informing the device on which ISSI to run, using
-//  SET_ISSI command
-// so the actual_issi which software should set for the device must be = min (sw issi, max supported_issi).
+  // Set the corresponding bit (0 for SET_ISSI as this is the first command in the queue) from command_doorbell_vector to 1
+  reg_write(device.addr, 0x18, 1 << command_index);
+
+  IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
+                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+    TN_DEBUG("command_queues_virt_addr.ownership did not clear, SET_ISSI did not finished");
+    return false;
+  }
+
+  // Read Command delivery status
+  status = (uint8_t) ((le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[15]) & 0x000000FF) >> 1);
+  if (status != 0x0) {
+    TN_DEBUG("SET_ISSI command delivery status is 0x%02X, %s", status, command_delivery_status_str(status));
+    return false;
+  }
+
+  // Read output status (output length is 12)
+  output_status = (uint8_t) (le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[8]) & 0x000000FF);
+  if (output_status != 0x0) {
+    TN_DEBUG("SET_ISSI output status is 0x%02X, %s", status, cmd_status_str(output_status));
+    return false;
+  }
+
+  current_issi = ((volatile uint32_t *) command_queues_virt_addr)[10];
+  for (int i = 0; i < 16; ++i) {
+    TN_DEBUG("command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
+  }
+
+  // Clean space in command queue
+  for (int i = 0; i < 16; ++i) {
+    ((volatile uint32_t *) (command_queues_virt_addr))[i] = 0;
+  }
+
+//  /**
+//  * Step 7.
+//  *  Execute QUERY_PAGES command.
+//  * */
+//  TN_VERBOSE("### Init - step 7");
+//
+//  /**
+//  * Step 8.
+//  *  Execute MANAGE_PAGES command.
+//  * */
+//  TN_VERBOSE("### Init - step 8");
 
   return true;
 }
