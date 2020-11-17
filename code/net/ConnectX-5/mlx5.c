@@ -291,7 +291,7 @@ static const char *cmd_status_str(uint8_t status)
     case MLX5_CMD_STAT_BAD_OP_ERR:
       return "bad operation";
     case MLX5_CMD_STAT_BAD_PARAM_ERR:
-      return "bad parameter";
+      return "Parameter not supported, parameter out of range, reserved not equal 0";
     case MLX5_CMD_STAT_BAD_SYS_STATE_ERR:
       return "bad system state";
     case MLX5_CMD_STAT_BAD_RES_ERR:
@@ -566,7 +566,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
    * Step 4.
    * Execute ENABLE_HCA command.
    * */
-  TN_VERBOSE("### Init - step 4");
+  TN_VERBOSE("### Init - step 4: Execute ENABLE_HCA");
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
   ((volatile uint32_t *) command_queues_virt_addr)[0] = le_to_be_32(0x07000000);
   // input_length for ENABLE_HCA length is 12 bytes: Table 1255
@@ -595,9 +595,9 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   }
 
   // Read output status (output length is 12)
-  uint8_t output_status = (uint8_t) (le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[8]) & 0x000000FF);
+  uint8_t output_status = (uint8_t) (((volatile uint32_t *) command_queues_virt_addr)[8] & 0x000000FF);
   if (output_status != 0x0) {
-    TN_DEBUG("ENABLE_HCA output status is 0x%02X, %s", status, cmd_status_str(output_status));
+    TN_DEBUG("ENABLE_HCA output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
     return false;
   }
 
@@ -615,7 +615,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   * Step 5.
   *  Execute QUERY_ISSI command.
   * */
-  TN_VERBOSE("### Init - step 5");
+  TN_VERBOSE("### Init - step 5: Execute QUERY_ISSI");
   uint32_t current_issi = 0;
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
   ((volatile uint32_t *) command_queues_virt_addr)[0] = le_to_be_32(0x07000000);
@@ -624,7 +624,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   // OPCODE_QUERY_ISSI - Table 1153
   ((volatile uint32_t *) command_queues_virt_addr)[4] = le_to_be_32(0x010A0000);
   // output_length - Table 1153
-  ((volatile uint32_t *) command_queues_virt_addr)[14] = le_to_be_32(0x0C);
+  ((volatile uint32_t *) command_queues_virt_addr)[14] = le_to_be_32(0x70);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
   ((volatile uint32_t *) command_queues_virt_addr)[15] = le_to_be_32(0x01);
   //  If QUERY_ISSI command returns with BAD_OPCODE, this indicates that the supported_issi is only 0,
@@ -646,9 +646,9 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   }
 
   // Read output status (output length is 12)
-  output_status = (uint8_t) (le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[8]) & 0x000000FF);
+  output_status = (uint8_t) (((volatile uint32_t *) command_queues_virt_addr)[8] & 0x000000FF);
   if (output_status != 0x0) {
-    TN_DEBUG("QUERY_ISSI output status is 0x%02X, %s", status, cmd_status_str(output_status));
+    TN_DEBUG("QUERY_ISSI output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
     return false;
   }
 
@@ -668,7 +668,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   *  Execute SET_ISSI command.
   * */
   // TODO: check supported issi
-  TN_VERBOSE("### Init - step 6");
+  TN_VERBOSE("### Init - step 6: Execute SET_ISSI");
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
   ((volatile uint32_t *) command_queues_virt_addr)[0] = le_to_be_32(0x07000000);
   // input_length for SET_ISSI length is 12 bytes: Table 1255
@@ -699,9 +699,9 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   }
 
   // Read output status (output length is 12)
-  output_status = (uint8_t) (le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[8]) & 0x000000FF);
+  output_status = (uint8_t) (((volatile uint32_t *) command_queues_virt_addr)[8] & 0x000000FF);
   if (output_status != 0x0) {
-    TN_DEBUG("SET_ISSI output status is 0x%02X, %s", status, cmd_status_str(output_status));
+    TN_DEBUG("SET_ISSI output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
     return false;
   }
 
