@@ -78,6 +78,20 @@
 #define OPCODE_SET_DRIVER_VERSION 0x10D
 #define OPCODE_QUERY_VPORT_STATE 0x750
 
+// Command Queue Entry offsets - Table 246
+#define CMD_Q_E_TYPE_OFFSET 0x00
+#define CMD_Q_E_INPUT_LENGTH_OFFSET 0x04
+#define CMD_Q_E_INPUT_MAILBOX_PTR_HIGH_OFFSET 0x08
+#define CMD_Q_E_INPUT_MAILBOX_PTR_LOW_OFFSET 0x0C
+#define CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET 0x10
+#define CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET 0x20
+#define CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET 0x30
+#define CMD_Q_E_OUTPUT_MAILBOX_PTR_LOW_OFFSET 0x34
+#define CMD_Q_E_OUTPUT_LENGTH_OFFSET 0x38
+#define CMD_Q_E_STATUS_OFFSET 0x3C
+#define CMD_Q_E_SIGNATURE_OFFSET 0x3C
+#define CMD_Q_E_TOKEN_OFFSET 0x3C
+#define CMD_Q_E_SIZE 0x40
 
 
 // ---------
@@ -408,6 +422,19 @@ static inline const char *command_delivery_status_str (uint8_t status)
   * Set L2 addresses (mac_vlan), see Section 23.18, “L2 Table Commands,” on page 1499
  */
 
+// Cleans only the first command entry
+void clean_command_queue(void* command_queues_virt_addr) {
+  for (int i = 0; i < CMD_Q_E_SIZE/sizeof(uint32_t); ++i) {
+    ((volatile uint32_t *) (command_queues_virt_addr))[i] = 0;
+  }
+}
+
+void dump_command_entry_values(void* command_queues_virt_addr) {
+  for (int i = 0; i < CMD_Q_E_SIZE/sizeof(uint32_t); ++i) {
+    TN_DEBUG("command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
+  }
+}
+
 bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_device** out_device) {
   // The NIC supports 64-bit addresses, so pointers can't be larger
   static_assert(UINTPTR_MAX <= UINT64_MAX, "uintptr_t must fit in an uint64_t");
@@ -601,15 +628,15 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
    * */
   TN_VERBOSE("### Init - step 4: Execute ENABLE_HCA");
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[0] = le_to_be_32(0x07000000);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_TYPE_OFFSET/4] = le_to_be_32(0x07000000);
   // input_length for ENABLE_HCA length is 12 bytes: Table 1255
-  ((volatile uint32_t *) command_queues_virt_addr)[1] = le_to_be_32(0x0C);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_INPUT_LENGTH_OFFSET/4] = le_to_be_32(0x0C);
   // OPCODE_ENABLE_HCA - Table 1153
-  ((volatile uint32_t *) command_queues_virt_addr)[4] = le_to_be_32(0x01040000);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET/4] = le_to_be_32(0x01040000);
   // output_length - Table 1153
-  ((volatile uint32_t *) command_queues_virt_addr)[14] = le_to_be_32(0x0C);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OUTPUT_LENGTH_OFFSET/4] = le_to_be_32(0x0C);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[15] = le_to_be_32(0x01);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_STATUS_OFFSET/4] = le_to_be_32(0x01);
 
   // Set the corresponding bit (0 for Enable_HCA as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device.addr, 0x18, 1 << command_index);
@@ -634,15 +661,11 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
+  // If DEBUG_MODE is ON, print the command entry values
+  dump_command_entry_values(command_queues_virt_addr);
 
-  for (int i = 0; i < 16; ++i) {
-    TN_DEBUG("command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
-  }
-
-  // Clean space in command queue
-  for (int i = 0; i < 16; ++i) {
-    ((volatile uint32_t *) (command_queues_virt_addr))[i] = 0;
-  }
+  // Set memory values to 0 for the first command entry in command queue
+  clean_command_queue(command_queues_virt_addr);
 
   /**
   * Step 5.
@@ -652,19 +675,21 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   uint32_t current_issi = 0;
   uint32_t minimum_issi = 0;
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[0] = le_to_be_32(0x07000000);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_TYPE_OFFSET/4] = le_to_be_32(0x07000000);
   // input_length for QUERY_ISSI length is 12 bytes: Table 1255
-  ((volatile uint32_t *) command_queues_virt_addr)[1] = le_to_be_32(0x0C);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_INPUT_LENGTH_OFFSET/4] = le_to_be_32(0x0C);
   // OPCODE_QUERY_ISSI - Table 1153
-  ((volatile uint32_t *) command_queues_virt_addr)[4] = le_to_be_32(0x010A0000);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET/4] = le_to_be_32(0x010A0000);
   // set the output_mailbox_pointer high
-  ((volatile uint32_t *) command_queues_virt_addr)[12] = le_to_be_32((uint32_t)(output_mailbox_head_phys_addr>>32));
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET/4] =
+                                        le_to_be_32((uint32_t)(output_mailbox_head_phys_addr>>32));
   // set the output_mailbox_pointer high
-  ((volatile uint32_t *) command_queues_virt_addr)[13] = le_to_be_32((uint32_t)(output_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OUTPUT_MAILBOX_PTR_LOW_OFFSET/4] =
+                                        le_to_be_32((uint32_t)(output_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
   // output_length - Table 1153
-  ((volatile uint32_t *) command_queues_virt_addr)[14] = le_to_be_32(0x70);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OUTPUT_LENGTH_OFFSET/4] = le_to_be_32(0x70);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[15] = le_to_be_32(0x01);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_STATUS_OFFSET/4] = le_to_be_32(0x01);
   //  If QUERY_ISSI command returns with BAD_OPCODE, this indicates that the supported_issi is only 0,
   //  and there is no need to perform SET_ISSI.
   // Set the corresponding bit (0 for QUERY_ISSI as this is the first command in the queue) from command_doorbell_vector to 1
@@ -683,35 +708,35 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
+  // TODO: if QUERY_ISSI command returns with BAD_OPCODE, this indicates that the supported_issi is only 0, and there is no need to perform SET_ISSI.
   // Read output status (output length is 12)
-  output_status = (uint8_t) (((volatile uint32_t *) command_queues_virt_addr)[8] & 0x000000FF);
+  output_status = (uint8_t) (((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET/4] & 0x000000FF);
   if (output_status != 0x0) {
     TN_DEBUG("QUERY_ISSI output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
     return false;
   }
 
-  current_issi = ((volatile uint32_t *) command_queues_virt_addr)[10];
-  for (int i = 0; i < 16; ++i) {
-    TN_DEBUG("command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
-  }
+  // Table 1265
+  current_issi = ((volatile uint32_t *) command_queues_virt_addr)[(CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET+0x08)/4];
+  TN_VERBOSE("current_issi = %d", current_issi);
+  // If DEBUG_MODE is ON, print the command entry values
+  dump_command_entry_values(command_queues_virt_addr);
 
-  // The first 16 bytes (4 rows ) are reserved
+  // Compute the minimum_ISSI: See details in Table 1266
+  // Starting from 4, since the first 16 bytes (4 rows ) are reserved
   for (int i = 4; i < 144; ++i) {
     if (((volatile uint32_t *) (output_mailbox_head_virt_addr))[i] != 0) {
-      TN_DEBUG("supported_issi[%d] = %x", i-0x04, ((volatile uint32_t *) (output_mailbox_head_virt_addr))[i]);
-      TN_VERBOSE("find first = %d", find_first_set(((volatile uint32_t *) (output_mailbox_head_virt_addr))[i]));
+      TN_VERBOSE("supported_issi[%d] = %x", i-0x04, ((volatile uint32_t *) (output_mailbox_head_virt_addr))[i]);
+      TN_DEBUG("find first = %d", find_first_set(((volatile uint32_t *) (output_mailbox_head_virt_addr))[i]));
+      // Table 1266 : BIT N indicates if ISSI = N supported
       minimum_issi = 32 *  (i - 0x04 - 1) +  find_first_set(((volatile uint32_t *) (output_mailbox_head_virt_addr))[i]);
       TN_VERBOSE("minimum_issi = %d", minimum_issi);
       break;
     }
   }
 
-  // Clean space in command queue
-  for (int i = 0; i < 16; ++i) {
-    ((volatile uint32_t *) (command_queues_virt_addr))[i] = 0;
-  }
-
-
+  // Set memory values to 0 for the first command entry in command queue
+  clean_command_queue(command_queues_virt_addr);
 
   /**
   * Step 6.
@@ -720,17 +745,17 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   // TODO: check supported issi
   TN_VERBOSE("### Init - step 6: Execute SET_ISSI");
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[0] = le_to_be_32(0x07000000);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_TYPE_OFFSET/4] = le_to_be_32(0x07000000);
   // input_length for SET_ISSI length is 12 bytes: Table 1255
-  ((volatile uint32_t *) command_queues_virt_addr)[1] = le_to_be_32(0x0C);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_INPUT_LENGTH_OFFSET/4] = le_to_be_32(0x0C);
   // OPCODE_SET_ISSI - Table 1267
-  ((volatile uint32_t *) command_queues_virt_addr)[4] = le_to_be_32(0x010B0000);
-  // OPCODE_SET_ISSI - Table 1267
-  ((volatile uint32_t *) command_queues_virt_addr)[6] = le_to_be_32(1); // or minimum_issi (a.k.a 601)?
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET/4] = le_to_be_32(0x010B0000);
+  // Current Interface Step Sequence ID to work with. - Table 1267
+  ((volatile uint32_t *) command_queues_virt_addr)[(CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x08)/4] = le_to_be_32(minimum_issi); // or minimum_issi (a.k.a 601)?
   // output_length - Table 1269
-  ((volatile uint32_t *) command_queues_virt_addr)[14] = le_to_be_32(0x0C);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OUTPUT_LENGTH_OFFSET/4] = le_to_be_32(0x0C);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[15] = le_to_be_32(0x01);
+  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_STATUS_OFFSET/4] = le_to_be_32(0x01);
 
   // Set the corresponding bit (0 for SET_ISSI as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device.addr, 0x18, 1 << command_index);
@@ -755,15 +780,11 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
-  current_issi = ((volatile uint32_t *) command_queues_virt_addr)[10];
-  for (int i = 0; i < 16; ++i) {
-    TN_DEBUG("command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
-  }
+  // If DEBUG_MODE is ON, print the command entry values
+  dump_command_entry_values(command_queues_virt_addr);
 
-  // Clean space in command queue
-  for (int i = 0; i < 16; ++i) {
-    ((volatile uint32_t *) (command_queues_virt_addr))[i] = 0;
-  }
+  // Set memory values to 0 for the first command entry in command queue
+  clean_command_queue(command_queues_virt_addr);
 
 //  /**
 //  * Step 7.
