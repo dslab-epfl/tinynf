@@ -53,6 +53,7 @@
 #define REG_FW_REV2_SUBMINOR BITS(0,15)
 
 #define CMDQ_SIZE 4096 // 8.24.1 HCA Command Queue size
+#define MAILBOX_BLOCK_SIZE 576 // Table 249 :
 #define REG_CMDQ_PHY_ADDR_LOW BITS(12,31)
 #define REG_NIC_INTERFACE BITS(8,10)
 #define REG_LOG_CMDQ_SIZE BITS(4,7)
@@ -541,6 +542,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   reg_read(device.addr, 0x14);
   TN_DEBUG("Check health status");
   reg_read(device.addr, 0x1010);
+
   /**
    * Step 3.
    * Read the initializing field from the initialization segment.
@@ -561,6 +563,37 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   uint32_t log_stride = cmdq_addr_l_sz & 0xf;
 
   TN_INFO("log_cmdq_size = %d, log_stride = %d", log_cmdq_size, log_stride);
+
+  /**
+   * Step 3.5
+   * Prepare to execute commands: mailbox space
+   * */
+  TN_VERBOSE("### Init - step 3.5: Prepare to execute commands: input_mailbox_pointer, output_mailbox_pointer");
+
+  void* input_mailbox_head_virt_addr;
+  uintptr_t input_mailbox_head_phys_addr;
+  void* output_mailbox_head_virt_addr;
+  uintptr_t output_mailbox_head_phys_addr;
+
+  if (!tn_mem_allocate(MAILBOX_BLOCK_SIZE, &input_mailbox_head_virt_addr)) {
+    TN_DEBUG("Could not allocate memory for input mailbox block");
+    return false;
+  }
+
+  if (!tn_mem_allocate(MAILBOX_BLOCK_SIZE, &output_mailbox_head_virt_addr)) {
+    TN_DEBUG("Could not allocate memory for output mailbox block");
+    return false;
+  }
+
+  if (!tn_mem_virt_to_phys(input_mailbox_head_virt_addr, &input_mailbox_head_phys_addr)) {
+    TN_DEBUG("Could not get the input mailbox_head_phys_addr's physical address");
+    return false;
+  }
+
+  if (!tn_mem_virt_to_phys(output_mailbox_head_virt_addr, &output_mailbox_head_phys_addr)) {
+    TN_DEBUG("Could not get the output mailbox_head_phys_addr's physical address");
+    return false;
+  }
 
   /**
    * Step 4.
@@ -617,12 +650,17 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   * */
   TN_VERBOSE("### Init - step 5: Execute QUERY_ISSI");
   uint32_t current_issi = 0;
+  uint32_t minimum_issi = 0;
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
   ((volatile uint32_t *) command_queues_virt_addr)[0] = le_to_be_32(0x07000000);
   // input_length for QUERY_ISSI length is 12 bytes: Table 1255
   ((volatile uint32_t *) command_queues_virt_addr)[1] = le_to_be_32(0x0C);
   // OPCODE_QUERY_ISSI - Table 1153
   ((volatile uint32_t *) command_queues_virt_addr)[4] = le_to_be_32(0x010A0000);
+  // set the output_mailbox_pointer high
+  ((volatile uint32_t *) command_queues_virt_addr)[12] = le_to_be_32((uint32_t)(output_mailbox_head_phys_addr>>32));
+  // set the output_mailbox_pointer high
+  ((volatile uint32_t *) command_queues_virt_addr)[13] = le_to_be_32((uint32_t)(output_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
   // output_length - Table 1153
   ((volatile uint32_t *) command_queues_virt_addr)[14] = le_to_be_32(0x70);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
@@ -657,10 +695,22 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     TN_DEBUG("command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
   }
 
+  // The first 16 bytes (4 rows ) are reserved
+  for (int i = 4; i < 144; ++i) {
+    if (((volatile uint32_t *) (output_mailbox_head_virt_addr))[i] != 0) {
+      TN_DEBUG("supported_issi[%d] = %x", i-0x04, ((volatile uint32_t *) (output_mailbox_head_virt_addr))[i]);
+      TN_VERBOSE("find first = %d", find_first_set(((volatile uint32_t *) (output_mailbox_head_virt_addr))[i]));
+      minimum_issi = 32 *  (i - 0x04 - 1) +  find_first_set(((volatile uint32_t *) (output_mailbox_head_virt_addr))[i]);
+      TN_VERBOSE("minimum_issi = %d", minimum_issi);
+      break;
+    }
+  }
+
   // Clean space in command queue
   for (int i = 0; i < 16; ++i) {
     ((volatile uint32_t *) (command_queues_virt_addr))[i] = 0;
   }
+
 
 
   /**
@@ -676,7 +726,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   // OPCODE_SET_ISSI - Table 1267
   ((volatile uint32_t *) command_queues_virt_addr)[4] = le_to_be_32(0x010B0000);
   // OPCODE_SET_ISSI - Table 1267
-  ((volatile uint32_t *) command_queues_virt_addr)[6] = current_issi;
+  ((volatile uint32_t *) command_queues_virt_addr)[6] = le_to_be_32(1); // or minimum_issi (a.k.a 601)?
   // output_length - Table 1269
   ((volatile uint32_t *) command_queues_virt_addr)[14] = le_to_be_32(0x0C);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
@@ -717,15 +767,22 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 
 //  /**
 //  * Step 7.
-//  *  Execute QUERY_PAGES command.
+//  *  Execute QUERY_PAGES to understand the HCA need for boot pages.
 //  * */
-//  TN_VERBOSE("### Init - step 7");
+//  TN_VERBOSE("### Init - step 7: Execute QUERY_PAGES");
 //
 //  /**
 //  * Step 8.
-//  *  Execute MANAGE_PAGES command.
+//  *  Execute MANAGE_PAGES to provide the HCA with all required boot pages,
+//  *  The driver is allowed to give the sum of boot pages and num_init_pages.
 //  * */
-//  TN_VERBOSE("### Init - step 8");
+//  TN_VERBOSE("### Init - step 8:Execute MANAGE_PAGES");
+
+//  /**
+//  * Step 9.
+//  *  Execute QUERY_HCA_CAP to retrieve the device capabilities limits..
+//  * */
+//  TN_VERBOSE("### Init - step 9: Execute QUERY_HCA_CAP");
 
   return true;
 }
