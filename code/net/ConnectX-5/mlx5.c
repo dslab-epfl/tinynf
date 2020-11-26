@@ -53,6 +53,7 @@
 #define REG_FW_REV2_SUBMINOR BITS(0,15)
 
 #define CMDQ_SIZE 4096 // 8.24.1 HCA Command Queue size
+#define PAGE_SIZE 4096 // 23.3.2  MANAGE_PAGES
 #define MAILBOX_BLOCK_SIZE 576 // Table 249 :
 #define REG_CMDQ_PHY_ADDR_LOW BITS(12,31)
 #define REG_NIC_INTERFACE BITS(8,10)
@@ -134,6 +135,14 @@ uint32_t le_to_be_32(uint32_t val) {
          ((val<<24)&0xff000000); // byte 0 to byte 3
 }
 
+void buffer_write_be(void* address, uint32_t offset, uint32_t value) {
+  ((volatile uint32_t *) address)[offset/4] = le_to_be_32(value);
+}
+
+uint32_t buffer_read_be(void* address, uint32_t offset) {
+  return le_to_be_32(((volatile uint32_t *) address)[offset/4]);
+}
+
 // ---------------------
 // Operations on the NIC
 // ---------------------
@@ -146,6 +155,7 @@ static uint32_t reg_read(void* addr, uint32_t reg)
   TN_VERBOSE("MLX5 read (addr %p): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
   return result;
 }
+
 // Get the value of field 'field' (from the REG_... macros) of register 'reg' on NIC at address 'addr'
 static uint32_t reg_read_field(void* addr, uint32_t reg, uint32_t field)
 {
@@ -166,6 +176,7 @@ static void reg_write(void* addr, uint32_t reg, uint32_t value)
   reg_write_raw((volatile uint32_t*) ((uint8_t*)addr + reg), value);
   TN_VERBOSE("MLX5 write (addr %p): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
 }
+
 // Write 'value' to the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
 static void reg_write_field(void* addr, uint32_t reg, uint32_t field, uint32_t field_value)
 {
@@ -180,6 +191,7 @@ static void reg_clear(void* addr, uint32_t reg)
 {
   reg_write(addr, reg, 0);
 }
+
 // Clear (i.e., write all 0s) the field 'field' (from the REG_... #defines) of register 'reg' on NIC at address 'addr'
 static void reg_clear_field(void* addr, uint32_t reg, uint32_t field)
 {
@@ -316,7 +328,7 @@ static const char *cmd_status_str(uint8_t status)
     case MLX5_CMD_STAT_LIM_ERR:
       return "limits exceeded";
     case MLX5_CMD_STAT_BAD_RES_STATE_ERR:
-      return "bad resource state";
+      return "bad resource state: Resource is not in the appropriate state or ownership";
     case MLX5_CMD_STAT_IX_ERR:
       return "bad index";
     case MLX5_CMD_STAT_NO_RES_ERR:
@@ -423,15 +435,27 @@ static inline const char *command_delivery_status_str (uint8_t status)
  */
 
 // Cleans only the first command entry
-void clean_command_queue(void* command_queues_virt_addr) {
-  for (int i = 0; i < CMD_Q_E_SIZE/sizeof(uint32_t); ++i) {
-    ((volatile uint32_t *) (command_queues_virt_addr))[i] = 0;
+void clean_buffer(void* buffer, int size_in_bytes) {
+  for (int i = 0; i < size_in_bytes/sizeof(uint32_t); ++i) {
+    ((volatile uint32_t *) (buffer))[i] = 0;
   }
 }
 
 void dump_command_entry_values(void* command_queues_virt_addr) {
+  TN_DEBUG("Command entry after command execution");
   for (int i = 0; i < CMD_Q_E_SIZE/sizeof(uint32_t); ++i) {
-    TN_DEBUG("command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
+    if (i < CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET/4 && i >= CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET/4) {
+      TN_DEBUG("cmd output - command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
+    } else {
+      TN_DEBUG("command_queues_virt_addr[%d] 0x%08X", i, ((volatile uint32_t *) command_queues_virt_addr)[i]);
+    }
+  }
+}
+
+void dump_output_mailbox(void* output_mailbox) {
+  TN_DEBUG("output_mailbox content ");
+  for (int i = 0; i < MAILBOX_BLOCK_SIZE/sizeof(uint32_t); ++i) {
+    TN_DEBUG("output_mailbox[%d] 0x%08X", i, ((volatile uint32_t *) output_mailbox)[i]);
   }
 }
 
@@ -583,7 +607,6 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
-
   uint32_t command_index = 0;
   uint32_t cmdq_addr_l_sz = reg_read(device.addr, 0x14) & 0xff;
   uint32_t log_cmdq_size = cmdq_addr_l_sz >> 4 & 0xf;
@@ -601,6 +624,8 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   uintptr_t input_mailbox_head_phys_addr;
   void* output_mailbox_head_virt_addr;
   uintptr_t output_mailbox_head_phys_addr;
+  uint8_t status, output_status;
+  int init_num_pages, boot_num_pages;
 
   if (!tn_mem_allocate(MAILBOX_BLOCK_SIZE, &input_mailbox_head_virt_addr)) {
     TN_DEBUG("Could not allocate memory for input mailbox block");
@@ -628,15 +653,15 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
    * */
   TN_VERBOSE("### Init - step 4: Execute ENABLE_HCA");
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_TYPE_OFFSET/4] = le_to_be_32(0x07000000);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
   // input_length for ENABLE_HCA length is 12 bytes: Table 1255
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_INPUT_LENGTH_OFFSET/4] = le_to_be_32(0x0C);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
   // OPCODE_ENABLE_HCA - Table 1153
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET/4] = le_to_be_32(0x01040000);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01040000);
   // output_length - Table 1153
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OUTPUT_LENGTH_OFFSET/4] = le_to_be_32(0x0C);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x0C);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_STATUS_OFFSET/4] = le_to_be_32(0x01);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
 
   // Set the corresponding bit (0 for Enable_HCA as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device.addr, 0x18, 1 << command_index);
@@ -648,14 +673,14 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   }
 
   // Read Command delivery status
-  uint8_t status = (uint8_t) ((le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[15]) & 0x000000FF) >> 1);
+  status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET) & 0x000000FF) >> 1);
   if (status != 0x0) {
     TN_DEBUG("ENABLE_HCA command delivery status is 0x%02X, %s", status, command_delivery_status_str(status));
     return false;
   }
 
   // Read output status (output length is 12)
-  uint8_t output_status = (uint8_t) (((volatile uint32_t *) command_queues_virt_addr)[8] & 0x000000FF);
+  output_status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET) & 0xFF000000) >> 24);
   if (output_status != 0x0) {
     TN_DEBUG("ENABLE_HCA output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
     return false;
@@ -665,7 +690,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   dump_command_entry_values(command_queues_virt_addr);
 
   // Set memory values to 0 for the first command entry in command queue
-  clean_command_queue(command_queues_virt_addr);
+  clean_buffer(command_queues_virt_addr, CMD_Q_E_SIZE);
 
   /**
   * Step 5.
@@ -675,34 +700,34 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   uint32_t current_issi = 0;
   uint32_t minimum_issi = 0;
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_TYPE_OFFSET/4] = le_to_be_32(0x07000000);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
   // input_length for QUERY_ISSI length is 12 bytes: Table 1255
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_INPUT_LENGTH_OFFSET/4] = le_to_be_32(0x0C);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
   // OPCODE_QUERY_ISSI - Table 1153
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET/4] = le_to_be_32(0x010A0000);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x010A0000);
   // set the output_mailbox_pointer high
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET/4] =
-                                        le_to_be_32((uint32_t)(output_mailbox_head_phys_addr>>32));
-  // set the output_mailbox_pointer high
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OUTPUT_MAILBOX_PTR_LOW_OFFSET/4] =
-                                        le_to_be_32((uint32_t)(output_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET,
+                                            (uint32_t)(output_mailbox_head_phys_addr>>32));
+  // set the output_mailbox_pointer low
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_LOW_OFFSET,
+                  (uint32_t)(output_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
   // output_length - Table 1153
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OUTPUT_LENGTH_OFFSET/4] = le_to_be_32(0x70);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x70);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_STATUS_OFFSET/4] = le_to_be_32(0x01);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
   //  If QUERY_ISSI command returns with BAD_OPCODE, this indicates that the supported_issi is only 0,
   //  and there is no need to perform SET_ISSI.
   // Set the corresponding bit (0 for QUERY_ISSI as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device.addr, 0x18, 1 << command_index);
 
   IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
-                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+                   (((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_STATUS_OFFSET] & BIT(0))) {
     TN_DEBUG("command_queues_virt_addr.ownership did not clear, QUERY_ISSI did not finished");
     return false;
   }
 
   // Read Command delivery status
-  status = (uint8_t) ((le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[15]) & 0x000000FF) >> 1);
+  status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET) & 0x000000FF) >> 1);
   if (status != 0x0) {
     TN_DEBUG("QUERY_ISSI command delivery status is 0x%02X, %s", status, command_delivery_status_str(status));
     return false;
@@ -710,7 +735,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 
   // TODO: if QUERY_ISSI command returns with BAD_OPCODE, this indicates that the supported_issi is only 0, and there is no need to perform SET_ISSI.
   // Read output status (output length is 12)
-  output_status = (uint8_t) (((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET/4] & 0x000000FF);
+  output_status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET) & 0xFF000000) >> 24);
   if (output_status != 0x0) {
     TN_DEBUG("QUERY_ISSI output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
     return false;
@@ -736,7 +761,8 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   }
 
   // Set memory values to 0 for the first command entry in command queue
-  clean_command_queue(command_queues_virt_addr);
+  clean_buffer(command_queues_virt_addr, CMD_Q_E_SIZE);
+  clean_buffer(output_mailbox_head_virt_addr, MAILBOX_BLOCK_SIZE);
 
   /**
   * Step 6.
@@ -745,17 +771,20 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   // TODO: check supported issi
   TN_VERBOSE("### Init - step 6: Execute SET_ISSI");
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_TYPE_OFFSET/4] = le_to_be_32(0x07000000);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
   // input_length for SET_ISSI length is 12 bytes: Table 1255
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_INPUT_LENGTH_OFFSET/4] = le_to_be_32(0x0C);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
   // OPCODE_SET_ISSI - Table 1267
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET/4] = le_to_be_32(0x010B0000);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x010B0000);
   // Current Interface Step Sequence ID to work with. - Table 1267
-  ((volatile uint32_t *) command_queues_virt_addr)[(CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x08)/4] = le_to_be_32(minimum_issi); // or minimum_issi (a.k.a 601)?
+  /* Disclaimer! The datasheet indicates minimum_issi value calculated above, but the device answer for the minimum_pages is
+   *  SET_ISSI output status is 0x03, Parameter not supported, parameter out of range, reserved not equal 0 .
+   *  using value 1 will not create a problem */
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x08, 1);
   // output_length - Table 1269
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OUTPUT_LENGTH_OFFSET/4] = le_to_be_32(0x0C);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x0C);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  ((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_STATUS_OFFSET/4] = le_to_be_32(0x01);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
 
   // Set the corresponding bit (0 for SET_ISSI as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device.addr, 0x18, 1 << command_index);
@@ -767,14 +796,14 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   }
 
   // Read Command delivery status
-  status = (uint8_t) ((le_to_be_32(((volatile uint32_t *) command_queues_virt_addr)[15]) & 0x000000FF) >> 1);
+  status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET) & 0x000000FF) >> 1);
   if (status != 0x0) {
     TN_DEBUG("SET_ISSI command delivery status is 0x%02X, %s", status, command_delivery_status_str(status));
     return false;
   }
 
   // Read output status (output length is 12)
-  output_status = (uint8_t) (((volatile uint32_t *) command_queues_virt_addr)[8] & 0x000000FF);
+  output_status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET) & 0xFF000000) >> 24);
   if (output_status != 0x0) {
     TN_DEBUG("SET_ISSI output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
     return false;
@@ -784,26 +813,231 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   dump_command_entry_values(command_queues_virt_addr);
 
   // Set memory values to 0 for the first command entry in command queue
-  clean_command_queue(command_queues_virt_addr);
+  clean_buffer(command_queues_virt_addr, CMD_Q_E_SIZE);
 
-//  /**
-//  * Step 7.
-//  *  Execute QUERY_PAGES to understand the HCA need for boot pages.
-//  * */
-//  TN_VERBOSE("### Init - step 7: Execute QUERY_PAGES");
-//
-//  /**
-//  * Step 8.
-//  *  Execute MANAGE_PAGES to provide the HCA with all required boot pages,
-//  *  The driver is allowed to give the sum of boot pages and num_init_pages.
-//  * */
-//  TN_VERBOSE("### Init - step 8:Execute MANAGE_PAGES");
 
-//  /**
-//  * Step 9.
-//  *  Execute QUERY_HCA_CAP to retrieve the device capabilities limits..
-//  * */
-//  TN_VERBOSE("### Init - step 9: Execute QUERY_HCA_CAP");
+  /**
+  * Step 7.
+  *  Execute QUERY_PAGES to understand the HCA need for boot pages.
+  * */
+  TN_VERBOSE("### Init - step 7: Execute QUERY_PAGES");
+  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
+  // input_length for QUERY_PAGES length is 12 bytes: Table 1156
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
+  // OPCODE_QUERY_PAGES - Table 1153
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01070000);
+  // op_mod boot_pages
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04, 1);
+  // embedded_cpu_function should be 0x00: HOST - Function on external Host
+
+  // output_length - Table 1269
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x10);
+  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
+
+  // Set the corresponding bit (0 for QUERY_PAGES as this is the first command in the queue) from command_doorbell_vector to 1
+  reg_write(device.addr, 0x18, 1 << command_index);
+
+  IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
+                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+    TN_DEBUG("command_queues_virt_addr.ownership did not clear, QUERY_PAGES did not finished");
+    return false;
+  }
+
+  // Read Command delivery status
+  status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET) & 0x000000FF) >> 1);
+  if (status != 0x0) {
+    TN_DEBUG("QUERY_PAGES command delivery status is 0x%02X, %s", status, command_delivery_status_str(status));
+    return false;
+  }
+
+  // Read output status (output length is 12)
+  output_status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET) & 0xFF000000) >> 24);
+  if (output_status != 0x0) {
+    TN_DEBUG("QUERY_PAGES output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
+    return false;
+  }
+
+  boot_num_pages = buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET + 0x0C);
+  /*
+   * Number of pages the device requires from the driver
+   * (positive numbers means driver should provide pages.
+   * Negative number means the driver should reclaim pages).
+   * */
+  TN_VERBOSE("QUERY_PAGES num_pages %d", boot_num_pages);
+
+  if (boot_num_pages < 0) {
+    TN_DEBUG("Number of pages the device requires from the driver is Negative");
+    return false;
+  }
+
+  // If DEBUG_MODE is ON, print the command entry values
+  dump_command_entry_values(command_queues_virt_addr);
+
+  // Set memory values to 0 for the first command entry in command queue
+  clean_buffer(command_queues_virt_addr, CMD_Q_E_SIZE);
+
+  /**
+  * Step 8.
+  *  Execute MANAGE_PAGES to provide the HCA with all required boot pages,
+  *  The driver is allowed to give the sum of boot pages and num_init_pages.
+  * */
+  TN_VERBOSE("### Init - step 8:Execute MANAGE_PAGES");
+
+  void* memoryPages;
+  uintptr_t memoryPagesPhysAddr;
+
+  // Alocate - boot_num_pages * 4096 and put boot_num_pages entries
+  if (!tn_mem_allocate(boot_num_pages * PAGE_SIZE, &memoryPages)) {
+    TN_DEBUG("Could not allocate memory for memoryPages");
+    return false;
+  }
+
+  if (!tn_mem_virt_to_phys(memoryPages, &memoryPagesPhysAddr)) {
+    TN_DEBUG("Could not get the memoryPages's physical address");
+    return false;
+  }
+
+  // TN_DEBUG("memoryPages = %p\n memoryPagesPhysAddr = %p", memoryPages, memoryPagesPhysAddr);
+
+  for (int i = 0; i < boot_num_pages; i++) {
+    // writing pa_h
+    ((volatile uint32_t *) input_mailbox_head_virt_addr)[2 * i] =
+            le_to_be_32((uint32_t)((memoryPagesPhysAddr + i * PAGE_SIZE) >> 32));
+    // writing pa_l
+    ((volatile uint32_t *) input_mailbox_head_virt_addr)[2 * i + 1] =
+            le_to_be_32((uint32_t)((memoryPagesPhysAddr + i * PAGE_SIZE) & 0x00000000FFFFF000));
+  }
+  // check that the right values were written:
+  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
+  // input_length for MANAGE_PAGES length is `16 + 8 * boot_num_pages bytes`: Table 1160
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 16 + 8 * boot_num_pages);
+  // writing the input mailbox address
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_MAILBOX_PTR_HIGH_OFFSET,
+                  (uint32_t)(input_mailbox_head_phys_addr >> 32));
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_MAILBOX_PTR_LOW_OFFSET,
+                  (uint32_t)(input_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
+  // OPCODE_MANAGE_PAGES - Table 1153
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01080000);
+  // op_mod - 0x1: ALLOCATION_SUCCESS - SW gives pages to HCA. Input parameter and input mailbox are valid.
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04, 1);
+  /* embedded_cpu_function should be 0x00: HOST - Function on external Host */
+  // set the output_mailbox_pointer high
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET,
+                  (uint32_t)(output_mailbox_head_phys_addr>>32));
+  // set the output_mailbox_pointer low
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_LOW_OFFSET,
+                  (uint32_t)(output_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
+  // output_length - see Table 1162
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 16 + 8 * boot_num_pages);
+  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
+  // Set the corresponding bit (0 for QUERY_PAGES as this is the first command in the queue) from command_doorbell_vector to 1
+  reg_write(device.addr, 0x18, 1 << command_index);
+  // Read Command delivery status
+  status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET) & 0x000000FF) >> 1);
+
+  if (status != 0x0) {
+    TN_DEBUG("MANAGE_PAGES command delivery status is 0x%02X, %s", status, command_delivery_status_str(status));
+    return false;
+  }
+
+  // Read output status (output length is 12)
+  output_status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET) & 0xFF000000) >> 24);
+  if (output_status != 0x0) {
+    TN_DEBUG("MANAGE_PAGES output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
+    return false;
+  }
+
+  // If DEBUG_MODE is ON, print the command entry values
+  dump_command_entry_values(command_queues_virt_addr);
+
+  // dump_output_mailbox(output_mailbox_head_virt_addr);
+
+  // Set memory values to 0 for the first command entry in command queue
+  clean_buffer(command_queues_virt_addr, CMD_Q_E_SIZE);
+  clean_buffer(input_mailbox_head_virt_addr, MAILBOX_BLOCK_SIZE);
+  clean_buffer(output_mailbox_head_virt_addr, MAILBOX_BLOCK_SIZE);
+
+  /**
+  * Step 9.
+  *  Execute QUERY_HCA_CAP to retrieve the device capabilities limits..
+  * */
+  TN_VERBOSE("### Init - step 9: Execute QUERY_HCA_CAP - skip for now");
+
+  /**
+  * Step 10.
+  *  Execute SET_HCA_CAP to modify system capabilities.
+  * */
+  TN_VERBOSE("### Init - step 10: Execute SET_HCA_CAP - skip for now");
+
+  /**
+  * Step 11.
+  *  Execute QUERY_PAGES to understand the HCA need for initial pages for executing
+  *  commands. If init_pages is 0, no need to do the MANAGE_PAGES stage.
+  * */
+  TN_VERBOSE("### Init - step 11: Execute QUERY_PAGES");
+  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
+  // input_length for QUERY_PAGES length is 12 bytes: Table 1156
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
+  // OPCODE_QUERY_PAGES - Table 1153
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01070000);
+  // op_mod init_pages
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04, 2);
+  // embedded_cpu_function should be 0x00: HOST - Function on external Host
+
+  // output_length - Table 1269
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x10);
+  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
+
+  // Set the corresponding bit (0 for QUERY_PAGES as this is the first command in the queue) from command_doorbell_vector to 1
+  reg_write(device.addr, 0x18, 1 << command_index);
+
+  IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
+                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+    TN_DEBUG("command_queues_virt_addr.ownership did not clear, QUERY_PAGES did not finished");
+    return false;
+  }
+
+  // Read Command delivery status
+  status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET) & 0x000000FF) >> 1);
+  if (status != 0x0) {
+    TN_DEBUG("QUERY_PAGES command delivery status is 0x%02X, %s", status, command_delivery_status_str(status));
+    return false;
+  }
+
+  // Read output status (output length is 12)
+  output_status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET) & 0xFF000000) >> 24);
+  if (output_status != 0x0) {
+    TN_DEBUG("QUERY_PAGES output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
+    return false;
+  }
+
+  dump_command_entry_values(command_queues_virt_addr);
+
+  init_num_pages = buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET + 0x0C);
+  /*
+   * Number of pages the device requires from the driver
+   * (positive numbers means driver should provide pages.
+   * Negative number means the driver should reclaim pages).
+   * */
+  TN_VERBOSE("init_num_pages = %d", init_num_pages);
+
+  clean_buffer(command_queues_virt_addr, CMD_Q_E_SIZE);
+
+  if (init_num_pages != 0) {
+      /**
+      * Step 12.
+      * Execute e MANAGE_PAGES to provide the HCA with all require init-pages.
+      * This can be done by multiple MANAGE_PAGES commands.
+      * */
+      TN_VERBOSE("### Init - step 12: Execute MANAGE_PAGES");
+  }
+
 
   return true;
 }
