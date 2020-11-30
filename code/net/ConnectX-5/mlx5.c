@@ -391,49 +391,6 @@ static inline const char *command_delivery_status_str (uint8_t status)
   }
 }
 
-// -------------------------------------
-// Section 7.2 HCA Driver Start-up
-// -------------------------------------
-
-/*
-  * Read the initialization segment from offset 0 of the HCA BAR, to retrieve the versions
-  of the firmware and the command interface. The driver must match the command inter-
-  face revision number. The format of the initialization segment is in Table 12, “Initializa-
-  tion Segment,” on page 168
-  * Write the physical location of the command queues to the initialization segment. If using
-  32-bit writes, write the most significant word first. The nic_interface field is part of the
-  least significant word and must be set to zero (Full NIC/HCA driver), as are the log_cm-
-  dq_size and log_cmdq_stride fields.
-  * Read the initializing field from the initialization segment. Repeat until it is cleared
-  (INIT_SEGMENT.initializing become 0).
-  * Execute ENABLE_HCA command.
-  * Execute QUERY_ISSI command. See “ISSI - Interface Step Sequence ID” on page 182.
-  * Execute SET_ISSI command.
-  * Execute QUERY_PAGES to understand the HCA need for boot pages.
-  * Execute MANAGE_PAGES to provide the HCA with all required boot pages, The
-  driver is allowed to give the sum of boot pages and num_init_pages.
-  * Execute QUERY_HCA_CAP to retrieve the device capabilities limits.
-  * Execute SET_HCA_CAP to modify system capabilities.
-  * Execute QUERY_PAGES to understand the HCA need for initial pages for executing
-  commands. If init_pages is 0, no need to do the MANAGE_PAGES stage.
-  * Execute MANAGE_PAGES to provide the HCA with all require init-pages. This can be
-  done by multiple MANAGE_PAGES commands.
-  * Execute INIT_HCA command to initialize the HCA.
-  * Execute SET_DRIVER_VERSION command (only in case HCA_CAP.driver_version==1). See Section 23.3.18, “SET_DRIVER_VERSION,” on page 1319.
-  * Execute the “CREATE_EQ – Create EQ” on page 1356 command to create EQ. Map
-  PAGE_REQUEST event to it.
-  * Execute QUERY_VPORT_STATE command to get vport state.
-  * For Ethernet, execute QUERY_VPORT_CONTEXT command to get permanent MAC
-  address. (See Section 14.1.5, “Virtual NIC Start-Up,” on page 643).
-  * Execute MODIFY_VPORT_CONTEXT command to set current MAC address. (See
-  Section 14.1.5, “Virtual NIC Start-Up,” on page 643).
-  * Map QP0 and QP1 to a receive WQ with the appropriate transport type. Prior to execut-
-  ing this command, software must create QPs to be used for Special QPs. Execute
-  SET_MAD_DEMUX to choose which MADs will be forward to SW and which will be
-  handled by the device.
-  * Set L2 addresses (mac_vlan), see Section 23.18, “L2 Table Commands,” on page 1499
- */
-
 // Cleans only the first command entry
 void clean_buffer(void* buffer, int size_in_bytes) {
   for (int i = 0; i < size_in_bytes/sizeof(uint32_t); ++i) {
@@ -459,6 +416,9 @@ void dump_output_mailbox(void* output_mailbox) {
   }
 }
 
+// -------------------------------------
+// Section 7.2 HCA Driver Start-up
+// -------------------------------------
 bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_device** out_device) {
   // The NIC supports 64-bit addresses, so pointers can't be larger
   static_assert(UINTPTR_MAX <= UINT64_MAX, "uintptr_t must fit in an uint64_t");
@@ -471,15 +431,13 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
-  // TODO Check if connectx5 have these settings by default:
-
   // Section 7.1:
   // The driver should ensure that the Bus Master bit in the Command Register is set in the PCI
   // configuration header
   pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_BUS_MASTER_ENABLE);
-//  // Same for memory reads, i.e. actually using the BARs.
+  // Same for memory reads, i.e. actually using the BARs.
   pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_MEMORY_ACCESS_ENABLE);
-//  // Finally, since we don't want interrupts and certainly not legacy ones, make sure they're disabled
+  // Finally, since we don't want interrupts and certainly not legacy ones, make sure they're disabled
   pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_INTERRUPT_DISABLE);
 
 
@@ -936,6 +894,13 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
   // Set the corresponding bit (0 for QUERY_PAGES as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device.addr, 0x18, 1 << command_index);
+
+  IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
+                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+    TN_DEBUG("command_queues_virt_addr.ownership did not clear, MANAGE_PAGES did not finished");
+    return false;
+  }
+
   // Read Command delivery status
   status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET) & 0x000000FF) >> 1);
 
@@ -988,7 +953,6 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   // op_mod init_pages
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04, 2);
   // embedded_cpu_function should be 0x00: HOST - Function on external Host
-
   // output_length - Table 1269
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x10);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
@@ -1010,12 +974,17 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
     return false;
   }
 
+  dump_command_entry_values(command_queues_virt_addr);
+  
   // Read output status (output length is 12)
   output_status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET) & 0xFF000000) >> 24);
   if (output_status != 0x0) {
     TN_DEBUG("QUERY_PAGES output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
+
+    TN_DEBUG("Check health status: ");
+    reg_read(device.addr, 0x1010);
     return false;
-  }
+ }
 
   dump_command_entry_values(command_queues_virt_addr);
 
@@ -1038,6 +1007,69 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
       TN_VERBOSE("### Init - step 12: Execute MANAGE_PAGES");
   }
 
+  /**
+  * Step 13.
+  * Execute INIT_HCA command to initialize the HCA
+  * */
+  TN_VERBOSE("### Init - step 13: Execute INIT_HCA");
+  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
+  // input_length for INIT_HCA length is 12 bytes: Table 1156
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x20);
+
+
+  // Write 0 in sw_owner_id
+  clean_buffer(input_mailbox_head_virt_addr, MAILBOX_BLOCK_SIZE);
+
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_MAILBOX_PTR_HIGH_OFFSET,
+                  (uint32_t)(input_mailbox_head_phys_addr >> 32));
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_MAILBOX_PTR_LOW_OFFSET,
+                  (uint32_t)(input_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
+
+  // OPCODE_INIT_HCA - Table 1153
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01020000);
+  // output_length - Table 1249
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x08);
+  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
+
+  // Set the corresponding bit (0 for INIT_HCA as this is the first command in the queue) from command_doorbell_vector to 1
+  reg_write(device.addr, 0x18, 1 << command_index);
+
+  IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
+                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+    TN_DEBUG("command_queues_virt_addr.ownership did not clear, INIT_HCA did not finished");
+    return false;
+  }
+
+  // Read Command delivery status
+  status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET) & 0x000000FF) >> 1);
+  if (status != 0x0) {
+    TN_DEBUG("INIT_HCA command delivery status is 0x%02X, %s", status, command_delivery_status_str(status));
+    return false;
+  }
+
+  // Read output status (output length is 12)
+  output_status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET) & 0xFF000000) >> 24);
+  if (output_status != 0x0) {
+    TN_DEBUG("INIT_HCA output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
+    TN_DEBUG("Check health status: %d", reg_read(device.addr, 0x1010));
+    return false;
+  }
+
+  // If DEBUG_MODE is ON, print the command entry values
+  dump_command_entry_values(command_queues_virt_addr);
+
+  // Set memory values to 0 for the first command entry in command queue
+  clean_buffer(command_queues_virt_addr, CMD_Q_E_SIZE);
+  clean_buffer(input_mailbox_head_virt_addr, MAILBOX_BLOCK_SIZE);
+  clean_buffer(output_mailbox_head_virt_addr, MAILBOX_BLOCK_SIZE);
+
+  /**
+  * Step 14.
+  * Execute SET_DRIVER_VERSION command command (only in case HCA_CAP.driver_version==1).
+  * See Section 23.3.18, “SET_DRIVER_VERSION,” on page 1319.
+  * */
 
   return true;
 }
