@@ -632,7 +632,7 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
     return 5;
   }
 
-  // TN_DEBUG("memoryPages = %p\n memoryPagesPhysAddr = %p", memoryPages, memoryPagesPhysAddr);
+  TN_DEBUG("memoryPages = %p\n memoryPagesPhysAddr = %p", memoryPages, memoryPagesPhysAddr);
 
   for (int i = 0; i < num_pages; i++) {
     // writing pa_h
@@ -664,7 +664,7 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_LOW_OFFSET,
                   (uint32_t)(output_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
   // output_length - see Table 1162
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 16 + 8 * num_pages);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 16);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
   // Set the corresponding bit (0 for QUERY_PAGES as this is the first command in the queue) from command_doorbell_vector to 1
@@ -710,13 +710,13 @@ int cmd_exec_query_hca_cap(void* command_queues_virt_addr, uint32_t command_inde
   TN_VERBOSE("### Init - step 9: Execute QUERY_HCA_CAP");
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
-  // input_length for QUERY_PAGES length is 12 bytes: Table 1166
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
-  // OPCODE_QUERY_PAGES - Table 1153
+  // input_length for QUERY_HCA_CAP length is 12 bytes: Table 1166
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x10);
+  // OPCODE_QUERY_HCA_CAP - Table 1153
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01000000);
   // op_mod cap_type
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04, (cap_type << 1) | 0x00);
-
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04, cap_type);
+  //((volatile uint32_t *) command_queues_virt_addr)[(CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04)/4] = 0x00000000;
   // set the output_mailbox_pointer high
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET,
                   (uint32_t)(output_mailbox_head_phys_addr >> 32));
@@ -729,7 +729,7 @@ int cmd_exec_query_hca_cap(void* command_queues_virt_addr, uint32_t command_inde
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
 
-  // Set the corresponding bit (0 for QUERY_PAGES as this is the first command in the queue) from command_doorbell_vector to 1
+  // Set the corresponding bit (0 for QUERY_HCA_CAP as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
 
   IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
@@ -750,6 +750,14 @@ int cmd_exec_query_hca_cap(void* command_queues_virt_addr, uint32_t command_inde
   if (output_status != 0x0) {
     TN_DEBUG("QUERY_HCA_CAP output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
     TN_DEBUG("Check health status: 0x%08x", reg_read(device_addr, 0x1010));
+
+    // If DEBUG_MODE is ON, print the command entry values
+    dump_command_entry_values(command_queues_virt_addr);
+
+
+    // If DEBUG_MODE is ON, print the output mailbox
+    dump_output_mailbox(output_mailbox_head_virt_addr);
+    
     return CMD_OUTPUT_STATUS_ERR;
   }
 
