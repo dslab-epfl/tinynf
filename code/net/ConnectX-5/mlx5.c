@@ -94,7 +94,22 @@
 #define ALLOCATION_SUCCESS 0x1
 #define HCA_RETURN_PAGES 0x2
 
+// Table Table 247 - Command delivery status
+#define SUCCESS_STATUS 0x00
+#define SIGNATURE_ERR_STATUS 0x01
+#define TOKEN_ERR_STATUS 0x02
+#define BAD_BLOCK_NUMBER_STATUS 0x03
+#define BAD_OUTPUT_POINTER_STATUS 0x04
+#define BAD_INPUT_POINTER_STATUS 0x05
+#define INTERNAL_ERR_STATUS 0x06
+#define INPUT_LEN_ERR_STATUS 0x07
+#define OUTPUT_LEN_ERR_STATUS 0x08
+#define RESERVED_NOT_ZERO_STATUS 0x09
+#define BAD_COMMAND_TYPE_STATUS 0x10
 
+#define CMD_EXECUTION_TIMEOUT_ERR 1
+#define CMD_DELIVERY_STATUS_ERR 2
+#define CMD_OUTPUT_STATUS_ERR 3
 
 // ---------
 // Utilities
@@ -128,12 +143,25 @@ static uint32_t find_first_set(uint32_t value)
   }
   return n;
 }
+//0x1234 --> 0x3412
 
 uint32_t le_to_be_32(uint32_t val) {
   return ((val>>24)&0xff) | // move byte 3 to byte 0
          ((val<<8)&0xff0000) | // move byte 1 to byte 2
          ((val>>8)&0xff00) | // move byte 2 to byte 1
          ((val<<24)&0xff000000); // byte 0 to byte 3
+}
+
+uint16_t le_to_be_16(uint16_t val) {
+  return (( val << 8 ) | ( val >> 8));
+}
+
+void buffer_write_16b_be(void* address, uint32_t offset, uint16_t value) {
+  ((volatile uint16_t *) address)[2 * offset/4] = le_to_be_16(value);
+}
+
+uint16_t buffer_read_16b_be(void* address, uint32_t offset) {
+  return le_to_be_16(((volatile uint16_t *) address)[2 * offset/4]);
 }
 
 void buffer_write_be(void* address, uint32_t offset, uint32_t value) {
@@ -306,23 +334,6 @@ static const char *cmd_status_str(uint8_t status)
   }
 }
 
-// Table Table 247 - Command delivery status
-#define SUCCESS_STATUS 0x00
-#define SIGNATURE_ERR_STATUS 0x01
-#define TOKEN_ERR_STATUS 0x02
-#define BAD_BLOCK_NUMBER_STATUS 0x03
-#define BAD_OUTPUT_POINTER_STATUS 0x04
-#define BAD_INPUT_POINTER_STATUS 0x05
-#define INTERNAL_ERR_STATUS 0x06
-#define INPUT_LEN_ERR_STATUS 0x07
-#define OUTPUT_LEN_ERR_STATUS 0x08
-#define RESERVED_NOT_ZERO_STATUS 0x09
-#define BAD_COMMAND_TYPE_STATUS 0x10
-
-#define CMD_EXECUTION_TIMEOUT_ERR 1
-#define CMD_DELIVERY_STATUS_ERR 2
-#define CMD_OUTPUT_STATUS_ERR 3
-
 static inline const char *command_delivery_status_str (uint8_t status)
 {
   switch (status) {
@@ -388,7 +399,7 @@ int cmd_exec_enable_hca(void* command_queues_virt_addr, uint32_t command_index, 
   // input_length for ENABLE_HCA length is 12 bytes: Table 1255
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
   // OPCODE_ENABLE_HCA - Table 1153
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01040000);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0104);
   // output_length - Table 1153
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x0C);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
@@ -414,6 +425,7 @@ int cmd_exec_enable_hca(void* command_queues_virt_addr, uint32_t command_index, 
   uint8_t output_status = (uint8_t) ((buffer_read_be(command_queues_virt_addr, CMD_Q_E_CMD_OUTPUT_INLINE_DATA_OFFSET) & 0xFF000000) >> 24);
   if (output_status != 0x0) {
     TN_DEBUG("ENABLE_HCA output status is 0x%02X, %s", output_status, cmd_status_str(output_status));
+    dump_command_entry_values(command_queues_virt_addr);
     return CMD_OUTPUT_STATUS_ERR;
   }
 
@@ -436,7 +448,7 @@ int cmd_exec_query_issi(void* command_queues_virt_addr, uint32_t command_index, 
   // input_length for QUERY_ISSI length is 12 bytes: Table 1255
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
   // OPCODE_QUERY_ISSI - Table 1153
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x010A0000);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x010A);
   // set the output_mailbox_pointer high
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET,
                   (uint32_t)(output_mailbox_head_phys_addr >> 32));
@@ -508,7 +520,7 @@ int cmd_exec_set_issi(void* command_queues_virt_addr, uint32_t command_index, vo
   // input_length for SET_ISSI length is 12 bytes: Table 1255
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
   // OPCODE_SET_ISSI - Table 1267
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x010B0000);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x010B);
   // Current Interface Step Sequence ID to work with. - Table 1267
   /* Disclaimer! The datasheet indicates minimum_issi value calculated above, but the device answer for the minimum_pages is
    *  SET_ISSI output status is 0x03, Parameter not supported, parameter out of range, reserved not equal 0 .
@@ -559,7 +571,7 @@ int cmd_exec_query_pages(void* command_queues_virt_addr, uint32_t command_index,
   // input_length for QUERY_PAGES length is 12 bytes: Table 1156
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
   // OPCODE_QUERY_PAGES - Table 1153
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01070000);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0107);
   // op_mod boot_pages/init_pages
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04, op_mod);
   // embedded_cpu_function should be 0x00: HOST - Function on external Host
@@ -639,10 +651,17 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
     ((volatile uint32_t *) input_mailbox_head_virt_addr)[2 * i] =
             le_to_be_32((uint32_t)((memoryPagesPhysAddr + i * PAGE_SIZE) >> 32));
     // writing pa_l
+
+    TN_DEBUG("input_mailbox_head_virt_addr lower for i = %d, 0x%08x ", i, (uint32_t)((memoryPagesPhysAddr + i * PAGE_SIZE) & 0x00000000FFFFF000));
     ((volatile uint32_t *) input_mailbox_head_virt_addr)[2 * i + 1] =
             le_to_be_32((uint32_t)((memoryPagesPhysAddr + i * PAGE_SIZE) & 0x00000000FFFFF000));
   }
+
+
+
   // check that the right values were written:
+  dump_output_mailbox(input_mailbox_head_virt_addr);
+
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
   // input_length for MANAGE_PAGES length is `16 + 8 * boot_num_pages bytes`: Table 1160
@@ -653,7 +672,7 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_MAILBOX_PTR_LOW_OFFSET,
                   (uint32_t)(input_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
   // OPCODE_MANAGE_PAGES - Table 1153
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01080000);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0108);
   // op_mod - 0x1: ALLOCATION_SUCCESS - SW gives pages to HCA. Input parameter and input mailbox are valid.
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04, ALLOCATION_SUCCESS);
   /* embedded_cpu_function should be 0x00: HOST - Function on external Host */
@@ -713,7 +732,7 @@ int cmd_exec_query_hca_cap(void* command_queues_virt_addr, uint32_t command_inde
   // input_length for QUERY_HCA_CAP length is 12 bytes: Table 1166
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x10);
   // OPCODE_QUERY_HCA_CAP - Table 1153
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01000000);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0100);
   // op_mod cap_type
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04, cap_type);
   //((volatile uint32_t *) command_queues_virt_addr)[(CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04)/4] = 0x00000000;
@@ -757,7 +776,7 @@ int cmd_exec_query_hca_cap(void* command_queues_virt_addr, uint32_t command_inde
 
     // If DEBUG_MODE is ON, print the output mailbox
     dump_output_mailbox(output_mailbox_head_virt_addr);
-    
+
     return CMD_OUTPUT_STATUS_ERR;
   }
 
