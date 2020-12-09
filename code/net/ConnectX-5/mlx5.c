@@ -82,17 +82,17 @@
 #define CMD_Q_E_SIZE 0x40
 
 // QUERY_HCA_CAP op_modes
-#define GEN_DEV_CAP 0x0
+#define GEN_DEV_CAP 0x0000
 
 // QUERY_PAGES op_modes
-#define BOOT_PAGES 0x1
-#define INIT_PAGES 0x2
-#define REGULAR_PAGES 0x3
+#define BOOT_PAGES 0x0001
+#define INIT_PAGES 0x0002
+#define REGULAR_PAGES 0x0003
 
 // MANAGES_PAGES op_modes
 #define ALLOCATION_FAIL 0x0
-#define ALLOCATION_SUCCESS 0x1
-#define HCA_RETURN_PAGES 0x2
+#define ALLOCATION_SUCCESS 0x0001
+#define HCA_RETURN_PAGES 0x0002
 
 // Table Table 247 - Command delivery status
 #define SUCCESS_STATUS 0x00
@@ -157,19 +157,19 @@ uint16_t le_to_be_16(uint16_t val) {
 }
 
 void buffer_write_16b_be(void* address, uint32_t offset, uint16_t value) {
-  ((volatile uint16_t *) address)[2 * offset/4] = le_to_be_16(value);
+  ((volatile uint16_t *) address)[offset / 2] = le_to_be_16(value);
 }
 
 uint16_t buffer_read_16b_be(void* address, uint32_t offset) {
-  return le_to_be_16(((volatile uint16_t *) address)[2 * offset/4]);
+  return le_to_be_16(((volatile uint16_t *) address)[offset / 2]);
 }
 
 void buffer_write_be(void* address, uint32_t offset, uint32_t value) {
-  ((volatile uint32_t *) address)[offset/4] = le_to_be_32(value);
+  ((volatile uint32_t *) address)[offset / 4] = le_to_be_32(value);
 }
 
 uint32_t buffer_read_be(void* address, uint32_t offset) {
-  return le_to_be_32(((volatile uint32_t *) address)[offset/4]);
+  return le_to_be_32(((volatile uint32_t *) address)[offset / 4]);
 }
 
 // ---------------------
@@ -573,7 +573,7 @@ int cmd_exec_query_pages(void* command_queues_virt_addr, uint32_t command_index,
   // OPCODE_QUERY_PAGES - Table 1153
   buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0107);
   // op_mod boot_pages/init_pages
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04, op_mod);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04 + 0x02, op_mod);
   // embedded_cpu_function should be 0x00: HOST - Function on external Host
 
   // output_length - Table 1269
@@ -657,8 +657,6 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
             le_to_be_32((uint32_t)((memoryPagesPhysAddr + i * PAGE_SIZE) & 0x00000000FFFFF000));
   }
 
-
-
   // check that the right values were written:
   dump_output_mailbox(input_mailbox_head_virt_addr);
 
@@ -674,7 +672,7 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
   // OPCODE_MANAGE_PAGES - Table 1153
   buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0108);
   // op_mod - 0x1: ALLOCATION_SUCCESS - SW gives pages to HCA. Input parameter and input mailbox are valid.
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04, ALLOCATION_SUCCESS);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04 + 0x02, ALLOCATION_SUCCESS);
   /* embedded_cpu_function should be 0x00: HOST - Function on external Host */
   // set the output_mailbox_pointer high
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET,
@@ -734,7 +732,7 @@ int cmd_exec_query_hca_cap(void* command_queues_virt_addr, uint32_t command_inde
   // OPCODE_QUERY_HCA_CAP - Table 1153
   buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0100);
   // op_mod cap_type
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04, cap_type);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04 + 0x02, cap_type);
   //((volatile uint32_t *) command_queues_virt_addr)[(CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04)/4] = 0x00000000;
   // set the output_mailbox_pointer high
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET,
