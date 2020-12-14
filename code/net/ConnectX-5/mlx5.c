@@ -1,8 +1,7 @@
 // All references in this file are to the Mellanox ConnectX-5 Datasheet unless otherwise noted.
-// It can be found at TODO
+// It can be found at https://www.mellanox.com/products/ethernet-adapters/connectx-5-en
 
 #include "net/network.h"
-
 #include "env/endian.h"
 #include "env/memory.h"
 #include "env/time.h"
@@ -20,8 +19,6 @@
 // The following two macros make defining fields easier; note that bit indices start at 0.
 #define BIT(n) (1u << (n))
 #define BITS(start, end) (((end) == 31 ? 0u : (0xFFFFFFFFu << ((end) + 1))) ^ (0xFFFFFFFFu << (start)))
-// This is for bits when we need 64-bit numbers
-//#define BITL(n) (1ull << (n))
 
 #define PCIREG_ID 0x00u
 // https://en.wikipedia.org/wiki/PCI_configuration_space#/media/File:Pci-config-space.svg
@@ -39,18 +36,10 @@
 #define PCI_ID_LOW 0x15b3u  // Vendor ID: Table 1245
 
 // These values were read from the card when the driver was written
-#define REG_FW_REV_MINOR_VAL 0x1000
-#define REG_FW_REV_MAJOR_VAL 0x1A00
-#define REG_CMD_INTERFACE_REVISION_VAL 0xAC0F
-#define REG_FW_REV_SUBMINOR_VAL 0x0500
-
-// Table 12 Initialization Segment
-#define REG_FW_REV 0x00
-#define REG_FW_REV_MINOR BITS(16,31)
-#define REG_FW_REV_MAJOR BITS(0,15)
-#define REG_FW_REV2 0x04
-#define REG_FW_REV2_CMD_INTERFACE_REVISION BITS(16,31)
-#define REG_FW_REV2_SUBMINOR BITS(0,15)
+#define REG_FW_REV_MINOR_VAL 0x1A00
+#define REG_FW_REV_MAJOR_VAL 0x1000
+#define REG_CMD_INTERFACE_REVISION_VAL 0x0500
+#define REG_FW_REV_SUBMINOR_VAL 0xAC0F
 
 #define CMDQ_SIZE 4096 // 8.24.1 HCA Command Queue size
 #define PAGE_SIZE 4096 // 23.3.2  MANAGE_PAGES
@@ -87,10 +76,10 @@
 // QUERY_PAGES op_modes
 #define BOOT_PAGES 0x0001
 #define INIT_PAGES 0x0002
-#define REGULAR_PAGES 0x0003
+// #define REGULAR_PAGES 0x0003
 
 // MANAGES_PAGES op_modes
-#define ALLOCATION_FAIL 0x0
+// #define ALLOCATION_FAIL 0x0
 #define ALLOCATION_SUCCESS 0x0001
 #define HCA_RETURN_PAGES 0x0002
 
@@ -162,6 +151,10 @@ void buffer_write_16b_be(void* address, uint32_t offset, uint16_t value) {
 
 uint16_t buffer_read_16b_be(void* address, uint32_t offset) {
   return le_to_be_16(((volatile uint16_t *) address)[offset / 2]);
+}
+
+uint16_t buffer_read_16b_le(void* address, uint32_t offset) {
+  return ((volatile uint16_t *) address)[offset / 2];
 }
 
 void buffer_write_be(void* address, uint32_t offset, uint32_t value) {
@@ -525,7 +518,7 @@ int cmd_exec_set_issi(void* command_queues_virt_addr, uint32_t command_index, vo
   /* Disclaimer! The datasheet indicates minimum_issi value calculated above, but the device answer for the minimum_pages is
    *  SET_ISSI output status is 0x03, Parameter not supported, parameter out of range, reserved not equal 0 .
    *  using value 1 will not create a problem */
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x08, 1); // minimum_issi
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x08, 1); //minimum_issi
   // output_length - Table 1269
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x0C);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
@@ -903,30 +896,32 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
    * */
   TN_VERBOSE("### Init - step 1");
 
-//  uint16_t fw_rev_minor = reg_read_field(device.addr, REG_FW_REV, REG_FW_REV_MINOR);
-//  uint16_t fw_rev_major = reg_read_field(device.addr, REG_FW_REV, REG_FW_REV_MAJOR);
-//  uint16_t cmd_int_rev = reg_read_field(device.addr, REG_FW_REV2, REG_FW_REV2_CMD_INTERFACE_REVISION);
-//  uint16_t fw_rev_subminor = reg_read_field(device.addr, REG_FW_REV2, REG_FW_REV2_SUBMINOR);
+  uint16_t fw_rev_minor = buffer_read_16b_le(device.addr, 0x00);
+  uint16_t fw_rev_major = buffer_read_16b_le(device.addr, 0x02);
+  uint16_t cmd_int_rev = buffer_read_16b_le(device.addr, 0x04);
+  uint16_t fw_rev_subminor = buffer_read_16b_le(device.addr, 0x06);
 
-//  if (fw_rev_minor != REG_FW_REV_MINOR_VAL) {
-//    TN_DEBUG("Firmware revision minor is %x, expected value is %x", fw_rev_minor, REG_FW_REV_MINOR_VAL);
-//    return false;
-//  }
-//
-//  if (fw_rev_major != REG_FW_REV_MAJOR_VAL) {
-//    TN_DEBUG("Firmware revision is major %x expected value is %x", fw_rev_major, REG_FW_REV_MAJOR_VAL);
-//    return false;
-//  }
-//
-//  if (cmd_int_rev != REG_CMD_INTERFACE_REVISION_VAL) {
-//    TN_DEBUG("Firmware revision is %x expected value is %x", cmd_int_rev, REG_CMD_INTERFACE_REVISION_VAL);
-//    return false;
-//  }
-//
-//  if (fw_rev_subminor != REG_FW_REV_SUBMINOR_VAL) {
-//    TN_DEBUG("Firmware revision is %x expected value is %x", fw_rev_subminor, REG_FW_REV_SUBMINOR_VAL);
-//    return false;
-//  }
+  TN_DEBUG("fw_rev_minor %x, fw_rev_major %x", fw_rev_minor, fw_rev_major);
+
+  if (fw_rev_minor != REG_FW_REV_MINOR_VAL) {
+    TN_DEBUG("Firmware revision minor is %x, expected value is %x", fw_rev_minor, REG_FW_REV_MINOR_VAL);
+    return false;
+  }
+
+  if (fw_rev_major != REG_FW_REV_MAJOR_VAL) {
+    TN_DEBUG("Firmware revision is major %x expected value is %x", fw_rev_major, REG_FW_REV_MAJOR_VAL);
+    return false;
+  }
+
+  if (cmd_int_rev != REG_CMD_INTERFACE_REVISION_VAL) {
+    TN_DEBUG("Firmware revision is %x expected value is %x", cmd_int_rev, REG_CMD_INTERFACE_REVISION_VAL);
+    return false;
+  }
+
+  if (fw_rev_subminor != REG_FW_REV_SUBMINOR_VAL) {
+    TN_DEBUG("Firmware revision is %x expected value is %x", fw_rev_subminor, REG_FW_REV_SUBMINOR_VAL);
+    return false;
+  }
 
   /**
    * Step 2. Write the physical location of the command queues to the initialization segment.
@@ -1040,7 +1035,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   * Step 5. Execute QUERY_ISSI command.
   * */
   uint32_t current_issi = 0;
-  uint32_t minimum_issi = 0;
+  uint32_t minimum_issi = 1;
   if (cmd_exec_query_issi(command_queues_virt_addr, command_index, device.addr,
                           output_mailbox_head_virt_addr, output_mailbox_head_phys_addr,
                           &current_issi, &minimum_issi) != 0) {
