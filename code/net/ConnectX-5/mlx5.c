@@ -65,6 +65,7 @@
 #define CMD_Q_E_STATUS_OFFSET 0x3C
 #define CMD_Q_E_OWNERSHIP_OFFSET 0x3C
 #define CMD_Q_E_SIZE 0x40
+static_assert(CMD_Q_E_SIZE % 4 == 0, "the command queue size has to be a multiple of 4");
 
 // QUERY_HCA_CAP op_modes
 #define GEN_DEV_CAP 0x0000
@@ -131,15 +132,12 @@ static uint32_t find_first_set(uint32_t value)
   return n;
 }
 
-uint32_t le_to_be_32(uint32_t val) {
-  return ((val>>24)&0xff) | // move byte 3 to byte 0
-         ((val<<8)&0xff0000) | // move byte 1 to byte 2
-         ((val>>8)&0xff00) | // move byte 2 to byte 1
-         ((val<<24)&0xff000000); // byte 0 to byte 3
+void buffer_write_8b(void* address, uint32_t offset, uint8_t value) {
+  ((volatile uint8_t *) address)[offset] = value;
 }
 
-uint16_t le_to_be_16(uint16_t val) {
-  return (( val << 8 ) | ( val >> 8));
+uint16_t buffer_read_8b(void* address, uint32_t offset) {
+  return ((volatile uint8_t *) address)[offset];
 }
 
 void buffer_write_16b_be(void* address, uint32_t offset, uint16_t value) {
@@ -378,21 +376,26 @@ void dump_output_mailbox(void* output_mailbox) {
   }
 }
 
+void write_cmd_fields(void* command_queues_virt_addr, uint8_t transport_type, uint32_t input_length, uint16_t opcode,
+                      uint32_t output_length) {
+  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
+  buffer_write_8b(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, transport_type);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, input_length);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, opcode);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, output_length);
+  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
+
+}
 
 int cmd_exec_enable_hca(void* command_queues_virt_addr, uint32_t command_index, void* device_addr) {
 
   TN_VERBOSE("### Init - step 4: Execute ENABLE_HCA");
-
-  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
   // input_length for ENABLE_HCA length is 12 bytes: Table 1255
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
-  // OPCODE_ENABLE_HCA - Table 1153
-  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0104);
-  // output_length - Table 1153
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x0C);
-  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
+  // OPCODE_ENABLE_HCA: 0x0104 - Table 1153
+  // output_length: 0x0C- Table 1153
+  write_cmd_fields(command_queues_virt_addr, 0x07, 0x0C, 0x0104, 0x0C);
+
 
   // Set the corresponding bit (0 for Enable_HCA as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
@@ -431,23 +434,18 @@ int cmd_exec_query_issi(void* command_queues_virt_addr, uint32_t command_index, 
                         void* output_mailbox_head_virt_addr, uintptr_t output_mailbox_head_phys_addr,
                         uint32_t* current_issi, uint32_t* minimum_issi) {
   TN_VERBOSE("### Init - step 5: Execute QUERY_ISSI");
+  // input_length for QUERY_ISSI length is 8 bytes: Table 1263
+  // OPCODE_QUERY_ISSI: 0x010A - Table 1255
+  // output_length: 0x70 - Table 1265
+  write_cmd_fields(command_queues_virt_addr, 0x07, 0x08, 0x010A, 0x70);
 
-  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
-  // input_length for QUERY_ISSI length is 12 bytes: Table 1255
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
-  // OPCODE_QUERY_ISSI - Table 1153
-  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x010A);
-  // set the output_mailbox_pointer high
+  // set the output_mailbox_pointer higher
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_HIGH_OFFSET,
                   (uint32_t)(output_mailbox_head_phys_addr >> 32));
   // set the output_mailbox_pointer low
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_LOW_OFFSET,
                   (uint32_t)(output_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
-  // output_length - Table 1153
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x70);
-  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
+
   //  If QUERY_ISSI command returns with BAD_OPCODE, this indicates that the supported_issi is only 0,
   //  and there is no need to perform SET_ISSI.
   // Set the corresponding bit (0 for QUERY_ISSI as this is the first command in the queue) from command_doorbell_vector to 1
@@ -504,21 +502,16 @@ int cmd_exec_set_issi(void* command_queues_virt_addr, uint32_t command_index, vo
                       uint32_t minimum_issi) {
 
   TN_VERBOSE("### Init - step 6: Execute SET_ISSI");
-  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
-  // input_length for SET_ISSI length is 12 bytes: Table 1255
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
-  // OPCODE_SET_ISSI - Table 1267
-  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x010B);
+
+  // input_length for SET_ISSI length is 12 bytes: Table 1267
+  // OPCODE_SET_ISSI: 0x010B - Table 1255
+  // output_length: 0x08 - Table 1269
+  write_cmd_fields(command_queues_virt_addr, 0x07, 0x0C, 0x010B, 0x08);
   // Current Interface Step Sequence ID to work with. - Table 1267
   /* Disclaimer! The datasheet indicates minimum_issi value calculated above, but the device answer for the minimum_pages is
    *  SET_ISSI output status is 0x03, Parameter not supported, parameter out of range, reserved not equal 0 .
    *  using value 1 will not create a problem */
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x08, 1); //minimum_issi
-  // output_length - Table 1269
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x0C);
-  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
+  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x08, 1); //minimum_issi
 
   // Set the corresponding bit (0 for SET_ISSI as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
@@ -555,20 +548,15 @@ int cmd_exec_set_issi(void* command_queues_virt_addr, uint32_t command_index, vo
 int cmd_exec_query_pages(void* command_queues_virt_addr, uint32_t command_index, void* device_addr, int* num_pages, int op_mod) {
   int step_nr = op_mod == BOOT_PAGES ? 7 : 11;
   TN_VERBOSE("### Init - step %d: Execute QUERY_PAGES", step_nr);
-  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
-  // input_length for QUERY_PAGES length is 12 bytes: Table 1156
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x0C);
-  // OPCODE_QUERY_PAGES - Table 1153
-  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0107);
+
+  // input_length for QUERY_PAGES is 12 bytes: Table 1156
+  // OPCODE_QUERY_PAGES: 0x0107 - Table 1153
+  // output_length: 0x10 - Table 1158
+  write_cmd_fields(command_queues_virt_addr, 0x07, 0x0C, 0x0107, 0x10);
+
   // op_mod boot_pages/init_pages
   buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04 + 0x02, op_mod);
   // embedded_cpu_function should be 0x00: HOST - Function on external Host
-
-  // output_length - Table 1269
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x10);
-  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
 
   // Set the corresponding bit (0 for QUERY_PAGES as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
@@ -644,20 +632,16 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
             le_to_be_32((uint32_t)((memoryPagesPhysAddr + i * PAGE_SIZE) & 0x00000000FFFFF000));
   }
 
-  // check that the right values were written:
-  dump_output_mailbox(input_mailbox_head_virt_addr);
-
-  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
   // input_length for MANAGE_PAGES length is `16 + 8 * boot_num_pages bytes`: Table 1160
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 16 + 8 * num_pages);
+  // OPCODE_MANAGE_PAGES - Table 1153
+  // output_length - see Table 1162
+  write_cmd_fields(command_queues_virt_addr, 0x07, 16 + 8 * num_pages, 0x0108, 0x10);
+
   // writing the input mailbox address
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_MAILBOX_PTR_HIGH_OFFSET,
                   (uint32_t)(input_mailbox_head_phys_addr >> 32));
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_MAILBOX_PTR_LOW_OFFSET,
                   (uint32_t)(input_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
-  // OPCODE_MANAGE_PAGES - Table 1153
-  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0108);
   // op_mod - 0x1: ALLOCATION_SUCCESS - SW gives pages to HCA. Input parameter and input mailbox are valid.
   buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04 + 0x02, ALLOCATION_SUCCESS);
   /* embedded_cpu_function should be 0x00: HOST - Function on external Host */
@@ -667,10 +651,7 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
   // set the output_mailbox_pointer low
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_LOW_OFFSET,
                   (uint32_t)(output_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
-  // output_length - see Table 1162
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 16);
-  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
+
   // Set the corresponding bit (0 for QUERY_PAGES as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
 
@@ -710,12 +691,12 @@ int cmd_exec_query_hca_cap(void* command_queues_virt_addr, uint32_t command_inde
                            void* output_mailbox_head_virt_addr, uintptr_t output_mailbox_head_phys_addr,
                            uint16_t cap_type) {
   TN_VERBOSE("### Init - step 9: Execute QUERY_HCA_CAP");
-  // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
+
   // input_length for QUERY_HCA_CAP length is 12 bytes: Table 1166
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x10);
   // OPCODE_QUERY_HCA_CAP - Table 1153
-  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0100);
+  // output_length - see Table 1168
+  write_cmd_fields(command_queues_virt_addr, 0x07, 0x0C, 0x0100, 0x1010);
+
   // op_mod cap_type
   buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET + 0x04 + 0x02, cap_type);
   //((volatile uint32_t *) command_queues_virt_addr)[(CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET+0x04)/4] = 0x00000000;
@@ -725,11 +706,6 @@ int cmd_exec_query_hca_cap(void* command_queues_virt_addr, uint32_t command_inde
   // set the output_mailbox_pointer low
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_MAILBOX_PTR_LOW_OFFSET,
                   (uint32_t)(output_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
-
-  // output_length - Table 1168
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x100C + 0x04);
-  // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_STATUS_OFFSET, 0x01);
 
   // Set the corresponding bit (0 for QUERY_HCA_CAP as this is the first command in the queue) from command_doorbell_vector to 1
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
@@ -756,15 +732,8 @@ int cmd_exec_query_hca_cap(void* command_queues_virt_addr, uint32_t command_inde
     // If DEBUG_MODE is ON, print the command entry values
     dump_command_entry_values(command_queues_virt_addr);
 
-
-    // If DEBUG_MODE is ON, print the output mailbox
-    dump_output_mailbox(output_mailbox_head_virt_addr);
-
     return CMD_OUTPUT_STATUS_ERR;
   }
-
-  // If DEBUG_MODE is ON, print the output mailbox
-  dump_output_mailbox(output_mailbox_head_virt_addr);
 
   // If DEBUG_MODE is ON, print the command entry values
   dump_command_entry_values(command_queues_virt_addr);
@@ -779,7 +748,7 @@ int cmd_exec_init_hca(void* command_queues_virt_addr, uint32_t command_index, vo
                       void* input_mailbox_head_virt_addr, uintptr_t input_mailbox_head_phys_addr) {
   TN_VERBOSE("### Init - step 13: Execute INIT_HCA");
   // Type of transport that carries the command: 0x7: PCIe_cmd_if_transport - Table 247
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07000000);
+  buffer_write_8b(command_queues_virt_addr, CMD_Q_E_TYPE_OFFSET, 0x07);
   // input_length for INIT_HCA length is 12 bytes: Table 1156
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_INPUT_LENGTH_OFFSET, 0x20);
 
@@ -792,7 +761,7 @@ int cmd_exec_init_hca(void* command_queues_virt_addr, uint32_t command_index, vo
                   (uint32_t)(input_mailbox_head_phys_addr & 0x00000000FFFFFFFF));
 
   // OPCODE_INIT_HCA - Table 1153
-  buffer_write_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x01020000);
+  buffer_write_16b_be(command_queues_virt_addr, CMD_Q_E_CMD_INPUT_INLINE_DATA_OFFSET, 0x0102);
   // output_length - Table 1249
   buffer_write_be(command_queues_virt_addr, CMD_Q_E_OUTPUT_LENGTH_OFFSET, 0x08);
   // SW should set to 1 when posting the command. HW will change to zero to move ownership bit to SW. - Table 247
@@ -954,13 +923,6 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 
   reg_clear(device.addr, 0x14); // instead of the below lines
   reg_write(device.addr, 0x14, ((uint32_t) (command_queues_phys_addr & 0x00000000FFFFFFFF)));
-  // write in the nic_interface 0
-
-  TN_DEBUG("Check if the values were written correctly on initialization segment");
-  reg_read(device.addr, 0x10);
-  reg_read(device.addr, 0x14);
-  TN_DEBUG("Check health status");
-  reg_read(device.addr, 0x1010);
 
   /**
    * Step 3. Read the initializing field from the initialization segment.
