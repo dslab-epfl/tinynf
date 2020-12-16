@@ -44,10 +44,6 @@
 #define CMDQ_SIZE 4096 // 8.24.1 HCA Command Queue size
 #define PAGE_SIZE 4096 // 23.3.2  MANAGE_PAGES
 #define MAILBOX_BLOCK_SIZE 576 // Table 249 :
-//#define REG_CMDQ_PHY_ADDR_LOW BITS(12,31)
-//#define REG_NIC_INTERFACE BITS(8,10)
-//#define REG_LOG_CMDQ_SIZE BITS(4,7)
-//#define REG_LOG_CMDQ_STRIDE BITS(0,3)
 #define REG_COMMAND_DOORBELL_VECTOR_OFFSET 0x18
 
 #define INITIALIZING_TIMEOUT 2 // in seconds, FW_INIT_TIMEOUT_MILI value from official driver sources for linux
@@ -67,7 +63,7 @@
 #define CMD_Q_E_OUTPUT_MAILBOX_PTR_LOW_OFFSET 0x34
 #define CMD_Q_E_OUTPUT_LENGTH_OFFSET 0x38
 #define CMD_Q_E_STATUS_OFFSET 0x3C
-//#define CMD_Q_E_SIGNATURE_OFFSET 0x3C
+#define CMD_Q_E_OWNERSHIP_OFFSET 0x3C
 #define CMD_Q_E_SIZE 0x40
 
 // QUERY_HCA_CAP op_modes
@@ -76,10 +72,10 @@
 // QUERY_PAGES op_modes
 #define BOOT_PAGES 0x0001
 #define INIT_PAGES 0x0002
-// #define REGULAR_PAGES 0x0003
+#define REGULAR_PAGES 0x0003
 
 // MANAGES_PAGES op_modes
-// #define ALLOCATION_FAIL 0x0
+#define ALLOCATION_FAIL 0x0
 #define ALLOCATION_SUCCESS 0x0001
 #define HCA_RETURN_PAGES 0x0002
 
@@ -99,6 +95,8 @@
 #define CMD_EXECUTION_TIMEOUT_ERR 1
 #define CMD_DELIVERY_STATUS_ERR 2
 #define CMD_OUTPUT_STATUS_ERR 3
+#define BUFFER_ALLOCATION_FAILED 4
+#define VIRT_TO_PHYS_FAILED 5
 
 // ---------
 // Utilities
@@ -132,7 +130,6 @@ static uint32_t find_first_set(uint32_t value)
   }
   return n;
 }
-//0x1234 --> 0x3412
 
 uint32_t le_to_be_32(uint32_t val) {
   return ((val>>24)&0xff) | // move byte 3 to byte 0
@@ -260,7 +257,6 @@ static void pcireg_set_field(struct tn_pci_address addr, uint8_t reg, uint32_t f
 // -----------------
 // Device definition
 // -----------------
-
 struct tn_net_device
 {
     void* addr; // virtual address , adress 0 - init seg
@@ -359,8 +355,8 @@ static inline const char *command_delivery_status_str (uint8_t status)
 
 // Cleans only the first command entry
 void clean_buffer(void* buffer, int size_in_bytes) {
-  for (uint32_t i = 0; i < size_in_bytes/sizeof(uint32_t); ++i) {
-    ((volatile uint32_t *) (buffer))[i] = 0;
+  for (int i = 0; i < size_in_bytes; ++i) {
+    ((volatile uint8_t *) (buffer))[i] = 0;
   }
 }
 
@@ -402,7 +398,7 @@ int cmd_exec_enable_hca(void* command_queues_virt_addr, uint32_t command_index, 
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
 
   IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
-                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+                   (buffer_read_be(command_queues_virt_addr, CMD_Q_E_OWNERSHIP_OFFSET) & BIT(0))) {
     TN_DEBUG("command_queues_virt_addr.ownership did not clear, ENABLE_HCA did not finished");
     return CMD_EXECUTION_TIMEOUT_ERR;
   }
@@ -528,7 +524,7 @@ int cmd_exec_set_issi(void* command_queues_virt_addr, uint32_t command_index, vo
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
 
   IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
-                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+                   (buffer_read_be(command_queues_virt_addr, CMD_Q_E_OWNERSHIP_OFFSET) & BIT(0))) {
     TN_DEBUG("command_queues_virt_addr.ownership did not clear, SET_ISSI did not finished");
     return CMD_EXECUTION_TIMEOUT_ERR;
   }
@@ -578,7 +574,7 @@ int cmd_exec_query_pages(void* command_queues_virt_addr, uint32_t command_index,
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
 
   IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
-                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+                   (buffer_read_be(command_queues_virt_addr, CMD_Q_E_OWNERSHIP_OFFSET) & BIT(0))) {
     TN_DEBUG("command_queues_virt_addr.ownership did not clear, QUERY_PAGES did not finished");
     return CMD_EXECUTION_TIMEOUT_ERR;
   }
@@ -629,12 +625,12 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
   // Alocate - num_pages * 4096 and put boot_num_pages entries
   if (!tn_mem_allocate(num_pages * PAGE_SIZE, &memoryPages)) {
     TN_DEBUG("Could not allocate memory for memoryPages");
-    return 4;
+    return BUFFER_ALLOCATION_FAILED;
   }
 
   if (!tn_mem_virt_to_phys(memoryPages, &memoryPagesPhysAddr)) {
     TN_DEBUG("Could not get the memoryPages's physical address");
-    return 5;
+    return VIRT_TO_PHYS_FAILED;
   }
 
   TN_DEBUG("memoryPages = %p\n memoryPagesPhysAddr = %p", memoryPages, memoryPagesPhysAddr);
@@ -644,8 +640,6 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
     ((volatile uint32_t *) input_mailbox_head_virt_addr)[2 * i] =
             le_to_be_32((uint32_t)((memoryPagesPhysAddr + i * PAGE_SIZE) >> 32));
     // writing pa_l
-
-    TN_DEBUG("input_mailbox_head_virt_addr lower for i = %d, 0x%08x ", i, (uint32_t)((memoryPagesPhysAddr + i * PAGE_SIZE) & 0x00000000FFFFF000));
     ((volatile uint32_t *) input_mailbox_head_virt_addr)[2 * i + 1] =
             le_to_be_32((uint32_t)((memoryPagesPhysAddr + i * PAGE_SIZE) & 0x00000000FFFFF000));
   }
@@ -681,7 +675,7 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
 
   IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
-                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+                   (buffer_read_be(command_queues_virt_addr, CMD_Q_E_OWNERSHIP_OFFSET) & BIT(0))) {
     TN_DEBUG("command_queues_virt_addr.ownership did not clear, MANAGE_PAGES did not finished");
     return CMD_EXECUTION_TIMEOUT_ERR;
   }
@@ -703,8 +697,6 @@ int cmd_exec_manage_pages(void* command_queues_virt_addr, uint32_t command_index
 
   // If DEBUG_MODE is ON, print the command entry values
   dump_command_entry_values(command_queues_virt_addr);
-
-  // dump_output_mailbox(output_mailbox_head_virt_addr);
 
   // Set memory values to 0 for the first command entry in command queue
   clean_buffer(command_queues_virt_addr, CMD_Q_E_SIZE);
@@ -743,7 +735,7 @@ int cmd_exec_query_hca_cap(void* command_queues_virt_addr, uint32_t command_inde
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
 
   IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
-                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+                   (((volatile uint32_t *) command_queues_virt_addr)[CMD_Q_E_OWNERSHIP_OFFSET/4] & BIT(0))) {
     TN_DEBUG("command_queues_virt_addr.ownership did not clear, QUERY_HCA_CAP did not finished");
     return CMD_EXECUTION_TIMEOUT_ERR;
   }
@@ -810,7 +802,7 @@ int cmd_exec_init_hca(void* command_queues_virt_addr, uint32_t command_index, vo
   reg_write(device_addr, REG_COMMAND_DOORBELL_VECTOR_OFFSET, 1 << command_index);
 
   IF_AFTER_TIMEOUT(ENABLE_HCA_DELAY * 1000 * 1000,
-                   (((volatile uint32_t *) command_queues_virt_addr)[15] & BIT(0))) {
+                   (buffer_read_be(command_queues_virt_addr, CMD_Q_E_OWNERSHIP_OFFSET) & BIT(0))) {
     TN_DEBUG("command_queues_virt_addr.ownership did not clear, INIT_HCA did not finished");
     return CMD_EXECUTION_TIMEOUT_ERR;
   }
@@ -864,15 +856,16 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   // Finally, since we don't want interrupts and certainly not legacy ones, make sure they're disabled
   pcireg_set_field(pci_address, PCIREG_COMMAND, PCIREG_COMMAND_INTERRUPT_DISABLE);
 
-
   uint32_t pci_bar0low = pcireg_read(pci_address, PCIREG_BAR0_LOW);
   // Sanity check: a 64-bit BAR must have bit 2 of low as 1 and bit 1 of low as 0 as per Table 9-4 Base Address Registers' Fields
   if ((pci_bar0low & BIT(2)) == 0 || (pci_bar0low & BIT(1)) != 0) {
     TN_DEBUG("BAR0 is not a 64-bit BAR");
     return false;
   }
+
   uint32_t pci_bar0high = pcireg_read(pci_address, PCIREG_BAR0_HIGH);
-  // No need to detect the size, since we know exactly which device we're dealing with. (This also means no writes to BARs, one less chance to mess everything up)
+  // No need to detect the size, since we know exactly which device we're dealing with.
+  // (This also means no writes to BARs, one less chance to mess everything up)
   // BARs ==  actual pointer
 
   struct tn_net_device device = { 0 };
@@ -962,10 +955,6 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
   reg_clear(device.addr, 0x14); // instead of the below lines
   reg_write(device.addr, 0x14, ((uint32_t) (command_queues_phys_addr & 0x00000000FFFFFFFF)));
   // write in the nic_interface 0
-
-//  reg_clear_field(device.addr, 0x14, REG_NIC_INTERFACE); // Full driver mode
-//  reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_SIZE);
-//  reg_clear_field(device.addr, 0x14, REG_LOG_CMDQ_STRIDE);
 
   TN_DEBUG("Check if the values were written correctly on initialization segment");
   reg_read(device.addr, 0x10);
