@@ -36,10 +36,10 @@
 #define PCI_ID_LOW 0x15b3u  // Vendor ID: Table 1245
 
 // These values were read from the card when the driver was written
-#define REG_FW_REV_MINOR_VAL 0x1A00
+#define REG_FW_REV_MINOR_VAL 0x1C00
 #define REG_FW_REV_MAJOR_VAL 0x1000
 #define REG_CMD_INTERFACE_REVISION_VAL 0x0500
-#define REG_FW_REV_SUBMINOR_VAL 0xAC0F
+#define REG_FW_REV_SUBMINOR_VAL 0xD607
 
 #define CMDQ_SIZE 4096 // 8.24.1 HCA Command Queue size
 #define PAGE_SIZE 4096 // 23.3.2  MANAGE_PAGES
