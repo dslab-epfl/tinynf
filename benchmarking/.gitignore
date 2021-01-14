@@ -1,3 +1,6 @@
+# MoonGen
+moongen/
+
 # Benchmark outputs
 *.log
 results/

@@ -55,10 +55,18 @@ else
   ./bind-devices-to-uio.sh $DUT_DEVS
 fi
 
-git submodule update --init --recursive
-if [ $? -ne 0 ]; then
-  echo '[FATAL] Could not update submodules'
-  exit 1
+if [ ! -d 'moongen' ]; then
+  git clone 'https://github.com/emmericp/MoonGen' 'moongen'
+  if [ $? -ne 0 ]; then
+    echo '[FATAL] Could not clone MoonGen'
+    exit 1
+  fi
+
+  git -C 'moongen' checkout '525d9917c98a4760db72bb733cf6ad30550d6669'
+  if [ $? -ne 0 ]; then
+    echo '[FATAL] Could not check out the MoonGen commit'
+    exit 1
+  fi
 fi
 
 rsync -a -q . "$TESTER_HOST:$REMOTE_FOLDER_NAME"
