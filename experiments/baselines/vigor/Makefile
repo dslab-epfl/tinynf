@@ -17,7 +17,7 @@ SHELL := RTE_SDK='$(RTE_SDK)' RTE_TARGET='$(RTE_TARGET)' /bin/bash -O extglob -c
 _IGNORED := $(shell cd $(THIS_DIR); ./setup.sh 2>/dev/null)
 
 # Our main stub
-TN_FILES += main.c
+TN_FILES += $(THIS_DIR)/main.c
 # Vigor utility file (but not nf.c, since we have our own main!)
 TN_FILES += $(VIGOR_DIR)/nf-util.c
 # Vigor NF files; don't include the loop file, Vigor only uses it during verification
@@ -38,6 +38,9 @@ TN_CFLAGS += -w
 
 # Use Vigor's fast power-of-2-capacity map
 TN_CFLAGS += -DCAPACITY_POW2
+
+# Put it here regardless of who's invoking us
+TN_APP := $(THIS_DIR)/tinynf
 
 # Include the TinyNF makefile
 include $(THIS_DIR)/../../../code/Makefile

@@ -12,7 +12,7 @@ include $(VIGOR_MAKEFILE)
 build: tn_default
 
 run:
-	@sudo ./tinynf $(TN_ARGS) -- $(NF_ARGS)
+	@sudo $(THIS_DIR)/tinynf $(TN_ARGS) -- $(NF_ARGS)
 
 print-nf-name:
 	@echo tinynf
