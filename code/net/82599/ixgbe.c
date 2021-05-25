@@ -1299,7 +1299,7 @@ bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint
 	// This cannot overflow because the packet is by definition in an allocated block of memory
 	*out_packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
 	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
-	*out_packet_length = tn_le_to_cpu64(receive_metadata) & 0xFFFFu;
+	*out_packet_length = receive_metadata & 0xFFFFu;
 
 	return true;
 }
