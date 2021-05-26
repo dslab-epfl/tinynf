@@ -5,4 +5,9 @@
     <!-- TODO remove this, isolate unsafety to a separate project -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="cwrapper\**" />
+    <EmbeddedResource Remove="cwrapper\**" />
+    <None Remove="cwrapper\**" />
+  </ItemGroup>
 </Project>
