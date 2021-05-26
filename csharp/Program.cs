@@ -478,13 +478,6 @@ namespace TestApp
         public const int RecyclePeriod = 64;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct Descriptor
-    {
-        public ulong Buffer;
-        public ulong Metadata;
-    }
-
     public ref struct Device
     {
         private readonly Span<uint> _buffer;
@@ -512,6 +505,9 @@ namespace TestApp
             action(_buffer);
         }
 
+        // -------------------------------------
+        // Section 4.6.3 Initialization Sequence
+        // -------------------------------------
         public Device(PciAddress pciAddress, IEnvironment env)
         {
             _rxEnabled = false;
@@ -982,6 +978,130 @@ namespace TestApp
             // 	Section 4.6.3.1 Interrupts During Initialization "After initialization completes, a typical driver enables the desired interrupts by writing to the IMS register."
             // We don't need to do anything here by assumption NOWANT
         }
+
+        // ----------------------------
+        // Section 7.1.1.1 L2 Filtering
+        // ----------------------------
+        public readonly void SetPromiscuous()
+        {
+            // "A packet passes successfully through L2 Ethernet MAC address filtering if any of the following conditions are met:"
+            // 	Section 8.2.3.7.1 Filter Control Register:
+            // 	"Before receive filters are updated/modified the RXCTRL.RXEN bit should be set to 0b.
+            // 	After the proper filters have been set the RXCTRL.RXEN bit can be set to 1b to re-enable the receiver."
+            if (_rxEnabled)
+            {
+                Regs.ClearField(_buffer, Regs.RXCTRL, Regs.RXCTRL_.RXEN);
+            }
+            // "Unicast packet filtering - Promiscuous unicast filtering is enabled (FCTRL.UPE=1b) or the packet passes unicast MAC filters (host or manageability)."
+            Regs.SetField(_buffer, Regs.FCTRL, Regs.FCTRL_.FCTRL_UPE);
+            // "Multicast packet filtering - Promiscuous multicast filtering is enabled by either the host or manageability (FCTRL.MPE=1b or MANC.MCST_PASS_L2 =1b) or the packet matches one of the multicast filters."
+            Regs.SetField(_buffer, Regs.FCTRL, Regs.FCTRL_.MPE);
+            // "Broadcast packet filtering to host - Promiscuous multicast filtering is enabled (FCTRL.MPE=1b) or Broadcast Accept Mode is enabled (FCTRL.BAM = 1b)."
+            // INTERPRETATION-MISSING: Nothing to do here, since we just enabled MPE; but what is BAM for then?
+
+            if (_rxEnabled)
+            {
+                Regs.SetField(_buffer, Regs.RXCTRL, Regs.RXCTRL_.RXEN);
+            }
+        }
+
+        // ------------------------------------
+        // Section 4.6.7 Receive Initialization
+        // ------------------------------------
+        internal Span<uint> SetInput(IEnvironment env, Span<Descriptor> ring)
+        {
+            // The 82599 has more than one receive queue, but we only need queue 0
+            uint queueIndex = 0;
+
+            // See later for details of RXDCTL.ENABLE
+            if (!Regs.IsFieldCleared(_buffer, Regs.RXDCTL(queueIndex), Regs.RXDCTL_.ENABLE))
+            {
+                throw new Exception("Receive queue is already in use");
+            }
+
+            // "The following should be done per each receive queue:"
+            // "- Allocate a region of memory for the receive descriptor list."
+            // This is already done in agent initialization as agent->rings[0]
+            // "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
+            // This will be done when setting up the first transmit ring
+            // Note that only the first line (buffer address) needs to be configured, the second line is only for write-back except End Of Packet (bit 33)
+            // and Descriptor Done (bit 32), which must be 0 as per table in "EOP (End of Packet) and DD (Descriptor Done)"
+            // "- Program the descriptor base address with the address of the region (registers RDBAL, RDBAL)."
+            // INTERPRETATION-TYPO: This is a typo, the second "RDBAL" should read "RDBAH".
+            // 	Section 8.2.3.8.1 Receive Descriptor Base Address Low (RDBAL[n]):
+            // 	"The receive descriptor base address must point to a 128 byte-aligned block of data."
+            // This alignment is guaranteed by the agent initialization
+            nuint ringPhysAddr = env.GetPhysicalAddress(ring);
+            Regs.Write(_buffer, Regs.RDBAH(queueIndex), (uint)(ringPhysAddr >> 32));
+            Regs.Write(_buffer, Regs.RDBAL(queueIndex), (uint)ringPhysAddr);
+            // "- Set the length register to the size of the descriptor ring (register RDLEN)."
+            // Section 8.2.3.8.3 Receive DEscriptor Length (RDLEN[n]):
+            // "This register sets the number of bytes allocated for descriptors in the circular descriptor buffer."
+            // Note that receive descriptors are 16 bytes.
+            Regs.Write(_buffer, Regs.RDLEN(queueIndex), DriverConstants.RingSize * 16u);
+            // "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
+            //	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
+            //		"BSIZEPACKET, Receive Buffer Size for Packet Buffer. The value is in 1 KB resolution. Value can be from 1 KB to 16 KB."
+            Regs.WriteField(_buffer, Regs.SRRCTL(queueIndex), Regs.SRRCTL_.BSIZEPACKET, DriverConstants.PacketBufferSize / 1024u);
+            //		"DESCTYPE, Define the descriptor type in Rx: Init Val 000b [...] 000b = Legacy."
+            //		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
+            // Enable this because of assumption DROP
+            Regs.SetField(_buffer, Regs.SRRCTL(queueIndex), Regs.SRRCTL_.DROP_EN);
+            // "- If header split is required for this queue, program the appropriate PSRTYPE for the appropriate headers."
+            // Section 7.1.10 Header Splitting: "Header Splitting mode might cause unpredictable behavior and should not be used with the 82599."
+            // "- Program RSC mode for the queue via the RSCCTL register."
+            // Nothing to do, we do not want RSC.
+            // "- Program RXDCTL with appropriate values including the queue Enable bit. Note that packets directed to a disabled queue are dropped."
+            Regs.SetField(_buffer, Regs.RXDCTL(queueIndex), Regs.RXDCTL_.ENABLE);
+            // "- Poll the RXDCTL register until the Enable bit is set. The tail should not be bumped before this bit was read as 1b."
+            // INTERPRETATION-MISSING: No timeout is mentioned here, let's say 1s to be safe.
+            IfAfterTimeout(env, TimeSpan.FromSeconds(1), b => Regs.IsFieldCleared(b, Regs.RXDCTL(queueIndex), Regs.RXDCTL_.ENABLE), _ =>
+            {
+                throw new Exception("RXDCTL.ENABLE did not set, cannot enable queue");
+            });
+            // "- Bump the tail pointer (RDT) to enable descriptors fetching by setting it to the ring length minus one."
+            // 	Section 7.1.9 Receive Descriptor Queue Structure:
+            // 	"Software inserts receive descriptors by advancing the tail pointer(s) to refer to the address of the entry just beyond the last valid descriptor."
+            Regs.Write(_buffer, Regs.RDT(queueIndex), DriverConstants.RingSize - 1u);
+            // "- Enable the receive path by setting RXCTRL.RXEN. This should be done only after all other settings are done following the steps below."
+            // INTERPRETATION-MISSING: "after all other settings are done" is ambiguous here, let's assume we can just do it after setting up a receive queue...
+            if (!_rxEnabled)
+            {
+                //	"- Halt the receive data path by setting SECRXCTRL.RX_DIS bit."
+                Regs.SetField(_buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_.RX_DIS);
+                //	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
+                // INTERPRETATION-MISSING: Another undefined timeout, assuming 1s as usual
+                IfAfterTimeout(env, TimeSpan.FromSeconds(1), b => Regs.IsFieldCleared(b, Regs.SECRXSTAT, Regs.SECRXSTAT_.SECRX_RDY), _ =>
+                {
+                    throw new Exception("SECRXSTAT.SECRXRDY timed out, cannot start device");
+                });
+                //	"- Set RXCTRL.RXEN"
+                Regs.SetField(_buffer, Regs.RXCTRL, Regs.RXCTRL_.RXEN);
+                //	"- Clear the SECRXCTRL.SECRX_DIS bits to enable receive data path"
+                // INTERPRETATION-TYPO: This refers to RX_DIS, not SECRX_DIS, since it's RX_DIS being cleared that enables the receive data path.
+                Regs.ClearField(_buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_.RX_DIS);
+                //	"- If software uses the receive descriptor minimum threshold Interrupt, that value should be set."
+                // We do not have to set this by assumption NOWANT
+                // "  Set bit 16 of the CTRL_EXT register and clear bit 12 of the DCA_RXCTRL[n] register[n]."
+                // Again, we do the first part here since it's a non-queue-dependent register
+                // Section 8.2.3.1.3 Extended Device Control Register (CTRL_EXT): Bit 16 == "NS_DIS, No Snoop Disable"
+                Regs.SetField(_buffer, Regs.CTRLEXT, Regs.CTRLEXT_.NSDIS);
+
+                _rxEnabled = true;
+            }
+            // Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
+            Regs.ClearField(_buffer, Regs.DCARXCTRL(queueIndex), Regs.DCARXCTRL_.UNKNOWN);
+
+            return _buffer.Slice((int)Regs.RDT(queueIndex), 1);
+        }
+
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Descriptor
+    {
+        public ulong Buffer;
+        public ulong Metadata;
     }
 
     // 1 input 1 output for now
@@ -992,6 +1112,8 @@ namespace TestApp
         private readonly Span<uint> _receiveTail;
         private readonly Span<uint> _transmitHead; // TODO: aligned to 16 bytes and on its own cache line
         private readonly Span<uint> _transmitTail;
+
+        // receive_tail_addr = device.
 
         // no endianness conversions for now
         public readonly void Run(PacketProcessor processor)
