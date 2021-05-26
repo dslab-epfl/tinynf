@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers.Binary;
 using System.IO;
+using System.IO.MemoryMappedFiles;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -84,9 +85,10 @@ namespace TestApp
 
     public sealed class LinuxEnvironment : IEnvironment
     {
-        private const int HugepageSize = 2 * 1024 * 1024; // 2 MB hugepages
+        private const int HugepageSize = 2 * 1024 * 1024; // 2 MB hugepages (could also do 1 GB)
 
-        private static unsafe class Interop
+        // Necessary because .NET has no explicit support for hugepages and MemoryMappedFile doesn't allow us to pass the hugepage flag
+        private static unsafe class OSInterop
         {
             public const int PROT_READ = 0x1;
             public const int PROT_WRITE = 0x2;
@@ -98,8 +100,21 @@ namespace TestApp
             public const int MAP_HUGE_SHIFT = 26;
             public static readonly void* MAP_FAILED = (void*)-1;
 
-            [DllImport("libc", EntryPoint = "mmap", SetLastError = true)]
+            [DllImport("libc")]
             public static extern void* mmap(nuint addr, nuint length, int prot, int flags, int fd, nint offset);
+        }
+
+        // Necessary because .NET has no port I/O intrinsics
+        private static unsafe class PortInterop
+        {
+            public const uint PCI_CONFIG_ADDR = 0xCF8;
+            public const uint PCI_CONFIG_DATA = 0xCFC;
+
+            [DllImport("cwrapper")]
+            public static extern bool port_out_32(uint port, uint value);
+
+            [DllImport("cwrapper")]
+            public static extern uint port_in_32(uint port);
         }
 
         public unsafe Span<T> Allocate<T>(nuint size)
@@ -109,23 +124,23 @@ namespace TestApp
                 throw new Exception("Cannot allocate that much");
             }
 
-            void* page = Interop.mmap(
+            void* page = OSInterop.mmap(
                 // No specific address
                 0,
                 // Size of the mapping
                 HugepageSize,
                 // R/W page
-                Interop.PROT_READ | Interop.PROT_WRITE,
+                OSInterop.PROT_READ | OSInterop.PROT_WRITE,
                 // Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
                 // MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
                 // which is required if the calling code tries to get the physical address of the page without accessing it first.
-                Interop.MAP_HUGETLB | ((int)Math.Log2(HugepageSize) << Interop.MAP_HUGE_SHIFT) | Interop.MAP_ANONYMOUS | Interop.MAP_SHARED | Interop.MAP_POPULATE,
+                OSInterop.MAP_HUGETLB | ((int)Math.Log2(HugepageSize) << OSInterop.MAP_HUGE_SHIFT) | OSInterop.MAP_ANONYMOUS | OSInterop.MAP_SHARED | OSInterop.MAP_POPULATE,
                 // Required on MAP_ANONYMOUS
                 -1,
                 // Required on MAP_ANONYMOUS
                 0
             );
-            if (page == Interop.MAP_FAILED)
+            if (page == OSInterop.MAP_FAILED)
             {
                 throw new Exception("mmap failed");
             }
@@ -170,40 +185,34 @@ namespace TestApp
 
         public unsafe Span<T> MapPhysicalMemory<T>(nuint addr, nuint size)
         {
-            // Cannot check for off_t roundtrip here since we don't know what it is
+            byte* ptr = null;
+            // we'll never call ReleasePointer, but that's ok, the memory will be released when we exit
+            MemoryMappedFile.CreateFromFile("/dev/mem").CreateViewAccessor((long)addr, (long)size * Marshal.SizeOf<T>()).SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+            return new Span<T>(ptr, (int)size);
+        }
 
-            using var mem = File.OpenWrite("/dev/mem");
-
-            void* mapped = Interop.mmap(
-                // No specific address
-                0,
-                // Size of the mapping
-                size * (nuint) Marshal.SizeOf<T>(),
-                // R/W page
-                Interop.PROT_READ | Interop.PROT_WRITE,
-                // Send updates to the underlying "file"
-                Interop.MAP_SHARED,
-                // /dev/mem
-                (int)mem.SafeFileHandle.DangerousGetHandle(),
-                // Offset is the address
-                (nint)addr
-            );
-            if (mapped == Interop.MAP_FAILED)
+        private static void PciTarget(PciAddress address, byte reg)
+        {
+            uint regAddr = 0x80000000u | ((uint)address.Bus << 16) | ((uint)address.Device << 11) | ((uint)address.Function << 8) | reg;
+            if (!PortInterop.port_out_32(PortInterop.PCI_CONFIG_ADDR, regAddr))
             {
-                throw new Exception("Phys-to-virt mmap failed");
+                throw new Exception("Could not target the PCI addr");
             }
-
-            return new Span<T>(mapped, (int) size);
         }
 
         public uint PciRead(PciAddress address, byte register)
         {
-            throw new NotImplementedException();
+            PciTarget(address, register);
+            return PortInterop.port_in_32(PortInterop.PCI_CONFIG_DATA);
         }
 
         public void PciWrite(PciAddress address, byte register, uint value)
         {
-            throw new NotImplementedException();
+            PciTarget(address, register);
+            if (!PortInterop.port_out_32(PortInterop.PCI_CONFIG_DATA, value))
+            {
+                throw new Exception("Could not write to PCI");
+            }
         }
 
         public void Sleep(TimeSpan span)
