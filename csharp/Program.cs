@@ -2,16 +2,36 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Linq;
+using System.Threading;
 
 namespace TestApp
 {
-    class Program
+    public static class Program
     {
-        static void Main(string[] args)
+        private static PciAddress ParsePciAddress(string str)
         {
-            Console.WriteLine("Hello World!");
-            Console.ReadKey();
+            var parts = str.Split(':', '.'); // technically too lax but that's fine
+            if (parts.Length != 3)
+            {
+                throw new Exception("Bad PCI address");
+            }
+            return new PciAddress(Convert.ToByte(parts[0], 16), Convert.ToByte(parts[1], 16), Convert.ToByte(parts[2], 16));
+        }
+
+        public static void Main(string[] args)
+        {
+            if (args.Length!=2)
+            {
+                throw new Exception("Expected exactly 2 args");
+            }
+
+            var env = new LinuxEnvironment();
+
+            var dev0 = new Device(env, ParsePciAddress(args[0]));
+            var dev1 = new Device(env, ParsePciAddress(args[1]));
+
+            var agent0 = new Agent(env, dev0, dev1);
+            var agent1 = new Agent(env, dev1, dev0);
         }
     }
 
@@ -43,7 +63,7 @@ namespace TestApp
         }
     }
 
-    public record PciAddress(byte Bus, byte Device, byte Function);
+    public sealed record PciAddress(byte Bus, byte Device, byte Function);
 
     public interface IEnvironment
     {
@@ -58,6 +78,40 @@ namespace TestApp
 
         // Time
         void Sleep(TimeSpan span);
+    }
+
+    public sealed class LinuxEnvironment : IEnvironment
+    {
+        public Span<T> Allocate<T>(nuint size)
+        {
+            throw new NotImplementedException();
+        }
+
+        public nuint GetPhysicalAddress<T>(Span<T> span)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Span<T> MapPhysicalMemory<T>(nuint addr, nuint size)
+        {
+            throw new NotImplementedException();
+        }
+
+        public uint PciRead(PciAddress address, byte register)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void PciWrite(PciAddress address, byte register, uint value)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Sleep(TimeSpan span)
+        {
+            // Very imprecise but that's fine, we'll just sleep too much
+            Thread.Sleep(span);
+        }
     }
 
     public static class Endianness
@@ -529,7 +583,7 @@ namespace TestApp
         // -------------------------------------
         // Section 4.6.3 Initialization Sequence
         // -------------------------------------
-        public Device(PciAddress pciAddress, IEnvironment env)
+        public Device(IEnvironment env, PciAddress pciAddress)
         {
             _rxEnabled = false;
             _txEnabled = false;
@@ -1212,27 +1266,36 @@ namespace TestApp
         private readonly Span<uint> _transmitHead; // TODO: aligned to 16 bytes and on its own cache line
         private readonly Span<uint> _transmitTail;
 
-        // receive_tail_addr = device.add input
-        // transmit_tail_addr = device.add output
-        // TODO when/if we add more:
-        /*
-         if (agent->outputs_count == IXGBE_AGENT_OUTPUTS_MAX) {
-		     TN_DEBUG("The agent is already using the maximum amount of transmit queues");
-		     return false;
-	     }
-         */
-        /*
-                     for (int n = 0; n < DriverConstants.RingSize; n++)
+
+        public Agent(IEnvironment env, Device inputDevice, Device outputDevice)
+        {
+            _packets = env.Allocate<PacketData>(DriverConstants.RingSize);
+            _ring = env.Allocate<Descriptor>(DriverConstants.RingSize);
+
+            for (int n = 0; n < DriverConstants.RingSize; n++)
             {
                 // Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
                 // "Buffer Address (64)", 1st line offset 0
-                nuint packetPhysAddr = env.GetPhysicalAddress(packetsBuffer.Slice(n, DriverConstants.PacketBufferSize));
+                nuint packetPhysAddr = env.GetPhysicalAddress(_packets.Slice(n, DriverConstants.PacketBufferSize));
                 // INTERPRETATION-MISSING: The data sheet does not specify the endianness of descriptor buffer addresses..
                 // Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
-                ring[n].Buffer = Endianness.ToLittle(packetPhysAddr);
+                _ring[n].Buffer = Endianness.ToLittle(packetPhysAddr);
             }
-         */
-        // no endianness conversions for now
+
+            _receiveTail = inputDevice.SetInput(env, _ring);
+            _transmitHead = env.Allocate<uint>(1);
+            _transmitTail = outputDevice.AddOutput(env, _ring, _transmitHead);
+
+            // TODO when/if we add more outputs, port this:
+            /*
+             if (agent->outputs_count == IXGBE_AGENT_OUTPUTS_MAX) {
+                 TN_DEBUG("The agent is already using the maximum amount of transmit queues");
+                 return false;
+             }
+            }
+            */
+        }
+
         public readonly void Run(PacketProcessor processor)
         {
             // TODO these local references to our spans, ensuring range checks can be eliminated, shouldn't be necessary, we're in a readonly struct
