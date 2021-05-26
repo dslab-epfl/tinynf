@@ -2,6 +2,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Linq;
 
 namespace TestApp
 {
@@ -11,6 +12,34 @@ namespace TestApp
         {
             Console.WriteLine("Hello World!");
             Console.ReadKey();
+        }
+    }
+
+    internal static class DriverConstants
+    {
+        public const int PacketBufferSize = 2048;
+        public const int RingSize = 1024;
+        public const int FlushPeriod = 8;
+        public const int RecyclePeriod = 64;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Descriptor
+    {
+        public ulong Buffer;
+        public ulong Metadata;
+    }
+
+    // TODO avoid unsafe here; see https://github.com/dotnet/csharplang/blob/main/proposals/fixed-sized-buffers.md
+    //      and https://github.com/dotnet/csharplang/issues/1314
+    //      can we use StructLayout?
+    public unsafe struct PacketData
+    {
+        private fixed byte _data[DriverConstants.PacketBufferSize];
+
+        public ref byte this[int index]
+        {
+            get => ref _data[index];
         }
     }
 
@@ -73,7 +102,7 @@ namespace TestApp
     // TODO see what happens when actually processing packets; might need a trick
     //      where we have a struct with a custom indexer and like 60 byte fields...
 
-    public delegate int PacketProcessor(byte[] buffer, int length);
+    public delegate int PacketProcessor(PacketData data, int length);
 
     internal static class PciRegs
     {
@@ -468,14 +497,6 @@ namespace TestApp
         // Section 7.10.3.10 Switch Control:
         // 	"Unicast Table Array (PFUTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address"
         public const uint UnicastTableArraySize = 4u * 1024u;
-    }
-
-    internal static class DriverConstants
-    {
-        public const int PacketBufferSize = 2048;
-        public const int RingSize = 1024;
-        public const int FlushPeriod = 8;
-        public const int RecyclePeriod = 64;
     }
 
     public ref struct Device
@@ -1095,37 +1116,133 @@ namespace TestApp
             return _buffer.Slice((int)Regs.RDT(queueIndex), 1);
         }
 
-    }
+        // -------------------------------------
+        // Section 4.6.8 Transmit Initialization
+        // -------------------------------------
+        internal Span<uint> AddOutput(IEnvironment env, Span<Descriptor> ring, Span<uint> transmitHead)
+        {
+            uint queueIndex = 0;
+            for (; queueIndex < DeviceLimits.TransmitQueuesCount; queueIndex++)
+            {
+                // See later for details of TXDCTL.ENABLE
+                if (Regs.IsFieldCleared(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE))
+                {
+                    break;
+                }
+            }
+            if (queueIndex == DeviceLimits.TransmitQueuesCount)
+            {
+                throw new Exception("No available transmit queues");
+            }
 
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct Descriptor
-    {
-        public ulong Buffer;
-        public ulong Metadata;
+            // "The following steps should be done once per transmit queue:"
+            // "- Allocate a region of memory for the transmit descriptor list."
+            // This is already done in agent initialization as agent->rings[*]
+
+            // "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
+            // 	Section 8.2.3.9.5 Transmit Descriptor Base Address Low (TDBAL[n]):
+            // 	"The Transmit Descriptor Base Address must point to a 128 byte-aligned block of data."
+            // This alignment is guaranteed by the agent initialization
+            nuint ringPhysAddr = env.GetPhysicalAddress(ring);
+            Regs.Write(_buffer, Regs.TDBAH(queueIndex), (uint)(ringPhysAddr >> 32));
+            Regs.Write(_buffer, Regs.TDBAL(queueIndex), (uint)ringPhysAddr);
+            // "- Set the length register to the size of the descriptor ring (TDLEN)."
+            // 	Section 8.2.3.9.7 Transmit Descriptor Length (TDLEN[n]):
+            // 	"This register sets the number of bytes allocated for descriptors in the circular descriptor buffer."
+            // Note that each descriptor is 16 bytes.
+            Regs.Write(_buffer, Regs.TDLEN(queueIndex), DriverConstants.RingSize * 16u);
+            // "- Program the TXDCTL register with the desired TX descriptor write back policy (see Section 8.2.3.9.10 for recommended values)."
+            //	Section 8.2.3.9.10 Transmit Descriptor Control (TXDCTL[n]):
+            //	"HTHRESH should be given a non-zero value each time PTHRESH is used."
+            //	"For PTHRESH and HTHRESH recommended setting please refer to Section 7.2.3.4."
+            // INTERPRETATION-MISSING: The "recommended values" are in 7.2.3.4.1 very vague; we use (cache line size)/(descriptor size) for HTHRESH (i.e. 64/16 by assumption CACHE),
+            //                         and a completely arbitrary value for PTHRESH
+            // PERFORMANCE: This is required to forward 10G traffic on a single NIC.
+            Regs.WriteField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.PTHRESH, 60);
+            Regs.WriteField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.HTHRESH, 4);
+            // "- If needed, set TDWBAL/TWDBAH to enable head write back."
+            nuint headPhysAddr = env.GetPhysicalAddress(transmitHead);
+            //	Section 7.2.3.5.2 Tx Head Pointer Write Back:
+            //	"The low register's LSB hold the control bits.
+            // 	 * The Head_WB_EN bit enables activation of tail write back. In this case, no descriptor write back is executed.
+            // 	 * The 30 upper bits of this register hold the lowest 32 bits of the head write-back address, assuming that the two last bits are zero."
+            //	"software should [...] make sure the TDBAL value is Dword-aligned."
+            //	Section 8.2.3.9.11 Tx Descriptor completion Write Back Address Low (TDWBAL[n]): "the actual address is Qword aligned"
+            // INTERPRETATION-CONTRADICTION: There is an obvious contradiction here; qword-aligned seems like a safe option since it will also be dword-aligned.
+            // INTERPRETATION-INCORRECT: Empirically, the answer is... 16 bytes. Write-back has no effect otherwise. So both versions are wrong.
+            if (headPhysAddr % 16u != 0)
+            {
+                throw new Exception("Transmit head's physical address is not aligned properly");
+            }
+            //	Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low (TDWBAL[n]):
+            //	"Head_WB_En, bit 0 [...] 1b = Head write-back is enabled."
+            //	"Reserved, bit 1"
+            Regs.Write(_buffer, Regs.TDWBAH(queueIndex), (uint)(headPhysAddr >> 32));
+            Regs.Write(_buffer, Regs.TDWBAL(queueIndex), (uint)headPhysAddr | 1u);
+            // INTERPRETATION-MISSING: We must disable relaxed ordering of head pointer write-back, since it could cause the head pointer to be updated backwards
+            Regs.ClearField(_buffer, Regs.DCATXCTRL(queueIndex), Regs.DCATXCTRL_.TX_DESC_WB_RO_EN);
+            // "- Enable transmit path by setting DMATXCTL.TE.
+            //    This step should be executed only for the first enabled transmit queue and does not need to be repeated for any following queues."
+            if (!_txEnabled)
+            {
+                Regs.SetField(_buffer, Regs.DMATXCTL, Regs.DMATXCTL_.TE);
+                _txEnabled = true;
+            }
+            // "- Enable the queue using TXDCTL.ENABLE.
+            //    Poll the TXDCTL register until the Enable bit is set."
+            // INTERPRETATION-MISSING: No timeout is mentioned here, let's say 1s to be safe.
+            Regs.SetField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE);
+            IfAfterTimeout(env, TimeSpan.FromSeconds(1), b => Regs.IsFieldCleared(b, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE), _ =>
+            {
+                throw new Exception("TXDCTL.ENABLE did not set, cannot enable queue");
+            });
+            // "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
+            // Nothing to transmit yet, so leave TDT alone.
+
+            return _buffer.Slice((int)Regs.TDT(queueIndex), 1);
+        }
     }
 
     // 1 input 1 output for now
     public readonly ref struct Agent
     {
-        private readonly Span<byte[]> _buffers;
+        private readonly Span<PacketData> _packets;
         private readonly Span<Descriptor> _ring;
         private readonly Span<uint> _receiveTail;
         private readonly Span<uint> _transmitHead; // TODO: aligned to 16 bytes and on its own cache line
         private readonly Span<uint> _transmitTail;
 
-        // receive_tail_addr = device.
-
+        // receive_tail_addr = device.add input
+        // transmit_tail_addr = device.add output
+        // TODO when/if we add more:
+        /*
+         if (agent->outputs_count == IXGBE_AGENT_OUTPUTS_MAX) {
+		     TN_DEBUG("The agent is already using the maximum amount of transmit queues");
+		     return false;
+	     }
+         */
+        /*
+                     for (int n = 0; n < DriverConstants.RingSize; n++)
+            {
+                // Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
+                // "Buffer Address (64)", 1st line offset 0
+                nuint packetPhysAddr = env.GetPhysicalAddress(packetsBuffer.Slice(n, DriverConstants.PacketBufferSize));
+                // INTERPRETATION-MISSING: The data sheet does not specify the endianness of descriptor buffer addresses..
+                // Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
+                ring[n].Buffer = Endianness.ToLittle(packetPhysAddr);
+            }
+         */
         // no endianness conversions for now
         public readonly void Run(PacketProcessor processor)
         {
             // TODO these local references to our spans, ensuring range checks can be eliminated, shouldn't be necessary, we're in a readonly struct
-            var _buffers = this._buffers;
+            var _packets = this._packets;
             var _ring = this._ring;
             var _receiveTail = this._receiveTail;
             var _transmitHead = this._transmitHead;
             var _transmitTail = this._transmitTail;
 
-            if (_transmitHead.Length < 1 || _receiveTail.Length < 1 || _transmitTail.Length < 1 || processor == null)
+            if (_transmitHead.Length < 1 || _receiveTail.Length < 1 || _transmitTail.Length < 1 || processor == null || _ring.Length != _packets.Length)
             {
                 throw new Exception("Run preconditions not met, something terrible happened");
             }
@@ -1134,14 +1251,16 @@ namespace TestApp
 
             while (true)
             {
-                // TODO the n < _buffers.Length should be replaceable by an assert that _ring and _buffers have the same length earlier
-                for (int n = 0; n < _ring.Length && n < _buffers.Length; n++)
+                // TODO somehow remove that _packets.Length check without the JIT adding one,
+                //      it should be unnecessary given the equality check on _ring/_packets.Length above...
+                // NOTE somehow replacing the && with a & still inserts a check; this is weird!
+                for (int n = 0; n < _ring.Length && n < _packets.Length; n++)
                 {
                     ulong receiveMetadata = Endianness.FromLittle(_ring[n].Metadata);
                     if ((receiveMetadata & (1ul << 32)) != 0)
                     {
                         int length = (int)(Endianness.FromLittle(receiveMetadata) & 0xFFFFu);
-                        ulong transmitLength = (ulong)processor(_buffers[n], length);
+                        ulong transmitLength = (ulong)processor(_packets[n], length);
 
                         ulong rsBit = ((n % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
                         _ring[n].Metadata = Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24));
