@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Buffers.Binary;
+using System.IO;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -20,7 +22,7 @@ namespace TestApp
 
         public static void Main(string[] args)
         {
-            if (args.Length!=2)
+            if (args.Length != 2)
             {
                 throw new Exception("Expected exactly 2 args");
             }
@@ -30,8 +32,8 @@ namespace TestApp
             var dev0 = new Device(env, ParsePciAddress(args[0]));
             var dev1 = new Device(env, ParsePciAddress(args[1]));
 
-            var agent0 = new Agent(env, dev0, dev1);
-            var agent1 = new Agent(env, dev1, dev0);
+            var agent = new Agent(env, dev0, dev1);
+            agent.Run((data, len) => len);
         }
     }
 
@@ -57,7 +59,7 @@ namespace TestApp
     {
         private fixed byte _data[DriverConstants.PacketBufferSize];
 
-        public ref byte this[int index]
+        public ref byte this[uint index]
         {
             get => ref _data[index];
         }
@@ -82,14 +84,88 @@ namespace TestApp
 
     public sealed class LinuxEnvironment : IEnvironment
     {
-        public Span<T> Allocate<T>(nuint size)
+        private const int HugepageSize = 2 * 1024 * 1024; // 2 MB hugepages
+
+        private static unsafe class Interop
         {
-            throw new NotImplementedException();
+            public const int PROT_READ = 0x1;
+            public const int PROT_WRITE = 0x2;
+
+            public const int MAP_SHARED = 0x01;
+            public const int MAP_ANONYMOUS = 0x20;
+            public const int MAP_POPULATE = 0x8000;
+            public const int MAP_HUGETLB = 0x40000;
+            public const int MAP_HUGE_SHIFT = 26;
+            public static readonly void* MAP_FAILED = (void*) -1;
+
+            [DllImport("libc", EntryPoint = "mmap", SetLastError = true)]
+            public static extern void* mmap(nuint addr, nuint length, int prot, int flags, int fd, nint offset);
         }
 
-        public nuint GetPhysicalAddress<T>(Span<T> span)
+        public unsafe Span<T> Allocate<T>(nuint size)
         {
-            throw new NotImplementedException();
+            if (size * (nuint) Marshal.SizeOf<T>() > HugepageSize)
+            {
+                throw new Exception("Cannot allocate that much");
+            }
+
+            void* page = Interop.mmap(
+                // No specific address
+                0,
+                // Size of the mapping
+                HugepageSize,
+                // R/W page
+                Interop.PROT_READ | Interop.PROT_WRITE,
+                // Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
+                // MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
+                // which is required if the calling code tries to get the physical address of the page without accessing it first.
+                Interop.MAP_HUGETLB | ((int)Math.Log2(HugepageSize) << Interop.MAP_HUGE_SHIFT) | Interop.MAP_ANONYMOUS | Interop.MAP_SHARED | Interop.MAP_POPULATE,
+                // Required on MAP_ANONYMOUS
+                -1,
+                // Required on MAP_ANONYMOUS
+                0
+            );
+            if (page == Interop.MAP_FAILED)
+            {
+                throw new Exception("mmap failed");
+            }
+
+            return new Span<T>(page, (int) size);
+        }
+
+        // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
+        public unsafe nuint GetPhysicalAddress<T>(Span<T> span)
+        {
+            nuint pageSize = (nuint)Environment.SystemPageSize;
+            nuint addr = (nuint)Unsafe.AsPointer(ref span.GetPinnableReference());
+            nuint page = addr / pageSize;
+            nuint mapOffset = page * sizeof(ulong);
+            // Cannot check for off_t here since we don't know what it is
+
+            using var pagemap = File.OpenRead("/proc/self/pagemap");
+            pagemap.Seek((long) mapOffset, SeekOrigin.Current);
+
+            Span<byte> readBytes = stackalloc byte[sizeof(ulong)];
+            if (pagemap.Read(readBytes) != readBytes.Length)
+            {
+                throw new Exception("Could not read enough bytes from the pagemap");
+            }
+
+            ulong metadata = MemoryMarshal.Cast<byte, ulong>(readBytes)[0];
+            // We want the PFN, but it's only meaningful if the page is present; bit 63 indicates whether it is
+            if ((metadata & 0x8000000000000000ul) == 0)
+            {
+                throw new Exception("Page not present");
+            }
+            // PFN = bits 0-54
+            ulong pfn = metadata & 0x7FFFFFFFFFFFFFul;
+            if (pfn == 0)
+            {
+                throw new Exception("Page not mapped");
+            }
+
+            nuint addrOffset = addr % pageSize;
+            return (nuint) (pfn * pageSize + addrOffset);
         }
 
         public Span<T> MapPhysicalMemory<T>(nuint addr, nuint size)
@@ -156,7 +232,7 @@ namespace TestApp
     // TODO see what happens when actually processing packets; might need a trick
     //      where we have a struct with a custom indexer and like 60 byte fields...
 
-    public delegate int PacketProcessor(PacketData data, int length);
+    public delegate uint PacketProcessor(PacketData data, uint length);
 
     internal static class PciRegs
     {
@@ -1322,8 +1398,8 @@ namespace TestApp
                     ulong receiveMetadata = Endianness.FromLittle(_ring[n].Metadata);
                     if ((receiveMetadata & (1ul << 32)) != 0)
                     {
-                        int length = (int)(Endianness.FromLittle(receiveMetadata) & 0xFFFFu);
-                        ulong transmitLength = (ulong)processor(_packets[n], length);
+                        uint length = (uint)(Endianness.FromLittle(receiveMetadata) & 0xFFFFu);
+                        uint transmitLength = processor(_packets[n], length);
 
                         ulong rsBit = ((n % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
                         _ring[n].Metadata = Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24));
