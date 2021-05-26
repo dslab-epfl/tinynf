@@ -96,7 +96,7 @@ namespace TestApp
             public const int MAP_POPULATE = 0x8000;
             public const int MAP_HUGETLB = 0x40000;
             public const int MAP_HUGE_SHIFT = 26;
-            public static readonly void* MAP_FAILED = (void*) -1;
+            public static readonly void* MAP_FAILED = (void*)-1;
 
             [DllImport("libc", EntryPoint = "mmap", SetLastError = true)]
             public static extern void* mmap(nuint addr, nuint length, int prot, int flags, int fd, nint offset);
@@ -104,7 +104,7 @@ namespace TestApp
 
         public unsafe Span<T> Allocate<T>(nuint size)
         {
-            if (size * (nuint) Marshal.SizeOf<T>() > HugepageSize)
+            if (size * (nuint)Marshal.SizeOf<T>() > HugepageSize)
             {
                 throw new Exception("Cannot allocate that much");
             }
@@ -130,7 +130,7 @@ namespace TestApp
                 throw new Exception("mmap failed");
             }
 
-            return new Span<T>(page, (int) size);
+            return new Span<T>(page, (int)size);
         }
 
         // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
@@ -140,10 +140,10 @@ namespace TestApp
             nuint addr = (nuint)Unsafe.AsPointer(ref span.GetPinnableReference());
             nuint page = addr / pageSize;
             nuint mapOffset = page * sizeof(ulong);
-            // Cannot check for off_t here since we don't know what it is
+            // Cannot check for off_t roundtrip here since we don't know what it is
 
             using var pagemap = File.OpenRead("/proc/self/pagemap");
-            pagemap.Seek((long) mapOffset, SeekOrigin.Current);
+            pagemap.Seek((long)mapOffset, SeekOrigin.Current);
 
             Span<byte> readBytes = stackalloc byte[sizeof(ulong)];
             if (pagemap.Read(readBytes) != readBytes.Length)
@@ -165,12 +165,35 @@ namespace TestApp
             }
 
             nuint addrOffset = addr % pageSize;
-            return (nuint) (pfn * pageSize + addrOffset);
+            return (nuint)(pfn * pageSize + addrOffset);
         }
 
-        public Span<T> MapPhysicalMemory<T>(nuint addr, nuint size)
+        public unsafe Span<T> MapPhysicalMemory<T>(nuint addr, nuint size)
         {
-            throw new NotImplementedException();
+            // Cannot check for off_t roundtrip here since we don't know what it is
+
+            using var mem = File.OpenWrite("/dev/mem");
+
+            void* mapped = Interop.mmap(
+                // No specific address
+                0,
+                // Size of the mapping
+                size * (nuint) Marshal.SizeOf<T>(),
+                // R/W page
+                Interop.PROT_READ | Interop.PROT_WRITE,
+                // Send updates to the underlying "file"
+                Interop.MAP_SHARED,
+                // /dev/mem
+                (int)mem.SafeFileHandle.DangerousGetHandle(),
+                // Offset is the address
+                (nint)addr
+            );
+            if (mapped == Interop.MAP_FAILED)
+            {
+                throw new Exception("Phys-to-virt mmap failed");
+            }
+
+            return new Span<T>(mapped, (int) size);
         }
 
         public uint PciRead(PciAddress address, byte register)
