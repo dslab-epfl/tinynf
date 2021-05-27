@@ -187,7 +187,9 @@ namespace TestApp
         {
             byte* ptr = null;
             // we'll never call ReleasePointer, but that's ok, the memory will be released when we exit
-            MemoryMappedFile.CreateFromFile("/dev/mem").CreateViewAccessor((long)addr, (long)size * Marshal.SizeOf<T>()).SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+            MemoryMappedFile.CreateFromFile("/dev/mem", FileMode.Open, null, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes)
+                            .CreateViewAccessor((long)addr, (long)size * Marshal.SizeOf<T>())
+                            .SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
             return new Span<T>(ptr, (int)size);
         }
 
