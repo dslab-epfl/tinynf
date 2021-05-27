@@ -1433,6 +1433,7 @@ namespace TestApp
 
                         ulong rsBit = ((n % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
                         Volatile.Write(ref _ring[n].Metadata, Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+
                         flushCounter++;
                         if (flushCounter == DriverConstants.FlushPeriod)
                         {
