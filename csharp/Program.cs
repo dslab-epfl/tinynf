@@ -38,7 +38,7 @@ namespace TestApp
 
             var agent = new Agent(env, dev0, dev1);
             Console.WriteLine("Initialized agent. Running...");
-            agent.Run((data, len) => len);
+            agent.Run((ref PacketData data, uint len) => len);
         }
     }
 
@@ -270,7 +270,7 @@ namespace TestApp
     // TODO see what happens when actually processing packets; might need a trick
     //      where we have a struct with a custom indexer and like 60 byte fields...
 
-    public delegate uint PacketProcessor(PacketData data, uint length);
+    public delegate uint PacketProcessor(ref PacketData data, uint length);
 
     internal static class PciRegs
     {
@@ -1438,10 +1438,10 @@ namespace TestApp
                     if ((receiveMetadata & (1ul << 32)) != 0)
                     {
                         uint length = (uint)(Endianness.FromLittle(receiveMetadata) & 0xFFFFu);
-                        uint transmitLength = processor(_packets[n], length);
+                        uint transmitLength = processor(ref _packets[n], length);
 
                         ulong rsBit = ((n % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                        Volatile.Write(ref _ring[n].Metadata, Endianness.ToLittle((ulong)transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                        Volatile.Write(ref _ring[n].Metadata, Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
                         flushCounter++;
                         if (flushCounter == DriverConstants.FlushPeriod)
                         {
