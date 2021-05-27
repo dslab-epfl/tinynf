@@ -32,8 +32,10 @@ namespace TestApp
 
             var dev0 = new Device(env, ParsePciAddress(args[0]));
             var dev1 = new Device(env, ParsePciAddress(args[1]));
+            Console.WriteLine("Initialized devices");
 
             var agent = new Agent(env, dev0, dev1);
+            Console.WriteLine("Initialized agent. Running...");
             agent.Run((data, len) => len);
         }
     }
@@ -330,7 +332,7 @@ namespace TestApp
     {
         public static uint Read(Span<uint> buffer, uint reg)
         {
-            return Endianness.FromLittle(buffer[(int)reg]);
+            return Endianness.FromLittle(buffer[(int)reg / 4]);
         }
 
         public static uint ReadField(Span<uint> buffer, uint reg, uint field)
@@ -342,7 +344,7 @@ namespace TestApp
 
         public static void Write(Span<uint> buffer, uint reg, uint value)
         {
-            buffer[(int)reg] = Endianness.ToLittle(value);
+            buffer[(int)reg / 4] = Endianness.ToLittle(value);
         }
 
         public static void WriteField(Span<uint> buffer, uint reg, uint field, uint fieldValue)
@@ -746,7 +748,8 @@ namespace TestApp
             // Thus we can ask for 128KB, since we don't know the flash size (and don't need it thus no need to actually check it)
             _buffer = env.MapPhysicalMemory<uint>(devPhysAddr, 128 * 1024 / sizeof(uint));
 
-            //            TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to %p", pci_address.bus, pci_address.device, pci_address.function, device.addr);
+//            Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", pciAddress.Bus, pciAddress.Device, pciAddress.Function, devPhysAddr);
+
 
             // "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
             //  The major initialization steps are:"
@@ -1386,7 +1389,7 @@ namespace TestApp
             {
                 // Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
                 // "Buffer Address (64)", 1st line offset 0
-                nuint packetPhysAddr = env.GetPhysicalAddress(_packets.Slice(n, DriverConstants.PacketBufferSize));
+                nuint packetPhysAddr = env.GetPhysicalAddress(_packets.Slice(n, 1));
                 // INTERPRETATION-MISSING: The data sheet does not specify the endianness of descriptor buffer addresses..
                 // Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
                 _ring[n].Buffer = Endianness.ToLittle(packetPhysAddr);
