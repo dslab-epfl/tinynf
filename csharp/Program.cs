@@ -1400,15 +1400,6 @@ namespace TestApp
             _receiveTail = inputDevice.SetInput(env, _ring);
             _transmitHead = env.Allocate<uint>(1);
             _transmitTail = outputDevice.AddOutput(env, _ring, _transmitHead);
-
-            // TODO when/if we add more outputs, port this:
-            /*
-             if (agent->outputs_count == IXGBE_AGENT_OUTPUTS_MAX) {
-                 TN_DEBUG("The agent is already using the maximum amount of transmit queues");
-                 return false;
-             }
-            }
-            */
         }
 
         public readonly void Run(PacketProcessor processor)
