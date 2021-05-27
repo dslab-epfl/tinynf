@@ -31,7 +31,9 @@ namespace TestApp
             var env = new LinuxEnvironment();
 
             var dev0 = new Device(env, ParsePciAddress(args[0]));
+            dev0.SetPromiscuous();
             var dev1 = new Device(env, ParsePciAddress(args[1]));
+            dev1.SetPromiscuous();
             Console.WriteLine("Initialized devices");
 
             var agent = new Agent(env, dev0, dev1);
@@ -332,7 +334,7 @@ namespace TestApp
     {
         public static uint Read(Span<uint> buffer, uint reg)
         {
-            return Endianness.FromLittle(buffer[(int)reg / 4]);
+            return Endianness.FromLittle(buffer[(int)reg / sizeof(uint)]);
         }
 
         public static uint ReadField(Span<uint> buffer, uint reg, uint field)
@@ -344,7 +346,7 @@ namespace TestApp
 
         public static void Write(Span<uint> buffer, uint reg, uint value)
         {
-            buffer[(int)reg / 4] = Endianness.ToLittle(value);
+            buffer[(int)reg / sizeof(uint)] = Endianness.ToLittle(value);
         }
 
         public static void WriteField(Span<uint> buffer, uint reg, uint field, uint fieldValue)
@@ -1280,7 +1282,7 @@ namespace TestApp
             // Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
             Regs.ClearField(_buffer, Regs.DCARXCTRL(queueIndex), Regs.DCARXCTRL_.UNKNOWN);
 
-            return _buffer.Slice((int)Regs.RDT(queueIndex), 1);
+            return _buffer.Slice((int)Regs.RDT(queueIndex) / sizeof(uint), 1);
         }
 
         // -------------------------------------
@@ -1366,7 +1368,7 @@ namespace TestApp
             // "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
             // Nothing to transmit yet, so leave TDT alone.
 
-            return _buffer.Slice((int)Regs.TDT(queueIndex), 1);
+            return _buffer.Slice((int)Regs.TDT(queueIndex) / sizeof(uint), 1);
         }
     }
 
@@ -1430,31 +1432,33 @@ namespace TestApp
                 // TODO somehow remove that _packets.Length check without the JIT adding one,
                 //      it should be unnecessary given the equality check on _ring/_packets.Length above...
                 // NOTE somehow replacing the && with a & still inserts a check; this is weird!
-                for (int n = 0; n < _ring.Length && n < _packets.Length; n++)
+                for (int n = 0; n < _ring.Length && n < _packets.Length;)
                 {
-                    ulong receiveMetadata = Endianness.FromLittle(_ring[n].Metadata);
+                    ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _ring[n].Metadata));
                     if ((receiveMetadata & (1ul << 32)) != 0)
                     {
                         uint length = (uint)(Endianness.FromLittle(receiveMetadata) & 0xFFFFu);
                         uint transmitLength = processor(_packets[n], length);
 
                         ulong rsBit = ((n % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                        _ring[n].Metadata = Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24));
+                        Volatile.Write(ref _ring[n].Metadata, Endianness.ToLittle((ulong)transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
                         flushCounter++;
                         if (flushCounter == DriverConstants.FlushPeriod)
                         {
-                            _transmitTail[0] = Endianness.ToLittle((uint)n);
+                            Volatile.Write(ref _transmitTail[0], Endianness.ToLittle((uint)n));
                             flushCounter = 0;
                         }
 
                         if (rsBit != 0)
                         {
-                            _receiveTail[0] = Endianness.ToLittle((_transmitHead[0] - 1) % DriverConstants.RingSize);
+                            Volatile.Write(ref _receiveTail[0], Endianness.ToLittle((Volatile.Read(ref _transmitHead[0]) - 1) % DriverConstants.RingSize));
                         }
+
+                        n++;
                     }
                     else if (flushCounter != 0)
                     {
-                        _transmitTail[0] = Endianness.ToLittle((uint)n);
+                        Volatile.Write(ref _transmitTail[0], Endianness.ToLittle((uint)n));
                         flushCounter = 0;
                     }
                 }
