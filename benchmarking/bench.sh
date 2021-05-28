@@ -56,7 +56,7 @@ else
 fi
 
 if [ ! -d 'moongen' ]; then
-  git clone 'https://github.com/emmericp/MoonGen' 'moongen'
+  git clone --recurse-submodules 'https://github.com/emmericp/MoonGen' 'moongen'
   if [ $? -ne 0 ]; then
     echo '[FATAL] Could not clone MoonGen'
     exit 1
