@@ -2,6 +2,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
+    <!-- Ignore startup latency, optimize for throughput / stability -->
+    <TieredCompilation>false</TieredCompilation>
     <!-- TODO remove this, isolate unsafety to a separate project -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
