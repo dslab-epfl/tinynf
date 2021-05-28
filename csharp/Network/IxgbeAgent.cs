@@ -1,5 +1,4 @@
-﻿using System.Runtime.CompilerServices;
-using System.Threading;
+﻿using System.Threading;
 using TinyNF.Unsafe;
 
 namespace TinyNF.Network
@@ -40,7 +39,6 @@ namespace TinyNF.Network
         }
 
 
-//        [MethodImpl(MethodImplOptions.AggressiveInlining)] // so that the null check on `processor` can be removed at compile time
         public void Run(PacketProcessor processor)
         {
             uint n;
