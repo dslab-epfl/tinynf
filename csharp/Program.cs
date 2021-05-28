@@ -9,7 +9,61 @@ using System.Threading;
 
 namespace TestApp
 {
-    public static class Program
+    public delegate Span<T> Array256Allocator<T>(nuint size);
+    /// <summary>
+    /// A 256-element array that can only be indexed with a byte, guaranteeing a lack of bounds checks.
+    /// This struct is safe iff (1) it is only constructed using the explicit constructor, not the default one, and
+    /// (2) the allocator passed to its constructor returns a valid block of memory of size `size * sizeof(T)`.
+    /// </summary>
+    public unsafe ref struct Array256<T>
+    {
+        private readonly Span<T> _values;
+
+        public Array256(Array256Allocator<T> allocator)
+        {
+            _values = allocator(256);
+        }
+
+        public ref T this[byte n]
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return ref Unsafe.Add(ref MemoryMarshal.GetReference(_values), (uint)n); // the explicit cast leads to shorter generated code
+            }
+        }
+
+        public Span<T> AsSpan()
+        {
+            return _values;
+        }
+    }
+
+    /// <summary>
+    /// A reference to a value, i.e., a way to get a 'ref T' field.
+    /// "Unsafe" in the sense it uses MemoryMarshal which is unsafe, see e.g. https://github.com/dotnet/runtime/issues/41418
+    /// This struct is safe iff it is only constructed using the explicit constructor, not the default one.
+    /// </summary>
+    public ref struct Ref<T>
+    {
+        private readonly Span<T> _value;
+
+        public Ref(Span<T> value)
+        {
+            if (value.Length == 0)
+            {
+                throw new ArgumentException("Bad span");
+            }
+            _value = value;
+        }
+
+        public readonly ref T Get()
+        {
+            return ref MemoryMarshal.GetReference(_value);
+        }
+    }
+
+    public class Program
     {
         private static PciAddress ParsePciAddress(string str)
         {
@@ -38,16 +92,18 @@ namespace TestApp
 
             var agent = new Agent(env, dev0, dev1);
             Console.WriteLine("Initialized agent. Running...");
-            agent.Run((ref PacketData data, uint len) => len);
+            new Program().Run(agent);
         }
-    }
 
-    internal static class DriverConstants
-    {
-        public const int PacketBufferSize = 2048;
-        public const int RingSize = 1024;
-        public const int FlushPeriod = 8;
-        public const int RecyclePeriod = 64;
+        // Run must be an instance method so that _processor is known to be initialized without having to call the cctor
+        private readonly PacketProcessor _processor = (ref PacketData data, uint len) => len;
+        private void Run(Agent agent)
+        {
+            while (true)
+            {
+                agent.Run(_processor);
+            }
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -62,7 +118,7 @@ namespace TestApp
     //      can we use StructLayout?
     public unsafe struct PacketData
     {
-        private fixed byte _data[DriverConstants.PacketBufferSize];
+        private fixed byte _data[(int) DriverConstants.PacketBufferSize];
 
         public ref byte this[uint index]
         {
@@ -77,7 +133,8 @@ namespace TestApp
         // Memory
         Span<T> Allocate<T>(nuint size);
         Span<T> MapPhysicalMemory<T>(nuint addr, nuint size);
-        nuint GetPhysicalAddress<T>(Span<T> span);
+        nuint GetPhysicalAddress<T>(ref T value);
+        nuint GetPhysicalAddress<T>(Span<T> span) => GetPhysicalAddress(ref span.GetPinnableReference()); // convenience
 
         // PCI
         uint PciRead(PciAddress address, byte register);
@@ -153,10 +210,10 @@ namespace TestApp
         }
 
         // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
-        public unsafe nuint GetPhysicalAddress<T>(Span<T> span)
+        public unsafe nuint GetPhysicalAddress<T>(ref T value)
         {
             nuint pageSize = (nuint)Environment.SystemPageSize;
-            nuint addr = (nuint)Unsafe.AsPointer(ref span.GetPinnableReference());
+            nuint addr = (nuint)Unsafe.AsPointer(ref value);
             nuint page = addr / pageSize;
             nuint mapOffset = page * sizeof(ulong);
             // Cannot check for off_t roundtrip here since we don't know what it is
@@ -626,6 +683,14 @@ namespace TestApp
         }
     }
 
+    internal static class DriverConstants
+    {
+        public const uint PacketBufferSize = 2048;
+        public const uint RingSize = 256; // to use Array256
+        public const uint FlushPeriod = 8;
+        public const uint RecyclePeriod = 64;
+    }
+
     internal static class DeviceLimits
     {
         // The following are constants defined by the data sheet.
@@ -750,7 +815,7 @@ namespace TestApp
             // Thus we can ask for 128KB, since we don't know the flash size (and don't need it thus no need to actually check it)
             _buffer = env.MapPhysicalMemory<uint>(devPhysAddr, 128 * 1024 / sizeof(uint));
 
-//            Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", pciAddress.Bus, pciAddress.Device, pciAddress.Function, devPhysAddr);
+            //            Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", pciAddress.Bus, pciAddress.Device, pciAddress.Function, devPhysAddr);
 
 
             // "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
@@ -1288,7 +1353,7 @@ namespace TestApp
         // -------------------------------------
         // Section 4.6.8 Transmit Initialization
         // -------------------------------------
-        internal Span<uint> AddOutput(IEnvironment env, Span<Descriptor> ring, Span<uint> transmitHead)
+        internal Span<uint> AddOutput(IEnvironment env, Span<Descriptor> ring, ref uint transmitHead)
         {
             uint queueIndex = 0;
             for (; queueIndex < DeviceLimits.TransmitQueuesCount; queueIndex++)
@@ -1330,7 +1395,7 @@ namespace TestApp
             Regs.WriteField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.PTHRESH, 60);
             Regs.WriteField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.HTHRESH, 4);
             // "- If needed, set TDWBAL/TWDBAH to enable head write back."
-            nuint headPhysAddr = env.GetPhysicalAddress(transmitHead);
+            nuint headPhysAddr = env.GetPhysicalAddress(ref transmitHead);
             //	Section 7.2.3.5.2 Tx Head Pointer Write Back:
             //	"The low register's LSB hold the control bits.
             // 	 * The Head_WB_EN bit enables activation of tail write back. In this case, no descriptor write back is executed.
@@ -1373,87 +1438,73 @@ namespace TestApp
     }
 
     // 1 input 1 output for now
-    public readonly ref struct Agent
+    public ref struct Agent
     {
-        private readonly Span<PacketData> _packets;
-        private readonly Span<Descriptor> _ring;
-        private readonly Span<uint> _receiveTail;
-        private readonly Span<uint> _transmitHead; // TODO: aligned to 16 bytes and on its own cache line
-        private readonly Span<uint> _transmitTail;
+        private readonly Array256<PacketData> _packets;
+        private readonly Array256<Descriptor> _ring;
+        private readonly Ref<uint> _receiveTail;
+        private readonly Ref<uint> _transmitHead; // TODO: aligned to 16 bytes and on its own cache line
+        private readonly Ref<uint> _transmitTail;
+        private byte _processDelimiter;
+        private uint _flushCounter;
 
 
         public Agent(IEnvironment env, Device inputDevice, Device outputDevice)
         {
-            _packets = env.Allocate<PacketData>(DriverConstants.RingSize);
-            _ring = env.Allocate<Descriptor>(DriverConstants.RingSize);
+            _processDelimiter = 0;
+            _flushCounter = 0;
 
-            for (int n = 0; n < DriverConstants.RingSize; n++)
+            _packets = new Array256<PacketData>(env.Allocate<PacketData>);
+            _ring = new Array256<Descriptor>(env.Allocate<Descriptor>);
+
+            byte n = 0;
+            do
             {
                 // Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
                 // "Buffer Address (64)", 1st line offset 0
-                nuint packetPhysAddr = env.GetPhysicalAddress(_packets.Slice(n, 1));
+                nuint packetPhysAddr = env.GetPhysicalAddress(ref _packets[n]);
                 // INTERPRETATION-MISSING: The data sheet does not specify the endianness of descriptor buffer addresses..
                 // Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
                 _ring[n].Buffer = Endianness.ToLittle(packetPhysAddr);
-            }
+                n++;
+            } while (n != 0);
 
-            _receiveTail = inputDevice.SetInput(env, _ring);
-            _transmitHead = env.Allocate<uint>(1);
-            _transmitTail = outputDevice.AddOutput(env, _ring, _transmitHead);
+            _receiveTail = new Ref<uint>(inputDevice.SetInput(env, _ring.AsSpan()));
+            _transmitHead = new Ref<uint>(env.Allocate<uint>(1));
+            _transmitTail = new Ref<uint>(outputDevice.AddOutput(env, _ring.AsSpan(), ref _transmitHead.Get()));
         }
 
-        public readonly void Run(PacketProcessor processor)
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] // so that the null check on `processor` can be removed at compile time
+        public void Run(PacketProcessor processor)
         {
-            // TODO these local references to our spans, ensuring range checks can be eliminated, shouldn't be necessary, we're in a readonly struct
-            var _packets = this._packets;
-            var _ring = this._ring;
-            var _receiveTail = this._receiveTail;
-            var _transmitHead = this._transmitHead;
-            var _transmitTail = this._transmitTail;
-
-            if (_transmitHead.Length < 1 || _receiveTail.Length < 1 || _transmitTail.Length < 1 || processor == null || _ring.Length != _packets.Length)
+            ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _ring[_processDelimiter].Metadata));
+            if ((receiveMetadata & (1ul << 32)) != 0)
             {
-                throw new Exception("Run preconditions not met, something terrible happened");
-            }
+                uint length = (uint)(Endianness.FromLittle(receiveMetadata) & 0xFFFFu);
+                uint transmitLength = processor(ref _packets[_processDelimiter], length);
 
-            int flushCounter = 0; // local since we have a loop anyway
+                ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
+                Volatile.Write(ref _ring[_processDelimiter].Metadata, Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
 
-            while (true)
-            {
-                // TODO somehow remove that _packets.Length check without the JIT adding one,
-                //      it should be unnecessary given the equality check on _ring/_packets.Length above...
-                // NOTE somehow replacing the && with a & still inserts a check; this is weird!
-                for (int n = 0; n < _ring.Length && n < _packets.Length;)
+                _flushCounter++;
+                if (_flushCounter == DriverConstants.FlushPeriod)
                 {
-                    ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _ring[n].Metadata));
-                    if ((receiveMetadata & (1ul << 32)) != 0)
-                    {
-                        uint length = (uint)(Endianness.FromLittle(receiveMetadata) & 0xFFFFu);
-                        uint transmitLength = processor(ref _packets[n], length);
-
-                        ulong rsBit = ((n % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                        Volatile.Write(ref _ring[n].Metadata, Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
-
-                        flushCounter++;
-                        if (flushCounter == DriverConstants.FlushPeriod)
-                        {
-                            Volatile.Write(ref _transmitTail[0], Endianness.ToLittle((uint)n));
-                            flushCounter = 0;
-                        }
-
-                        if (rsBit != 0)
-                        {
-                            Volatile.Write(ref _receiveTail[0], Endianness.ToLittle((Volatile.Read(ref _transmitHead[0]) - 1) % DriverConstants.RingSize));
-                        }
-
-                        n++;
-                    }
-                    else if (flushCounter != 0)
-                    {
-                        Volatile.Write(ref _transmitTail[0], Endianness.ToLittle((uint)n));
-                        flushCounter = 0;
-                    }
+                    Volatile.Write(ref _transmitTail.Get(), Endianness.ToLittle(_processDelimiter));
+                    _flushCounter = 0;
                 }
+
+                if (rsBit != 0)
+                {
+                    Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle((Volatile.Read(ref _transmitHead.Get()) - 1) % DriverConstants.RingSize));
+                }
+
+                _processDelimiter++;
+            }
+            else if (_flushCounter != 0)
+            {
+                Volatile.Write(ref _transmitTail.Get(), Endianness.ToLittle(_processDelimiter));
+                _flushCounter = 0;
             }
         }
     }
