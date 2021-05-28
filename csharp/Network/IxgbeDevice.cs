@@ -2,31 +2,28 @@
 
 namespace TinyNF.Network
 {
-    public ref struct IxgbeDevice
+    public sealed class IxgbeDevice
     {
-        private readonly Span<uint> _buffer;
+        private readonly Memory<uint> _buffer;
         private bool _rxEnabled;
         private bool _txEnabled;
 
-        // This helper is a bit awkwardly phrased due to the limitations of ref structs
-        private delegate bool TimeoutCondition(Span<uint> buffer);
-        private delegate void TimeoutAction(Span<uint> buffer);
-        private readonly void IfAfterTimeout(IEnvironment environment, TimeSpan span, TimeoutCondition condition, TimeoutAction action)
+        private static void IfAfterTimeout(IEnvironment environment, TimeSpan span, Func<bool> condition, Action action)
         {
             environment.Sleep(TimeSpan.FromTicks(span.Ticks % 10));
             for (int n = 0; n < 10; n++)
             {
-                if (!condition(_buffer))
+                if (!condition())
                 {
                     return;
                 }
                 environment.Sleep(span / 10);
             }
-            if (!condition(_buffer))
+            if (!condition())
             {
                 return;
             }
-            action(_buffer);
+            action();
         }
 
         // -------------------------------------
@@ -114,7 +111,7 @@ namespace TinyNF.Network
                 // "The 82599 clears the RXDCTL.ENABLE bit only after all pending memory accesses to the descriptor ring are done.
                 //  The driver should poll this bit before releasing the memory allocated to this queue."
                 // INTERPRETATION-MISSING: There is no mention of what to do if the 82599 never clears the bit; 1s seems like a decent timeout
-                IfAfterTimeout(env, TimeSpan.FromSeconds(1), b => !Regs.IsFieldCleared(b, Regs.RXDCTL(queue), Regs.RXDCTL_.ENABLE), _ =>
+                IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => !Regs.IsFieldCleared(_buffer, Regs.RXDCTL(queue), Regs.RXDCTL_.ENABLE), () =>
                 {
                     throw new Exception("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
                 });
@@ -129,7 +126,7 @@ namespace TinyNF.Network
             //    Once the bit is cleared, it is guaranteed that no requests are pending from this function."
             // INTERPRETATION-MISSING: The next sentence refers to "a given time"; let's say 1 second should be plenty...
             //   "The driver might time out if the PCIe Master Enable Status bit is not cleared within a given time."
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), b => !Regs.IsFieldCleared(b, Regs.STATUS, Regs.STATUS_.PCIE_MASTER_ENABLE_STATUS), buffer =>
+            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => !Regs.IsFieldCleared(_buffer, Regs.STATUS, Regs.STATUS_.PCIE_MASTER_ENABLE_STATUS), () =>
             {
                 // "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
                 //  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
@@ -143,20 +140,20 @@ namespace TinyNF.Network
                 //  The recommended method to flush the transmit data path is as follows:"
                 // "- Inhibit data transmission by setting the HLREG0.LPBK bit and clearing the RXCTRL.RXEN bit.
                 //    This configuration avoids transmission even if flow control or link down events are resumed."
-                Regs.SetField(buffer, Regs.HLREG0, Regs.HLREG0_.LPBK);
-                Regs.ClearField(buffer, Regs.RXCTRL, Regs.RXCTRL_.RXEN);
+                Regs.SetField(_buffer, Regs.HLREG0, Regs.HLREG0_.LPBK);
+                Regs.ClearField(_buffer, Regs.RXCTRL, Regs.RXCTRL_.RXEN);
 
                 // "- Set the GCR_EXT.Buffers_Clear_Func bit for 20 microseconds to flush internal buffers."
-                Regs.SetField(buffer, Regs.GCREXT, Regs.GCREXT_.BUFFERS_CLEAR_FUNC);
+                Regs.SetField(_buffer, Regs.GCREXT, Regs.GCREXT_.BUFFERS_CLEAR_FUNC);
                 env.Sleep(TimeSpan.FromMilliseconds(0.02));
 
                 // "- Clear the HLREG0.LPBK bit and the GCR_EXT.Buffers_Clear_Func"
-                Regs.ClearField(buffer, Regs.HLREG0, Regs.HLREG0_.LPBK);
-                Regs.ClearField(buffer, Regs.GCREXT, Regs.GCREXT_.BUFFERS_CLEAR_FUNC);
+                Regs.ClearField(_buffer, Regs.HLREG0, Regs.HLREG0_.LPBK);
+                Regs.ClearField(_buffer, Regs.GCREXT, Regs.GCREXT_.BUFFERS_CLEAR_FUNC);
 
                 // "- It is now safe to issue a software reset."
                 // see just below for an explanation of this line
-                Regs.SetField(buffer, Regs.CTRL, Regs.CTRL_.RST);
+                Regs.SetField(_buffer, Regs.CTRL, Regs.CTRL_.RST);
                 env.Sleep(TimeSpan.FromMilliseconds(0.002));
             });
             // happy path, back to Section 4.2.1.6.1:
@@ -208,7 +205,7 @@ namespace TinyNF.Network
             // "- Wait for EEPROM auto read completion."
             // INTERPRETATION-MISSING: This refers to Section 8.2.3.2.1 EEPROM/Flash Control Register (EEC), Bit 9 "EEPROM Auto-Read Done"
             // INTERPRETATION-MISSING: No timeout is mentioned, so we use 1s.
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), b => Regs.IsFieldCleared(b, Regs.EEC, Regs.EEC_.AUTO_RD), _ =>
+            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.EEC, Regs.EEC_.AUTO_RD), () =>
             {
                 throw new Exception("EEPROM auto read timed out");
             });
@@ -221,7 +218,7 @@ namespace TinyNF.Network
             }
             // "- Wait for DMA initialization done (RDRXCTL.DMAIDONE)."
             // INTERPRETATION-MISSING: Once again, no timeout mentioned, so we use 1s
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), b => Regs.IsFieldCleared(b, Regs.RDRXCTL, Regs.RDRXCTL_.DMAIDONE), _ =>
+            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.RDRXCTL, Regs.RDRXCTL_.DMAIDONE), () =>
             {
                 throw new Exception("DMA init timed out");
             });
@@ -507,7 +504,7 @@ namespace TinyNF.Network
         // ----------------------------
         // Section 7.1.1.1 L2 Filtering
         // ----------------------------
-        public readonly void SetPromiscuous()
+        public void SetPromiscuous()
         {
             // "A packet passes successfully through L2 Ethernet MAC address filtering if any of the following conditions are met:"
             // 	Section 8.2.3.7.1 Filter Control Register:
@@ -580,7 +577,7 @@ namespace TinyNF.Network
             Regs.SetField(_buffer, Regs.RXDCTL(queueIndex), Regs.RXDCTL_.ENABLE);
             // "- Poll the RXDCTL register until the Enable bit is set. The tail should not be bumped before this bit was read as 1b."
             // INTERPRETATION-MISSING: No timeout is mentioned here, let's say 1s to be safe.
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), b => Regs.IsFieldCleared(b, Regs.RXDCTL(queueIndex), Regs.RXDCTL_.ENABLE), _ =>
+            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.RXDCTL(queueIndex), Regs.RXDCTL_.ENABLE), () =>
             {
                 throw new Exception("RXDCTL.ENABLE did not set, cannot enable queue");
             });
@@ -596,7 +593,7 @@ namespace TinyNF.Network
                 Regs.SetField(_buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_.RX_DIS);
                 //	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
                 // INTERPRETATION-MISSING: Another undefined timeout, assuming 1s as usual
-                IfAfterTimeout(env, TimeSpan.FromSeconds(1), b => Regs.IsFieldCleared(b, Regs.SECRXSTAT, Regs.SECRXSTAT_.SECRX_RDY), _ =>
+                IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.SECRXSTAT, Regs.SECRXSTAT_.SECRX_RDY), () =>
                 {
                     throw new Exception("SECRXSTAT.SECRXRDY timed out, cannot start device");
                 });
@@ -617,7 +614,7 @@ namespace TinyNF.Network
             // Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
             Regs.ClearField(_buffer, Regs.DCARXCTRL(queueIndex), Regs.DCARXCTRL_.UNKNOWN);
 
-            return _buffer.Slice((int)Regs.RDT(queueIndex) / sizeof(uint), 1);
+            return _buffer.Span.Slice((int)Regs.RDT(queueIndex) / sizeof(uint), 1);
         }
 
         // -------------------------------------
@@ -696,14 +693,14 @@ namespace TinyNF.Network
             //    Poll the TXDCTL register until the Enable bit is set."
             // INTERPRETATION-MISSING: No timeout is mentioned here, let's say 1s to be safe.
             Regs.SetField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE);
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), b => Regs.IsFieldCleared(b, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE), _ =>
+            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE), () =>
             {
                 throw new Exception("TXDCTL.ENABLE did not set, cannot enable queue");
             });
             // "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
             // Nothing to transmit yet, so leave TDT alone.
 
-            return _buffer.Slice((int)Regs.TDT(queueIndex) / sizeof(uint), 1);
+            return _buffer.Span.Slice((int)Regs.TDT(queueIndex) / sizeof(uint), 1);
         }
     }
 }

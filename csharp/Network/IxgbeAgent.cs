@@ -4,6 +4,9 @@ using TinyNF.Unsafe;
 namespace TinyNF.Network
 {
     // 1 input 1 output for now
+    // TODO support multiple outputs
+    // perhaps we can have an Array256 of a TransmitHead struct with a single uint + a StructLayout(Size = 64)
+    // or even a Span of such a struct (doesn't need to be ref, right?) since all checks should be elided by only ever using it in a loop
     public ref struct IxgbeAgent
     {
         private readonly Array256<PacketData> _packets;
@@ -18,8 +21,8 @@ namespace TinyNF.Network
         {
             _processDelimiter = 0;
 
-            _packets = new Array256<PacketData>(env.Allocate<PacketData>);
-            _ring = new Array256<Descriptor>(env.Allocate<Descriptor>);
+            _packets = new Array256<PacketData>(s => env.Allocate<PacketData>(s).Span);
+            _ring = new Array256<Descriptor>(s => env.Allocate<Descriptor>(s).Span);
 
             byte n = 0;
             do
@@ -34,7 +37,7 @@ namespace TinyNF.Network
             } while (n != 0);
 
             _receiveTail = new Ref<uint>(inputDevice.SetInput(env, _ring.AsSpan()));
-            _transmitHead = new Ref<uint>(env.Allocate<uint>(1));
+            _transmitHead = new Ref<uint>(env.Allocate<uint>(1).Span);
             _transmitTail = new Ref<uint>(outputDevice.AddOutput(env, _ring.AsSpan(), ref _transmitHead.Get()));
         }
 

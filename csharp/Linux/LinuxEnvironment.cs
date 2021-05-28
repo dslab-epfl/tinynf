@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 using System.Threading;
+using TinyNF.Utils;
 
 namespace TinyNF.Linux
 {
@@ -43,7 +44,8 @@ namespace TinyNF.Linux
             public static extern uint port_in_32(uint port);
         }
 
-        public unsafe Span<T> Allocate<T>(nuint size)
+        public unsafe Memory<T> Allocate<T>(nuint size)
+            where T : unmanaged
         {
             if (size * (nuint)Marshal.SizeOf<T>() > HugepageSize)
             {
@@ -71,7 +73,7 @@ namespace TinyNF.Linux
                 throw new Exception("mmap failed");
             }
 
-            return new Span<T>(page, (int)size);
+            return new UnmanagedMemoryManager<T>((T*)page, (int)size).Memory;
         }
 
         // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
@@ -109,14 +111,15 @@ namespace TinyNF.Linux
             return (nuint)(pfn * pageSize + addrOffset);
         }
 
-        public unsafe Span<T> MapPhysicalMemory<T>(nuint addr, nuint size)
+        public unsafe Memory<T> MapPhysicalMemory<T>(nuint addr, nuint size)
+            where T : unmanaged
         {
             byte* ptr = null;
             // we'll never call ReleasePointer, but that's ok, the memory will be released when we exit
             MemoryMappedFile.CreateFromFile("/dev/mem", FileMode.Open, null, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes)
                             .CreateViewAccessor((long)addr, (long)size * Marshal.SizeOf<T>())
                             .SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
-            return new Span<T>(ptr, (int)size);
+            return new UnmanagedMemoryManager<T>((T*)ptr, (int)size).Memory;
         }
 
         private static void PciTarget(PciAddress address, byte reg)

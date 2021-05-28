@@ -74,24 +74,24 @@ namespace TinyNF.Network
 
     internal static class Regs
     {
-        public static uint Read(Span<uint> buffer, uint reg)
+        public static uint Read(Memory<uint> buffer, uint reg)
         {
-            return Endianness.FromLittle(buffer[(int)reg / sizeof(uint)]);
+            return Endianness.FromLittle(buffer.Span[(int)reg / sizeof(uint)]);
         }
 
-        public static uint ReadField(Span<uint> buffer, uint reg, uint field)
+        public static uint ReadField(Memory<uint> buffer, uint reg, uint field)
         {
             uint value = Read(buffer, reg);
             int shift = BitOperations.TrailingZeroCount(field);
             return (value & field) >> shift;
         }
 
-        public static void Write(Span<uint> buffer, uint reg, uint value)
+        public static void Write(Memory<uint> buffer, uint reg, uint value)
         {
-            buffer[(int)reg / sizeof(uint)] = Endianness.ToLittle(value);
+            buffer.Span[(int)reg / sizeof(uint)] = Endianness.ToLittle(value);
         }
 
-        public static void WriteField(Span<uint> buffer, uint reg, uint field, uint fieldValue)
+        public static void WriteField(Memory<uint> buffer, uint reg, uint field, uint fieldValue)
         {
             uint oldValue = Read(buffer, reg);
             int shift = BitOperations.TrailingZeroCount(field);
@@ -99,24 +99,24 @@ namespace TinyNF.Network
             Write(buffer, reg, newValue);
         }
 
-        public static void Clear(Span<uint> buffer, uint reg)
+        public static void Clear(Memory<uint> buffer, uint reg)
         {
             Write(buffer, reg, 0);
         }
 
-        public static void ClearField(Span<uint> buffer, uint reg, uint field)
+        public static void ClearField(Memory<uint> buffer, uint reg, uint field)
         {
             WriteField(buffer, reg, field, 0);
         }
 
-        public static void SetField(Span<uint> buffer, uint reg, uint field)
+        public static void SetField(Memory<uint> buffer, uint reg, uint field)
         {
             uint oldValue = Read(buffer, reg);
             uint newValue = oldValue | field;
             Write(buffer, reg, newValue);
         }
 
-        public static bool IsFieldCleared(Span<uint> buffer, uint reg, uint field)
+        public static bool IsFieldCleared(Memory<uint> buffer, uint reg, uint field)
         {
             return ReadField(buffer, reg, field) == 0;
         }
