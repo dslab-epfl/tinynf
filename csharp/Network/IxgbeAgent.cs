@@ -40,7 +40,7 @@ namespace TinyNF.Network
         }
 
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)] // so that the null check on `processor` can be removed at compile time
+//        [MethodImpl(MethodImplOptions.AggressiveInlining)] // so that the null check on `processor` can be removed at compile time
         public void Run(PacketProcessor processor)
         {
             uint n;
