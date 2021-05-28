@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace TinyNF.Unsafe
@@ -8,8 +7,7 @@ namespace TinyNF.Unsafe
 
     /// <summary>
     /// A 256-element array that can only be indexed with a byte, guaranteeing a lack of bounds checks.
-    /// This struct is safe iff (1) it is only constructed using the explicit constructor, not the default one, and
-    /// (2) the allocator passed to its constructor returns a valid block of memory of size `size * sizeof(T)`.
+    /// This struct is safe iff it is only constructed using the explicit constructor, not the default one.
     /// </summary>
     public unsafe ref struct Array256<T>
     {
@@ -18,11 +16,14 @@ namespace TinyNF.Unsafe
         public Array256(Array256Allocator<T> allocator)
         {
             _values = allocator(256);
+            if (_values.Length < 256)
+            {
+                throw new Exception("Allocator did not fulfill its contract");
+            }
         }
 
         public ref T this[byte n]
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
                 return ref System.Runtime.CompilerServices.Unsafe.Add(ref MemoryMarshal.GetReference(_values), (uint)n); // the explicit cast leads to shorter generated code
