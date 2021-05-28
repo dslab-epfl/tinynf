@@ -10,7 +10,7 @@ namespace TinyNF.Network
         private readonly Array256<PacketData> _packets;
         private readonly Array256<Descriptor> _ring;
         private readonly Ref<uint> _receiveTail;
-        private readonly Ref<uint> _transmitHead; // TODO: aligned to 16 bytes and on its own cache line
+        private readonly Ref<uint> _transmitHead; // NOTE: needs to be aligned to 16 bytes and on its own cache line
         private readonly Ref<uint> _transmitTail;
         private byte _processDelimiter;
 
@@ -51,21 +51,19 @@ namespace TinyNF.Network
                 {
                     break;
                 }
-                else
+
+                uint length = (uint)(receiveMetadata & 0xFFFFu);
+                uint transmitLength = processor(ref _packets[_processDelimiter], length);
+
+                ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
+                Volatile.Write(ref _ring[_processDelimiter].Metadata, Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+
+                if (rsBit != 0)
                 {
-                    uint length = (uint)(Endianness.FromLittle(receiveMetadata) & 0xFFFFu);
-                    uint transmitLength = processor(ref _packets[_processDelimiter], length);
-
-                    ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                    Volatile.Write(ref _ring[_processDelimiter].Metadata, Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
-
-                    if (rsBit != 0)
-                    {
-                        Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle((Volatile.Read(ref _transmitHead.Get()) - 1) % DriverConstants.RingSize));
-                    }
-
-                    _processDelimiter++;
+                    Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle((Volatile.Read(ref _transmitHead.Get()) - 1) % DriverConstants.RingSize));
                 }
+
+                _processDelimiter++;
             }
             if (n != 0)
             {
