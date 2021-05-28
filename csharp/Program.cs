@@ -32,7 +32,21 @@ namespace TinyNF
         }
 
         // Run must be an instance method so that _processor is known to be initialized without having to call the cctor
-        private readonly PacketProcessor _processor = (ref PacketData data, uint len) => len;
+        private readonly PacketProcessor _processor = (ref PacketData data, uint len) => {
+            data[0] = 0;
+            data[1] = 0;
+            data[2] = 0;
+            data[3] = 0;
+            data[4] = 0;
+            data[5] = 1;
+            data[6] = 0;
+            data[7] = 0;
+            data[8] = 0;
+            data[9] = 0;
+            data[10] = 0;
+            data[11] = 0;
+            return len;
+        };
         private void Run(IxgbeAgent agent0, IxgbeAgent agent1)
         {
             while (true)

@@ -7,10 +7,8 @@
 // This NF does as little as possible, it's only intended for benchmarking/profiling the driver
 
 #ifndef TN_DEBUG_PERF
-static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, void* state, bool* outputs)
+static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, bool* outputs)
 {
-	(void) state;
-
 	// DST MAC
 	packet[0] = 0;
 	packet[1] = 0;
@@ -70,9 +68,10 @@ int main(int argc, char** argv)
 	TN_INFO("TinyNF initialized successfully!");
 
 #ifndef TN_DEBUG_PERF
-	tn_net_packet_handler* handlers[2] = { tinynf_packet_handler, tinynf_packet_handler };
-	void* states[2] = {0}; // unused
-	tn_net_run(2, agents, handlers, states);
+	while (true) {
+		tn_net_run(agents[0], &tinynf_packet_handler);
+		tn_net_run(agents[1], &tinynf_packet_handler);
+	}
 #else
 	uint8_t lookup_table[256 * 256];
 	for (uint64_t n = 0; n < sizeof(lookup_table)/sizeof(uint8_t); n++) {

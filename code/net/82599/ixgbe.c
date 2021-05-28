@@ -1384,22 +1384,45 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 // High-level API
 // --------------
 
-void tn_net_run(uint64_t agents_count, struct tn_net_agent** agents, tn_net_packet_handler** handlers, void** states)
+void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler)
 {
 	bool outputs[IXGBE_AGENT_OUTPUTS_MAX] = {0};
-	while (true) {
-		for (uint64_t n = 0; n < agents_count; n++) {
-			for (uint64_t p = 0; p < IXGBE_AGENT_FLUSH_PERIOD; p++) {
-				uint8_t* packet;
-				uint16_t receive_packet_length;
-				if (!tn_net_agent_receive(agents[n], &packet, &receive_packet_length)) {
-					break;
+	uint64_t p;
+	for (p = 0; p < IXGBE_AGENT_FLUSH_PERIOD; p++) {
+		uint64_t receive_metadata = tn_le_to_cpu64(agent->rings[0][2u*agent->processed_delimiter + 1]);
+		if ((receive_metadata & BITL(32)) == 0) {
+			break;
+		}
+
+		uint8_t* packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
+		uint16_t packet_length = receive_metadata & 0xFFFFu;
+		uint16_t transmit_packet_length = handler(packet, packet_length, outputs);
+
+		uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1)) << (24+3);
+		for (uint64_t n = 0; n < agent->outputs_count; n++) {
+			agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64((outputs[n] * (uint64_t) transmit_packet_length) | rs_bit | BITL(24+1) | BITL(24));
+		}
+
+		agent->processed_delimiter = (agent->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
+
+		if (rs_bit != 0) {
+			uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
+			uint64_t min_diff = (uint64_t) -1;
+			for (uint64_t n = 0; n < agent->outputs_count; n++) {
+				uint32_t head = tn_le_to_cpu32(agent->transmit_heads[n * TRANSMIT_HEAD_MULTIPLIER]);
+				uint64_t diff = head - agent->processed_delimiter;
+				if (diff <= min_diff) {
+					earliest_transmit_head = head;
+					min_diff = diff;
 				}
-
-				uint16_t transmit_packet_length = handlers[n](packet, receive_packet_length, states[n], outputs);
-
-				tn_net_agent_transmit(agents[n], transmit_packet_length, outputs);
 			}
+
+				reg_write_raw(agent->receive_tail_addr, (earliest_transmit_head - 1) & (IXGBE_RING_SIZE - 1));
+		}
+	}
+	if (p != 0) {
+		for (uint64_t n = 0; n < agent->outputs_count; n++) {
+			reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
 	}
 }

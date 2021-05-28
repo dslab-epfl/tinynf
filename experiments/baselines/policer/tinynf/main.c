@@ -16,9 +16,17 @@
 // Hacky but fine for benchmarks
 #define DEVICES_COUNT 2u
 
-static uint16_t packet_handler(uint8_t* packet, uint16_t packet_length, void* state, bool* outputs)
+static uint16_t packet_handler_0(uint8_t* packet, uint16_t packet_length, bool* outputs)
 {
-	uint16_t device = (uint16_t) state;
+	uint16_t device = 0;
+	int vigor_output = nf_process(device, packet, packet_length, current_time());
+	outputs[0] = vigor_output != device;
+	return packet_length;
+}
+
+static uint16_t packet_handler_1(uint8_t* packet, uint16_t packet_length, bool* outputs)
+{
+	uint16_t device = 1;
 	int vigor_output = nf_process(device, packet, packet_length, current_time());
 	outputs[0] = vigor_output != device;
 	return packet_length;
@@ -28,15 +36,15 @@ static struct tn_net_agent* agents[DEVICES_COUNT];
 
 void* thread0(void* arg)
 {
-	void* state = (uint16_t) 0;
-	tn_net_packet_handler* handlers[1] = { packet_handler };
-	tn_net_run(1, &(agents[0]), handlers, &state);
+	while (true) {
+		tn_net_run(agents[0], &packet_handler_0);
+	}
 }
 void* thread1(void* arg)
 {
-	void* state = (uint16_t) 1;
-	tn_net_packet_handler* handlers[1] = { packet_handler };
-	tn_net_run(1, &(agents[1]), handlers, &state);
+	while (true) {
+		tn_net_run(agents[1], &packet_handler_1);
+	}
 }
 
 int main(int argc, char** argv)
@@ -123,9 +131,10 @@ int main(int argc, char** argv)
 		}
 	}
 #else
-	void* states[2] = { 0, 1 };
-	tn_net_packet_handler* handlers[2] = { packet_handler, packet_handler };
-	tn_net_run(2, agents, handlers, states);
+	while (true) {
+		tn_net_run(agents[0], packet_handler_0);
+		tn_net_run(agents[1], packet_handler_1);
+	}
 #endif
 	return 0;
 }

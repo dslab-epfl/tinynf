@@ -17,9 +17,9 @@
 // A bit hacky to hardcode this; but we don't need more for benchmarking
 #define DEVICES_COUNT 2u
 
-static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, void* state, bool* outputs)
+static uint16_t device;
+static uint16_t compat_packet_handler(uint8_t* packet, uint16_t packet_length, bool* outputs)
 {
-	uint16_t device = (uint16_t) state;
 	vigor_time_t vigor_now = current_time();
 
 	int vigor_output = nf_process(device, packet, packet_length, vigor_now);
@@ -101,11 +101,9 @@ int main(int argc, char** argv)
 #ifdef ASSUME_ONE_WAY
 	TN_INFO("Assuming the NF only needs one-way agents, hope you know what you're doing...");
 #endif
-	void* states[DEVICES_COUNT];
-	tn_net_packet_handler* handlers[DEVICES_COUNT];
-	for (uint16_t n = 0; n < DEVICES_COUNT; n++) {
-		states[n] = n;
-		handlers[n] = compat_packet_handler;
+	while (true) {
+		for (device = 0; device < DEVICES_COUNT; device++) {
+			tn_net_run(agents[device], &compat_packet_handler);
+		}
 	}
-	tn_net_run(DEVICES_COUNT, agents, handlers, states);
 }
