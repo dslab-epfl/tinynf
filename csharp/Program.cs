@@ -31,8 +31,8 @@ namespace TinyNF
             new Program().Run(agent0, agent1);
         }
 
-        // Run must be an instance method so that _processor is known to be initialized without having to call the cctor
-        private readonly PacketProcessor _processor = (ref PacketData data, uint len) => {
+        private static uint Processor(ref PacketData data, uint len)
+        {
             data[0] = 0;
             data[1] = 0;
             data[2] = 0;
@@ -46,7 +46,10 @@ namespace TinyNF
             data[10] = 0;
             data[11] = 0;
             return len;
-        };
+        }
+
+        // Run must be an instance method so that _processor is known to be initialized without having to call the cctor
+        private readonly PacketProcessor _processor = Processor;
         private void Run(IxgbeAgent agent0, IxgbeAgent agent1)
         {
             while (true)
