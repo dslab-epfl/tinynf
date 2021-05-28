@@ -13,13 +13,11 @@ namespace TinyNF.Network
         private readonly Ref<uint> _transmitHead; // TODO: aligned to 16 bytes and on its own cache line
         private readonly Ref<uint> _transmitTail;
         private byte _processDelimiter;
-        private uint _flushCounter;
 
 
         public IxgbeAgent(IEnvironment env, IxgbeDevice inputDevice, IxgbeDevice outputDevice)
         {
             _processDelimiter = 0;
-            _flushCounter = 0;
 
             _packets = new Array256<PacketData>(env.Allocate<PacketData>);
             _ring = new Array256<Descriptor>(env.Allocate<Descriptor>);
@@ -45,33 +43,33 @@ namespace TinyNF.Network
         [MethodImpl(MethodImplOptions.AggressiveInlining)] // so that the null check on `processor` can be removed at compile time
         public void Run(PacketProcessor processor)
         {
-            ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _ring[_processDelimiter].Metadata));
-            if ((receiveMetadata & (1ul << 32)) != 0)
+            uint n;
+            for (n = 0; n < DriverConstants.FlushPeriod; n++)
             {
-                uint length = (uint)(Endianness.FromLittle(receiveMetadata) & 0xFFFFu);
-                uint transmitLength = processor(ref _packets[_processDelimiter], length);
-
-                ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                Volatile.Write(ref _ring[_processDelimiter].Metadata, Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
-
-                _flushCounter++;
-                if (_flushCounter == DriverConstants.FlushPeriod)
+                ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _ring[_processDelimiter].Metadata));
+                if ((receiveMetadata & (1ul << 32)) == 0)
                 {
-                    Volatile.Write(ref _transmitTail.Get(), Endianness.ToLittle(_processDelimiter));
-                    _flushCounter = 0;
+                    break;
                 }
-
-                if (rsBit != 0)
+                else
                 {
-                    Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle((Volatile.Read(ref _transmitHead.Get()) - 1) % DriverConstants.RingSize));
-                }
+                    uint length = (uint)(Endianness.FromLittle(receiveMetadata) & 0xFFFFu);
+                    uint transmitLength = processor(ref _packets[_processDelimiter], length);
 
-                _processDelimiter++;
+                    ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
+                    Volatile.Write(ref _ring[_processDelimiter].Metadata, Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+
+                    if (rsBit != 0)
+                    {
+                        Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle((Volatile.Read(ref _transmitHead.Get()) - 1) % DriverConstants.RingSize));
+                    }
+
+                    _processDelimiter++;
+                }
             }
-            else if (_flushCounter != 0)
+            if (n != 0)
             {
                 Volatile.Write(ref _transmitTail.Get(), Endianness.ToLittle(_processDelimiter));
-                _flushCounter = 0;
             }
         }
     }
