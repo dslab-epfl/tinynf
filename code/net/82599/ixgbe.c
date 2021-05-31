@@ -342,7 +342,7 @@ static_assert(PACKET_BUFFER_SIZE < 16 * 1024u, "Packet buffer size cannot be mor
 // Section 7.2.3.3 Transmit Descriptor Ring:
 // "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128. "
 // Also, 8.2.3.9.7 Transmit Descriptor Length: "Validated Lengths up to 128K (8K descriptors)."
-#define IXGBE_RING_SIZE 1024u
+#define IXGBE_RING_SIZE 256u
 static_assert(IXGBE_RING_SIZE % 128 == 0, "Ring size must be 0 modulo 128");
 static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2 for fast modulo");
 static_assert(IXGBE_RING_SIZE <= 8096, "Ring size cannot be above 8K");
