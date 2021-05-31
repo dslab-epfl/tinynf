@@ -2,10 +2,10 @@ THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 build:
 	@make -C $(THIS_DIR)/cwrapper --no-print-directory
+	@dotnet publish -r linux-x64 -c Release $(THIS_DIR)
 
-# re-export DOTNET_ROOT in case it's not the default value
 run:
-	@sudo DOTNET_ROOT=$(DOTNET_ROOT) LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper dotnet run --configuration Release --project $(THIS_DIR) -- $(TN_ARGS)
+	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/bin/Release/net6.0/linux-x64/publish/TinyNF $(TN_ARGS)
 
 print-nf-name:
 	@echo TinyNF
