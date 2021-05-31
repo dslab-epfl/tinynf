@@ -31,11 +31,11 @@ namespace TinyNF.Unsafe
             }
             set
             {
-                if(value.Length != 1)
+                if (value.Length != 1)
                 {
                     throw new ArgumentException("Bad span");
                 }
-                _data[index] = (T*) System.Runtime.CompilerServices.Unsafe.AsPointer(ref value[0]);
+                _data[index] = (T*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref value[0]);
             }
         }
 

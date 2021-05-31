@@ -1,19 +1,9 @@
 ﻿using System;
 using System.Numerics;
-using System.Runtime.InteropServices;
+using TinyNF.Environment;
 
-namespace TinyNF.Network
+namespace TinyNF.Ixgbe
 {
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct Descriptor
-    {
-        public ulong Buffer;
-        public ulong Metadata;
-    }
-
-    // TODO see what happens when actually processing packets; might need a trick
-    //      where we have a struct with a custom indexer and like 60 byte fields...
-
     internal static class PciRegs
     {
         public static uint ReadField(IEnvironment environment, PciAddress address, byte reg, uint field)
@@ -370,7 +360,6 @@ namespace TinyNF.Network
 
     internal static class DriverConstants
     {
-        public const uint PacketBufferSize = 2048;
         public const uint RingSize = 256; // to use Array256
         public const uint FlushPeriod = 8;
         public const uint RecyclePeriod = 64;

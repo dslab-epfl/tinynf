@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace TinyNF
+namespace TinyNF.Environment
 {
     public interface IEnvironment
     {

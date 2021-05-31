@@ -1,8 +1,10 @@
 ﻿using System;
+using TinyNF.Environment;
+using TinyNF.Unsafe;
 
-namespace TinyNF.Network
+namespace TinyNF.Ixgbe
 {
-    public sealed class IxgbeDevice
+    public sealed class Device
     {
         private readonly Memory<uint> _buffer;
         private bool _rxEnabled;
@@ -29,7 +31,7 @@ namespace TinyNF.Network
         // -------------------------------------
         // Section 4.6.3 Initialization Sequence
         // -------------------------------------
-        public IxgbeDevice(IEnvironment env, PciAddress pciAddress)
+        public Device(IEnvironment env, PciAddress pciAddress)
         {
             _rxEnabled = false;
             _txEnabled = false;
@@ -481,7 +483,7 @@ namespace TinyNF.Network
             // INTERPRETATION-TYPO: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
             // Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
             // Note that TXPBTHRESH is in kilobytes, so we should convert the packet buffer size accordingly
-            Regs.WriteField(_buffer, Regs.TXPBTHRESH(0), Regs.TXPBTHRESH_.THRESH, 0xA0u - (DriverConstants.PacketBufferSize / 1024u));
+            Regs.WriteField(_buffer, Regs.TXPBTHRESH(0), Regs.TXPBTHRESH_.THRESH, 0xA0u - (PacketData.Size / 1024u));
             //		"- MTQC"
             //			"- Clear both RT_Ena and VT_Ena bits in the MTQC register."
             //			"- Set MTQC.NUM_TC_OR_Q to 00b."
@@ -564,7 +566,7 @@ namespace TinyNF.Network
             // "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
             //	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
             //		"BSIZEPACKET, Receive Buffer Size for Packet Buffer. The value is in 1 KB resolution. Value can be from 1 KB to 16 KB."
-            Regs.WriteField(_buffer, Regs.SRRCTL(queueIndex), Regs.SRRCTL_.BSIZEPACKET, DriverConstants.PacketBufferSize / 1024u);
+            Regs.WriteField(_buffer, Regs.SRRCTL(queueIndex), Regs.SRRCTL_.BSIZEPACKET, PacketData.Size / 1024u);
             //		"DESCTYPE, Define the descriptor type in Rx: Init Val 000b [...] 000b = Legacy."
             //		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
             // Enable this because of assumption DROP

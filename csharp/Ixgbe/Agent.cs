@@ -1,15 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
+using TinyNF.Environment;
 using TinyNF.Unsafe;
 
-namespace TinyNF.Network
+namespace TinyNF.Ixgbe
 {
-    // 1 input 1 output for now
-    // TODO support multiple outputs
-    // perhaps we can have an Array256 of a TransmitHead struct with a single uint + a StructLayout(Size = 64)
-    // or even a Span of such a struct (doesn't need to be ref, right?) since all checks should be elided by only ever using it in a loop
-    public ref struct IxgbeAgent
+    public ref struct Agent
     {
         private readonly Array256<PacketData> _packets;
         private readonly Array256<Descriptor> _ring;
@@ -19,7 +16,7 @@ namespace TinyNF.Network
         private byte _processDelimiter;
 
 
-        public IxgbeAgent(IEnvironment env, IxgbeDevice inputDevice, IReadOnlyList<IxgbeDevice> outputDevices)
+        public Agent(IEnvironment env, Device inputDevice, IReadOnlyList<Device> outputDevices)
         {
             _processDelimiter = 0;
 

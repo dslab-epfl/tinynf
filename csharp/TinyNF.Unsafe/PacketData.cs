@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace TinyNF.Network
+namespace TinyNF.Unsafe
 {
     /// <summary>
     /// Packet data.
@@ -10,13 +10,15 @@ namespace TinyNF.Network
     /// </summary>
     public unsafe struct PacketData
     {
-        private fixed byte _data[(int)DriverConstants.PacketBufferSize];
+        public const int Size = 2048;
+
+        private fixed byte _data[Size];
 
         public ref byte this[uint index]
         {
             get
             {
-                if (index >= DriverConstants.PacketBufferSize)
+                if (index >= Size)
                 {
                     throw new ArgumentOutOfRangeException(nameof(index));
                 }

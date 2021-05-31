@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Buffers.Binary;
 
-namespace TinyNF
+namespace TinyNF.Environment
 {
     public static class Endianness
     {

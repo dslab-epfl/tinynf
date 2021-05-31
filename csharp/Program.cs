@@ -1,6 +1,7 @@
 ﻿using System;
-using TinyNF.Linux;
-using TinyNF.Network;
+using TinyNF.Environment;
+using TinyNF.Ixgbe;
+using TinyNF.Unsafe;
 
 namespace TinyNF
 {
@@ -15,16 +16,16 @@ namespace TinyNF
 
             var env = new LinuxEnvironment();
 
-            var dev0 = new IxgbeDevice(env, ParsePciAddress(args[0]));
+            var dev0 = new Device(env, ParsePciAddress(args[0]));
             dev0.SetPromiscuous();
 
-            var dev1 = new IxgbeDevice(env, ParsePciAddress(args[1]));
+            var dev1 = new Device(env, ParsePciAddress(args[1]));
             dev1.SetPromiscuous();
 
             Console.WriteLine("Initialized devices");
 
-            var agent0 = new IxgbeAgent(env, dev0, new[] { dev1 });
-            var agent1 = new IxgbeAgent(env, dev1, new[] { dev0 });
+            var agent0 = new Agent(env, dev0, new[] { dev1 });
+            var agent1 = new Agent(env, dev1, new[] { dev0 });
 
             Console.WriteLine("Initialized agents. Running...");
 
@@ -50,7 +51,7 @@ namespace TinyNF
 
         // Run must be an instance method so that _processor is known to be initialized without having to call the cctor
         private readonly PacketProcessor _processor = Processor;
-        private void Run(IxgbeAgent agent0, IxgbeAgent agent1)
+        private void Run(Agent agent0, Agent agent1)
         {
             while (true)
             {
@@ -68,6 +69,5 @@ namespace TinyNF
             }
             return new PciAddress(Convert.ToByte(parts[0], 16), Convert.ToByte(parts[1], 16), Convert.ToByte(parts[2], 16));
         }
-
     }
 }
