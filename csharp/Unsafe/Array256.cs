@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace TinyNF.Unsafe
 {
-    public delegate Span<T> Array256Allocator<T>(nuint size);
+    public delegate Span<T> Array256Allocator<T>(uint size);
 
     /// <summary>
     /// A 256-element array that can only be indexed with a byte, guaranteeing a lack of bounds checks.

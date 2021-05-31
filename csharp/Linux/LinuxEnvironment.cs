@@ -44,10 +44,10 @@ namespace TinyNF.Linux
             public static extern uint port_in_32(uint port);
         }
 
-        public unsafe Memory<T> Allocate<T>(nuint size)
+        public unsafe Memory<T> Allocate<T>(uint size)
             where T : unmanaged
         {
-            if (size * (nuint)Marshal.SizeOf<T>() > HugepageSize)
+            if (size * Marshal.SizeOf<T>() > HugepageSize || size > int.MaxValue)
             {
                 throw new Exception("Cannot allocate that much");
             }
@@ -111,13 +111,18 @@ namespace TinyNF.Linux
             return (nuint)(pfn * pageSize + addrOffset);
         }
 
-        public unsafe Memory<T> MapPhysicalMemory<T>(nuint addr, nuint size)
+        public unsafe Memory<T> MapPhysicalMemory<T>(nuint addr, uint size)
             where T : unmanaged
         {
+            if(size > int.MaxValue)
+            {
+                throw new ArgumentOutOfRangeException(nameof(size), "Cannot map this much memory");
+            }
+
             byte* ptr = null;
             // we'll never call ReleasePointer, but that's ok, the memory will be released when we exit
             MemoryMappedFile.CreateFromFile("/dev/mem", FileMode.Open, null, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes)
-                            .CreateViewAccessor((long)addr, (long)size * Marshal.SizeOf<T>())
+                            .CreateViewAccessor((long)addr, size * Marshal.SizeOf<T>())
                             .SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
             return new UnmanagedMemoryManager<T>((T*)ptr, (int)size).Memory;
         }

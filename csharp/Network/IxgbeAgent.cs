@@ -1,4 +1,6 @@
-﻿using System.Threading;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading;
 using TinyNF.Unsafe;
 
 namespace TinyNF.Network
@@ -12,35 +14,31 @@ namespace TinyNF.Network
         private readonly Array256<PacketData> _packets;
         private readonly Array256<Descriptor> _ring;
         private readonly Ref<uint> _receiveTail;
-        private readonly Ref<uint> _transmitHead; // NOTE: needs to be aligned to 16 bytes and on its own cache line
-        private readonly Ref<uint> _transmitTail;
+        private readonly Span<TransmitHead> _transmitHeads;
+        private readonly RefArray<uint> _transmitTails;
         private byte _processDelimiter;
 
 
-        public IxgbeAgent(IEnvironment env, IxgbeDevice inputDevice, IxgbeDevice outputDevice)
+        public IxgbeAgent(IEnvironment env, IxgbeDevice inputDevice, IReadOnlyList<IxgbeDevice> outputDevices)
         {
             _processDelimiter = 0;
 
             _packets = new Array256<PacketData>(s => env.Allocate<PacketData>(s).Span);
             _ring = new Array256<Descriptor>(s => env.Allocate<Descriptor>(s).Span);
 
-            byte n = 0;
-            do
+            for (int n = 0; n < 256; n++)
             {
-                // Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
-                // "Buffer Address (64)", 1st line offset 0
-                nuint packetPhysAddr = env.GetPhysicalAddress(ref _packets[n]);
-                // INTERPRETATION-MISSING: The data sheet does not specify the endianness of descriptor buffer addresses..
-                // Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
-                _ring[n].Buffer = Endianness.ToLittle(packetPhysAddr);
-                n++;
-            } while (n != 0);
+                _ring[(byte)n].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[(byte)n]));
+            }
 
             _receiveTail = new Ref<uint>(inputDevice.SetInput(env, _ring.AsSpan()));
-            _transmitHead = new Ref<uint>(env.Allocate<uint>(1).Span);
-            _transmitTail = new Ref<uint>(outputDevice.AddOutput(env, _ring.AsSpan(), ref _transmitHead.Get()));
+            _transmitHeads = env.Allocate<TransmitHead>((uint)outputDevices.Count).Span;
+            _transmitTails = new RefArray<uint>(outputDevices.Count);
+            for (byte n = 0; n < outputDevices.Count; n++)
+            {
+                _transmitTails[n] = outputDevices[n].AddOutput(env, _ring.AsSpan(), ref _transmitHeads[n].Value);
+            }
         }
-
 
         public void Run(PacketProcessor processor)
         {
@@ -61,14 +59,30 @@ namespace TinyNF.Network
 
                 if (rsBit != 0)
                 {
-                    Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle((Volatile.Read(ref _transmitHead.Get()) - 1) % DriverConstants.RingSize));
+                    uint earliestTransmitHead = _processDelimiter;
+                    ulong minDiff = 0xFF_FF_FF_FF_FF_FF_FF_FFul;
+                    foreach (ref var headRef in _transmitHeads)
+                    {
+                        uint head = Endianness.FromLittle(Volatile.Read(ref headRef.Value));
+                        ulong diff = head - _processDelimiter;
+                        if (diff <= minDiff)
+                        {
+                            earliestTransmitHead = head;
+                            minDiff = diff;
+                        }
+                    }
+
+                    Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle((earliestTransmitHead - 1) % DriverConstants.RingSize));
                 }
 
                 _processDelimiter++;
             }
             if (n != 0)
             {
-                Volatile.Write(ref _transmitTail.Get(), Endianness.ToLittle(_processDelimiter));
+                foreach (ref var tail in _transmitTails)
+                {
+                    Volatile.Write(ref tail, Endianness.ToLittle(_processDelimiter));
+                }
             }
         }
     }

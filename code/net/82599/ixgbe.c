@@ -1417,7 +1417,7 @@ void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler)
 				}
 			}
 
-				reg_write_raw(agent->receive_tail_addr, (earliest_transmit_head - 1) & (IXGBE_RING_SIZE - 1));
+			reg_write_raw(agent->receive_tail_addr, (earliest_transmit_head - 1) & (IXGBE_RING_SIZE - 1));
 		}
 	}
 	if (p != 0) {

@@ -23,8 +23,8 @@ namespace TinyNF
 
             Console.WriteLine("Initialized devices");
 
-            var agent0 = new IxgbeAgent(env, dev0, dev1);
-            var agent1 = new IxgbeAgent(env, dev1, dev0);
+            var agent0 = new IxgbeAgent(env, dev0, new[] { dev1 });
+            var agent1 = new IxgbeAgent(env, dev1, new[] { dev0 });
 
             Console.WriteLine("Initialized agents. Running...");
 
