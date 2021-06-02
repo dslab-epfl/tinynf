@@ -29,6 +29,13 @@ def get_pyplot_ax_fig(title=None, figsize=None):
 
 def get_color_label_marker(nf, explicit_one_core=False):
   suffix = ', 1 core' if explicit_one_core else ''
+  if 'C-LTO' in nf:
+    return ('#60913D', 'C, LTO', 'x')
+  if 'CSharp' in nf:
+    return ('#682E0A', 'C#, JIT', '^')
+  if 'C' in nf:
+    return ('#203864', 'C', '+')
+
   # same colors as the figures
   if 'ixy' in nf:
     if 'batched' in nf:
