@@ -12,23 +12,19 @@ import common
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
-if len(sys.argv) < 5:
-  print('Args: <name> <latency percentile> <comparison percentile for scale> <nf folder name>*')
+if len(sys.argv) < 3:
+  print('Args: <name> <folder name in results/>*')
   sys.exit(1)
 
 name = sys.argv[1]
 
-if '.' in sys.argv[2]:
-  perc = float(sys.argv[2])
-else:
-  perc = int(sys.argv[2]) # ensure the str doesn't contain a .0
-perc_str = str(perc) + 'th percentile'
-if perc == 50:
-  perc_str = 'Median'
+perc = 50
+perc_str = 'Median'
+perc_comp = 99
+perc_bottom = 1
+perc_top = 99
 
-perc_comp = float(sys.argv[3])
-
-nfs = sys.argv[4:]
+nfs = sys.argv[2:]
 
 def lats_at_perc(lats, perc):
   return [(tput, common.percentile(ls, perc)) for (tput, ls) in lats]
@@ -49,37 +45,42 @@ for nf in nfs:
   tput_zeroloss_file = pathlib.Path(nf_folder, 'throughput-zeroloss')
   tput_zeroloss = float(tput_zeroloss_file.read_text()) if tput_zeroloss_file.exists() else math.inf
 
+  lats_bot = lats_at_perc(lats, perc_bottom)
+  lats_top = lats_at_perc(lats, perc_top)
   lats_perc = lats_at_perc(lats, perc)
   lats_comp += lats_at_perc(lats, perc_comp)
 
-  numbers[nf] = (lats_perc, lats_comp, tput_zeroloss)
+  numbers[nf] = (lats_bot, lats_top, lats_perc, lats_comp, tput_zeroloss, lats)
   max_tput = max(max_tput, tput)
 
 all_lats_comp = [l for val in numbers.values()
-                 for (t, l) in val[1]
+                 for (t, l) in val[3]
                  for l in (t, l)]
 median_lat_comp = statistics.median(all_lats_comp)
 
 plt, ax, _ = common.get_pyplot_ax_fig()
 ax.set_ylim(bottom=0, top=median_lat_comp * 2)
-ax.set_xlim(0, 20.2) # just a little bit of margin to not hide the right side of the markers
+ax.set_xlim(0, math.ceil(max_tput) + 0.2) #20.2) # just a little bit of margin to not hide the right side of the markers
 
-# if any of the NFs are parallel, be clear the others are not
-explicit_one_core = any('parallel' in nf for nf in nfs)
-
+# We want a straight line up to tput_zeroloss, then a dashed line after that, so we draw 2 lines
+# And we want the lines to be opaque while the dots should be non-opaque, for clarity, so we draw them separately
 for nf, val in numbers.items():
-  (lats, _, tput_zeroloss) = val
+  (lats_bot, lats_top, lats, _, _, _) = val
 
-  (color, label, marker) = common.get_color_label_marker(nf, explicit_one_core=explicit_one_core)
+  (color, label, marker) = common.get_color_label_marker(nf)
 
+  y_bot = [l for (t, l) in lats_bot]
+  y_top = [l for (t, l) in lats_top]
   all_x = [t for (t, l) in lats]
   all_y = [l for (t, l) in lats]
+
   ax.plot(all_x, all_y, color=color, alpha=0.4, linestyle='solid')
-  ax.scatter(all_x, all_y, color=color, label=label, marker=marker)
+  ax.fill_between(all_x, y_bot, all_y, color=color, alpha=0.15)
+  ax.fill_between(all_x, all_y, y_top, color=color, alpha=0.15)
+  ax.scatter(all_x, all_y, color=color, label=label, marker=marker, s=60)
 
 plt.xlabel('Throughput (Gb/s)')
 plt.ylabel(perc_str + ' latency (\u03BCs)')
-plt.legend(loc='upper left', handletextpad=0.3, borderaxespad=0.08, edgecolor='white')
+plt.legend(loc='upper left', handletextpad=0.3, borderaxespad=0.08, edgecolor='white', frameon=False)
 
 common.save_plot(plt, name)
-print("Done! Plot is in ../plots/" + name + ".svg")
