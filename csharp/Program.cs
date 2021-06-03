@@ -34,21 +34,22 @@ namespace TinyNF
 
         private static uint Processor(ref PacketData data, uint len)
         {
-            data[0] = 0;
+            /*data[0] = 0;
             data[1] = 0;
             data[2] = 0;
             data[3] = 0;
             data[4] = 0;
             data[5] = 1;
             data[6] = 0;
-            data[7] = 0;
-            data[8] = 0;
+            data[7] = 0;*/
+            data.Write64(0, 0x00_00_01_00_00_00_00_00u);
+            /*data[8] = 0;
             data[9] = 0;
             data[10] = 0;
-            data[11] = 0;
+            data[11] = 0;*/
+            data.Write32(8, 0);
             return len;
         }
-
         // Run must be an instance method so that _processor is known to be initialized without having to call the cctor
         private readonly PacketProcessor _processor = Processor;
         private void Run(Agent agent0, Agent agent1)

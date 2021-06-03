@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 
 namespace TinyNF.Unsafe
 {
@@ -24,6 +25,24 @@ namespace TinyNF.Unsafe
                 }
                 return ref _data[index];
             }
+        }
+
+        public void Write32(uint index, uint value)
+        {
+            if (index >= Size - sizeof(uint))
+            {
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
+            System.Runtime.CompilerServices.Unsafe.WriteUnaligned(ref _data[index], value);
+        }
+
+        public void Write64(uint index, ulong value)
+        {
+            if (index >= Size - sizeof(ulong))
+            {
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
+            System.Runtime.CompilerServices.Unsafe.WriteUnaligned(ref _data[index], value);
         }
     }
 }
