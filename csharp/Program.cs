@@ -9,9 +9,9 @@ namespace TinyNF
     {
         public static void Main(string[] args)
         {
-            if (args.Length != 2)
+            if (args.Length != 3 || (args[2] != "safe" && args[2] != "extended"))
             {
-                throw new Exception("Expected exactly 2 args");
+                throw new Exception("Expected exactly 3 args: <pci dev> <pci dev> <safe/extended>");
             }
 
             var env = new LinuxEnvironment();
@@ -22,14 +22,20 @@ namespace TinyNF
             var dev1 = new Device(env, ParsePciAddress(args[1]));
             dev1.SetPromiscuous();
 
-            Console.WriteLine("Initialized devices");
+            Console.WriteLine("Initialized. Running...");
 
-            var agent0 = new Agent(env, dev0, new[] { dev1 });
-            var agent1 = new Agent(env, dev1, new[] { dev0 });
-
-            Console.WriteLine("Initialized agents. Running...");
-
-            Run(agent0, agent1);
+            if (args[2] == "safe")
+            {
+                var agent0 = new SafeAgent(env, dev0, new[] { dev1 });
+                var agent1 = new SafeAgent(env, dev1, new[] { dev0 });
+                SafeRun(agent0, agent1);
+            }
+            else
+            {
+                var agent0 = new Agent(env, dev0, new[] { dev1 });
+                var agent1 = new Agent(env, dev1, new[] { dev0 });
+                Run(agent0, agent1);
+            }
         }
 
         private static uint Processor(ref PacketData data, uint len, Array256<bool> outputs)
@@ -51,11 +57,32 @@ namespace TinyNF
             outputs[0] = true;
             return len;
         }
-        // Separated into its own method just to make it easy to disassemble separately to observe optimizations
+
+        private static uint SafeProcessor(ref PacketData data, uint len, Span<bool> outputs)
+        {
+            data.Write64(0, 0x00_00_01_00_00_00_00_00u);
+            data.Write32(8, 0);
+            outputs[0] = true;
+            return len;
+        }
+
+        // Run is separated into its own method just to make it easy to disassemble separately to observe optimizations
+
         private static void Run(Agent agent0, Agent agent1)
         {
             // The compiler and runtime could do better here, there's no reason not to do this pre-init outside the loop automatically...
             PacketProcessor proc = Processor;
+            while (true)
+            {
+                agent0.Run(proc);
+                agent1.Run(proc);
+            }
+        }
+
+        private static void SafeRun(SafeAgent agent0, SafeAgent agent1)
+        {
+            // same remark as Run
+            SafePacketProcessor proc = SafeProcessor;
             while (true)
             {
                 agent0.Run(proc);

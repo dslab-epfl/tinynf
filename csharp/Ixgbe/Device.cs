@@ -532,7 +532,7 @@ namespace TinyNF.Ixgbe
         // ------------------------------------
         // Section 4.6.7 Receive Initialization
         // ------------------------------------
-        internal Span<uint> SetInput(IEnvironment env, Span<Descriptor> ring)
+        internal Memory<uint> SetInput(IEnvironment env, Span<Descriptor> ring)
         {
             // The 82599 has more than one receive queue, but we only need queue 0
             uint queueIndex = 0;
@@ -616,13 +616,13 @@ namespace TinyNF.Ixgbe
             // Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
             Regs.ClearField(_buffer, Regs.DCARXCTRL(queueIndex), Regs.DCARXCTRL_.UNKNOWN);
 
-            return _buffer.Span.Slice((int)Regs.RDT(queueIndex) / sizeof(uint), 1);
+            return _buffer.Slice((int)Regs.RDT(queueIndex) / sizeof(uint), 1);
         }
 
         // -------------------------------------
         // Section 4.6.8 Transmit Initialization
         // -------------------------------------
-        internal Span<uint> AddOutput(IEnvironment env, Span<Descriptor> ring, ref uint transmitHead)
+        internal Memory<uint> AddOutput(IEnvironment env, Span<Descriptor> ring, ref uint transmitHead)
         {
             uint queueIndex = 0;
             for (; queueIndex < DeviceLimits.TransmitQueuesCount; queueIndex++)
@@ -702,7 +702,7 @@ namespace TinyNF.Ixgbe
             // "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
             // Nothing to transmit yet, so leave TDT alone.
 
-            return _buffer.Span.Slice((int)Regs.TDT(queueIndex) / sizeof(uint), 1);
+            return _buffer.Slice((int)Regs.TDT(queueIndex) / sizeof(uint), 1);
         }
     }
 }
