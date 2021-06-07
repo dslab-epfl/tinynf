@@ -48,20 +48,20 @@ namespace TinyNF
             data[5] = 1;
             data[6] = 0;
             data[7] = 0;*/
-            data.Write64(0, 0x00_00_01_00_00_00_00_00u);
+            data.Write<ulong>(0, 0x00_00_01_00_00_00_00_00);
             /*data[8] = 0;
             data[9] = 0;
             data[10] = 0;
             data[11] = 0;*/
-            data.Write32(8, 0);
+            data.Write<uint>(8, 0);
             outputs[0] = true;
             return len;
         }
 
         private static uint SafeProcessor(ref PacketData data, uint len, Span<bool> outputs)
         {
-            data.Write64(0, 0x00_00_01_00_00_00_00_00u);
-            data.Write32(8, 0);
+            data.Write<ulong>(0, 0x00_00_01_00_00_00_00_00);
+            data.Write<uint>(8, 0);
             outputs[0] = true;
             return len;
         }

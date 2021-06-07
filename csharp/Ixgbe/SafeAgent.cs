@@ -7,7 +7,7 @@ namespace TinyNF.Ixgbe
 {
     public ref struct SafeAgent
     {
-        private readonly Span<TinyNF.Unsafe.PacketData> _packets; // PacketData is entirely safe (TODO remove the need for unsafety in it)
+        private readonly Span<PacketData> _packets; // PacketData is entirely safe (TODO remove the need for unsafety in it)
         private readonly Span<Descriptor> _receiveRing;
         private readonly Memory<Descriptor>[] _transmitRings;
         private readonly Span<uint> _receiveTail;
@@ -22,7 +22,7 @@ namespace TinyNF.Ixgbe
             _processDelimiter = 0;
             _outputs = new Span<bool>(new bool[outputDevices.Count]);
 
-            _packets = env.Allocate<TinyNF.Unsafe.PacketData>(256).Span;
+            _packets = env.Allocate<PacketData>(256).Span;
 
             _transmitRings = new Memory<Descriptor>[outputDevices.Count];
             for (int n = 0; n < _transmitRings.Length; n++)
