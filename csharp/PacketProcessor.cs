@@ -1,7 +1,6 @@
-﻿using System;
-using TinyNF.Unsafe;
+﻿using TinyNF.Unsafe;
 
 namespace TinyNF
 {
-    public delegate uint PacketProcessor(ref PacketData data, uint length);
+    public delegate uint PacketProcessor(ref PacketData data, uint length, Array256<bool> outputs);
 }

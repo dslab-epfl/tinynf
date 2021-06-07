@@ -6,14 +6,14 @@ namespace TinyNF.Unsafe
     /// An array of <see cref="Array256{T}" />.
     /// This struct is entirely safe, C# just cannot define it without unsafe yet. Same remarks as <see cref="RefArray{T}" />.
     /// </summary>
-    public unsafe ref struct MDArray256<T>
+    public unsafe ref struct Array256Array<T>
         where T : unmanaged
     {
         private readonly T*[] _values;
 
         public int Length => _values.Length;
 
-        public MDArray256(int length, Array256Allocator<T> allocator)
+        public Array256Array(int length, Array256Allocator<T> allocator)
         {
             _values = new T*[length];
             for (int n = 0; n < length; n++)
@@ -43,10 +43,10 @@ namespace TinyNF.Unsafe
 
         public ref struct Enumerator
         {
-            private readonly MDArray256<T> _array;
+            private readonly Array256Array<T> _array;
             private int _index;
 
-            public Enumerator(MDArray256<T> array)
+            public Enumerator(Array256Array<T> array)
             {
                 _array = array;
                 _index = -1;

@@ -29,10 +29,10 @@ namespace TinyNF
 
             Console.WriteLine("Initialized agents. Running...");
 
-            new Program().Run(agent0, agent1);
+            Run(agent0, agent1);
         }
 
-        private static uint Processor(ref PacketData data, uint len)
+        private static uint Processor(ref PacketData data, uint len, Array256<bool> outputs)
         {
             /*data[0] = 0;
             data[1] = 0;
@@ -48,16 +48,18 @@ namespace TinyNF
             data[10] = 0;
             data[11] = 0;*/
             data.Write32(8, 0);
+            outputs[0] = true;
             return len;
         }
-        // Run must be an instance method so that _processor is known to be initialized without having to call the cctor
-        private readonly PacketProcessor _processor = Processor;
-        private void Run(Agent agent0, Agent agent1)
+        // Separated into its own method just to make it easy to disassemble separately to observe optimizations
+        private static void Run(Agent agent0, Agent agent1)
         {
+            // The compiler and runtime could do better here, there's no reason not to do this pre-init outside the loop automatically...
+            PacketProcessor proc = Processor;
             while (true)
             {
-                agent0.Run(_processor);
-                agent1.Run(_processor);
+                agent0.Run(proc);
+                agent1.Run(proc);
             }
         }
 
