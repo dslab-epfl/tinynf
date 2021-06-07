@@ -6,7 +6,7 @@ namespace TinyNF.Unsafe
     /// <summary>
     /// Array of references to values.
     /// Only optimized for reading; writing has bounds checks.
-    /// This struct is safe iff it is only constructed using the explicit constructor, not the default one.
+    /// This struct is entirely safe, C# just cannot define it without unsafe yet.
     /// </summary>
     /// <remarks>
     /// The reason this struct is safe is that the internal array cannot leak.

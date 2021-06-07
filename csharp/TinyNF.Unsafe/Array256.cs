@@ -11,7 +11,7 @@ namespace TinyNF.Unsafe
     /// </summary>
     public unsafe ref struct Array256<T>
     {
-        private readonly Span<T> _values;
+        internal readonly Span<T> _values;
 
         public Array256(Array256Allocator<T> allocator)
         {
@@ -20,6 +20,12 @@ namespace TinyNF.Unsafe
             {
                 throw new Exception("Allocator did not fulfill its contract");
             }
+        }
+
+        // Safe only if the span is of length >=256
+        internal Array256(Span<T> values)
+        {
+            _values = values;
         }
 
         public ref T this[byte n]

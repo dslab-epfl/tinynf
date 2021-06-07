@@ -9,7 +9,8 @@ namespace TinyNF.Ixgbe
     public ref struct Agent
     {
         private readonly Array256<PacketData> _packets;
-        private readonly Array256<Descriptor> _ring;
+        private readonly Array256<Descriptor> _receiveRing;
+        private readonly MDArray256<Descriptor> _transmitRings;
         private readonly Ref<uint> _receiveTail;
         private readonly Span<TransmitHead> _transmitHeads;
         private readonly RefArray<uint> _transmitTails;
@@ -21,19 +22,21 @@ namespace TinyNF.Ixgbe
             _processDelimiter = 0;
 
             _packets = new Array256<PacketData>(s => env.Allocate<PacketData>(s).Span);
-            _ring = new Array256<Descriptor>(s => env.Allocate<Descriptor>(s).Span);
+
+            _transmitRings = new MDArray256<Descriptor>(outputDevices.Count, s => env.Allocate<Descriptor>(s).Span);
+            _receiveRing = _transmitRings[0];
 
             for (int n = 0; n < 256; n++)
             {
-                _ring[(byte)n].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[(byte)n]));
+                _receiveRing[(byte)n].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[(byte)n]));
             }
+            _receiveTail = new Ref<uint>(inputDevice.SetInput(env, _receiveRing.AsSpan()));
 
-            _receiveTail = new Ref<uint>(inputDevice.SetInput(env, _ring.AsSpan()));
             _transmitHeads = env.Allocate<TransmitHead>((uint)outputDevices.Count).Span;
             _transmitTails = new RefArray<uint>(outputDevices.Count);
             for (byte n = 0; n < outputDevices.Count; n++)
             {
-                _transmitTails[n] = outputDevices[n].AddOutput(env, _ring.AsSpan(), ref _transmitHeads[n].Value);
+                _transmitTails[n] = outputDevices[n].AddOutput(env, _transmitRings[n].AsSpan(), ref _transmitHeads[n].Value);
             }
         }
 
@@ -42,7 +45,7 @@ namespace TinyNF.Ixgbe
             uint n;
             for (n = 0; n < DriverConstants.FlushPeriod; n++)
             {
-                ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _ring[_processDelimiter].Metadata));
+                ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _receiveRing[_processDelimiter].Metadata));
                 if ((receiveMetadata & (1ul << 32)) == 0)
                 {
                     break;
@@ -52,7 +55,12 @@ namespace TinyNF.Ixgbe
                 uint transmitLength = processor(ref _packets[_processDelimiter], length);
 
                 ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                Volatile.Write(ref _ring[_processDelimiter].Metadata, Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                foreach(var ring in _transmitRings)
+                {
+                    Volatile.Write(ref ring[_processDelimiter].Metadata, Endianness.ToLittle(transmitLength | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                }
+
+                _processDelimiter++;
 
                 if (rsBit != 0)
                 {
@@ -71,8 +79,6 @@ namespace TinyNF.Ixgbe
 
                     Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle((earliestTransmitHead - 1) % DriverConstants.RingSize));
                 }
-
-                _processDelimiter++;
             }
             if (n != 0)
             {

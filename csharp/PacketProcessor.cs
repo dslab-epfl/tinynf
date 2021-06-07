@@ -1,4 +1,5 @@
-﻿using TinyNF.Unsafe;
+﻿using System;
+using TinyNF.Unsafe;
 
 namespace TinyNF
 {
