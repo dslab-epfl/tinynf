@@ -13,7 +13,7 @@ namespace TinyNF.Environment
     /// </summary>
     public sealed class LinuxEnvironment : IEnvironment
     {
-        private const int HugepageSize = 2 * 1024 * 1024; // 2 MB hugepages (could also do 1 GB)
+        private const int HugepageSize = 1024 * 1024 * 1024; // 1 GB hugepages
 
         // Necessary because .NET has no explicit support for hugepages and MemoryMappedFile doesn't allow us to pass the hugepage flag
         private static unsafe class OSInterop
@@ -45,36 +45,49 @@ namespace TinyNF.Environment
             public static extern uint port_in_32(uint port);
         }
 
+        private Memory<byte>? _allocatedPage;
+        private ulong _usedBytes;
+
         public unsafe Memory<T> Allocate<T>(uint size)
             where T : unmanaged
         {
-            if (size * Marshal.SizeOf<T>() > HugepageSize || size > int.MaxValue)
+            if (_allocatedPage == null)
             {
-                throw new Exception("Cannot allocate that much");
+                void* page = OSInterop.mmap(
+                    // No specific address
+                    0,
+                    // Size of the mapping
+                    HugepageSize,
+                    // R/W page
+                    OSInterop.PROT_READ | OSInterop.PROT_WRITE,
+                    // Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
+                    // MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
+                    // which is required if the calling code tries to get the physical address of the page without accessing it first.
+                    OSInterop.MAP_HUGETLB | ((int)Math.Log2(HugepageSize) << OSInterop.MAP_HUGE_SHIFT) | OSInterop.MAP_ANONYMOUS | OSInterop.MAP_SHARED | OSInterop.MAP_POPULATE,
+                    // Required on MAP_ANONYMOUS
+                    -1,
+                    // Required on MAP_ANONYMOUS
+                    0
+                );
+                if (page == OSInterop.MAP_FAILED)
+                {
+                    throw new Exception("mmap failed");
+                }
+
+                _allocatedPage = new UnmanagedMemoryManager<byte>((byte*)page, HugepageSize).Memory;
+                _usedBytes = 0;
             }
 
-            void* page = OSInterop.mmap(
-                // No specific address
-                0,
-                // Size of the mapping
-                HugepageSize,
-                // R/W page
-                OSInterop.PROT_READ | OSInterop.PROT_WRITE,
-                // Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
-                // MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
-                // which is required if the calling code tries to get the physical address of the page without accessing it first.
-                OSInterop.MAP_HUGETLB | ((int)Math.Log2(HugepageSize) << OSInterop.MAP_HUGE_SHIFT) | OSInterop.MAP_ANONYMOUS | OSInterop.MAP_SHARED | OSInterop.MAP_POPULATE,
-                // Required on MAP_ANONYMOUS
-                -1,
-                // Required on MAP_ANONYMOUS
-                0
-            );
-            if (page == OSInterop.MAP_FAILED)
-            {
-                throw new Exception("mmap failed");
-            }
+            // Align as required by the contract
+            var alignDiff = _usedBytes % size;
+            _allocatedPage = _allocatedPage.Value[(int) alignDiff..];
+            _usedBytes += alignDiff;
 
-            return new UnmanagedMemoryManager<T>((T*)page, (int)size).Memory;
+            var result = _allocatedPage.Value.Slice(0, (int)size);
+            _allocatedPage = _allocatedPage.Value[(int)size..];
+            _usedBytes += size;
+
+            return new CastMemoryManager<byte, T>(result).Memory;
         }
 
         // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
@@ -158,20 +171,13 @@ namespace TinyNF.Environment
             Thread.Sleep(span);
         }
 
-        /// <summary>
-        /// From Marc Gravell: https://stackoverflow.com/a/52191681
-        /// A MemoryManager over a raw pointer
-        /// </summary>
-        /// <remarks>The pointer is assumed to be fully unmanaged, or externally pinned - no attempt will be made to pin this data</remarks>
+        // From Marc Gravell, see https://stackoverflow.com/a/52191681
         private sealed unsafe class UnmanagedMemoryManager<T> : MemoryManager<T>
             where T : unmanaged
         {
             private readonly T* _pointer;
             private readonly int _length;
 
-            /// <summary>
-            /// Create a new UnmanagedMemoryManager instance at the given pointer and size
-            /// </summary>
             public UnmanagedMemoryManager(T* pointer, int length)
             {
                 if (length < 0)
@@ -182,14 +188,8 @@ namespace TinyNF.Environment
                 _length = length;
             }
 
-            /// <summary>
-            /// Obtains a span that represents the region
-            /// </summary>
             public override Span<T> GetSpan() => new(_pointer, _length);
 
-            /// <summary>
-            /// Provides access to a pointer that represents the data (note: no actual pin occurs)
-            /// </summary>
             public override MemoryHandle Pin(int elementIndex = 0)
             {
                 if (elementIndex < 0 || elementIndex >= _length)
@@ -199,15 +199,25 @@ namespace TinyNF.Environment
                 return new MemoryHandle(_pointer + elementIndex);
             }
 
-            /// <summary>
-            /// Has no effect
-            /// </summary>
             public override void Unpin() { }
 
-            /// <summary>
-            /// Releases all resources associated with this object
-            /// </summary>
             protected override void Dispose(bool disposing) { }
+        }
+
+        // From Marc Gravell, see  https://stackoverflow.com/a/54512940
+        private sealed class CastMemoryManager<TFrom, TTo> : MemoryManager<TTo>
+            where TFrom : unmanaged
+            where TTo : unmanaged
+        {
+            private readonly Memory<TFrom> _from;
+
+            public CastMemoryManager(Memory<TFrom> from) => _from = from;
+
+            public override Span<TTo> GetSpan() => MemoryMarshal.Cast<TFrom, TTo>(_from.Span);
+
+            protected override void Dispose(bool disposing) { }
+            public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
+            public override void Unpin() => throw new NotSupportedException();
         }
     }
 }

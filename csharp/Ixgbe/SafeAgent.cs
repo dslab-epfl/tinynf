@@ -20,7 +20,7 @@ namespace TinyNF.Ixgbe
         public SafeAgent(IEnvironment env, Device inputDevice, IReadOnlyList<Device> outputDevices)
         {
             _processDelimiter = 0;
-            _outputs = env.Allocate<uint>(outputDevices.Count).Span;
+            _outputs = env.Allocate<uint>((uint) outputDevices.Count).Span;
 
             _packets = env.Allocate<PacketData>(256).Span;
 
