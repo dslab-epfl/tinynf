@@ -2,9 +2,15 @@ THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 CSHARP_MODE ?= extended
 
+ifdef CSHARP_AOT
+BUILD_ARGS := -p:UseAOT=y
+else
+BUILD_ARGS := #nothing
+endif
+
 build:
 	@make -C $(THIS_DIR)/cwrapper --no-print-directory
-	@dotnet publish -r linux-x64 -c Release $(THIS_DIR)
+	@dotnet publish -r linux-x64 -c Release $(BUILD_ARGS) $(THIS_DIR)
 
 run:
 	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/bin/Release/net6.0/linux-x64/publish/TinyNF $(TN_ARGS) $(CSHARP_MODE)

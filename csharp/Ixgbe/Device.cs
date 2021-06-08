@@ -555,7 +555,7 @@ namespace TinyNF.Ixgbe
             // 	Section 8.2.3.8.1 Receive Descriptor Base Address Low (RDBAL[n]):
             // 	"The receive descriptor base address must point to a 128 byte-aligned block of data."
             // This alignment is guaranteed by the agent initialization
-            nuint ringPhysAddr = env.GetPhysicalAddress(ring);
+            nuint ringPhysAddr = env.GetPhysicalAddress(ref ring.GetPinnableReference());
             Regs.Write(_buffer, Regs.RDBAH(queueIndex), (uint)(ringPhysAddr >> 32));
             Regs.Write(_buffer, Regs.RDBAL(queueIndex), (uint)ringPhysAddr);
             // "- Set the length register to the size of the descriptor ring (register RDLEN)."
@@ -646,7 +646,7 @@ namespace TinyNF.Ixgbe
             // 	Section 8.2.3.9.5 Transmit Descriptor Base Address Low (TDBAL[n]):
             // 	"The Transmit Descriptor Base Address must point to a 128 byte-aligned block of data."
             // This alignment is guaranteed by the agent initialization
-            nuint ringPhysAddr = env.GetPhysicalAddress(ring);
+            nuint ringPhysAddr = env.GetPhysicalAddress(ref ring.GetPinnableReference());
             Regs.Write(_buffer, Regs.TDBAH(queueIndex), (uint)(ringPhysAddr >> 32));
             Regs.Write(_buffer, Regs.TDBAL(queueIndex), (uint)ringPhysAddr);
             // "- Set the length register to the size of the descriptor ring (TDLEN)."

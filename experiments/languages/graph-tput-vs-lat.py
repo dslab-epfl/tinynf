@@ -67,7 +67,7 @@ ax.set_xlim(0, math.ceil(max_tput) + 0.2) #20.2) # just a little bit of margin t
 for nf, val in numbers.items():
   (lats_bot, lats_top, lats, _, _, _) = val
 
-  (color, label, marker) = common.get_color_label_marker(nf)
+  (color, marker) = common.get_color_and_marker(nf)
 
   y_bot = [l for (t, l) in lats_bot]
   y_top = [l for (t, l) in lats_top]
@@ -77,7 +77,7 @@ for nf, val in numbers.items():
   ax.plot(all_x, all_y, color=color, alpha=0.4, linestyle='solid')
   ax.fill_between(all_x, y_bot, all_y, color=color, alpha=0.15)
   ax.fill_between(all_x, all_y, y_top, color=color, alpha=0.15)
-  ax.scatter(all_x, all_y, color=color, label=label, marker=marker, s=60)
+  ax.scatter(all_x, all_y, color=color, label=nf, marker=marker, s=60)
 
 plt.xlabel('Throughput (Gb/s)')
 plt.ylabel(perc_str + ' latency (\u03BCs)')

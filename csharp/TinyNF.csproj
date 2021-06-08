@@ -26,4 +26,26 @@
     <ProjectReference Include="TinyNF.Environment\TinyNF.Environment.csproj" />
     <ProjectReference Include="TinyNF.Unsafe\TinyNF.Unsafe.csproj" />
   </ItemGroup>
+
+  <!-- Use JIT by default (faster to compile, so faster to prototype) -->
+  <ItemGroup Condition="'$(UseAOT)' != ''">
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="6.0.0-*" />
+  </ItemGroup>
+
+  <!-- Disable everything possible in AOT, not really for speed (unlikely to matter) but to make code inspection easier; also, optimize for speed -->
+  <PropertyGroup Condition="'$(UseAOT)' != ''">
+    <DebuggerSupport>false</DebuggerSupport>
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+    <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
+    <EventSourceSupport>false</EventSourceSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    <IlcDisableReflection>true</IlcDisableReflection>
+
+    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
+    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+    <IlcDisableUnhandledExceptionExperience>true</IlcDisableUnhandledExceptionExperience>
+  </PropertyGroup>
 </Project>

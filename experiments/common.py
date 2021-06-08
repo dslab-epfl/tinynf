@@ -27,18 +27,20 @@ def get_pyplot_ax_fig(title=None, figsize=None):
 
   return (plt, ax, fig)
 
-def get_color_label_marker(nf, explicit_one_core=False):
-  suffix = ', 1 core' if explicit_one_core else ''
-  if 'C-LTO' in nf:
-    return ('#4472C4', 'C, LTO', 'P')
-  if 'CSharp-Extended' in nf:
-    return ('#60913D', 'C# extended, JIT', 'X')
-  if 'CSharp' in nf:
-    return ('#682E0A', 'C#, JIT', 'x')
-  if 'C' in nf:
-    return ('#203864', 'C', '+')
+def get_color_and_marker(nf):
+  if 'C#' in nf:
+    if 'AOT' in nf:
+      if 'extended' in nf:
+        return ('#682E0A', '^')
+      return ('#843C0C', 'v')
+    if 'extended' in nf:
+      return ('#D16D2B', 'X')
+    return ('#ED7D31', 'x')
+  if 'LTO' in nf:
+    return ('#203864', 'P')
+  return ('#4472C4', '+')
 
-  # same colors as the figures
+  """# same colors as the figures
   if 'ixy' in nf:
     if 'batched' in nf:
       return ('#203864', 'Ixy, batched' + suffix, 'X')
@@ -53,7 +55,7 @@ def get_color_label_marker(nf, explicit_one_core=False):
     return ('#ED7D31', 'DPDK' + suffix, 'v')
   if 'parallel' in nf:
     return ('#60913D', 'TinyNF, 2 cores', 'P')   # P == filled plus
-  return ('#70AD47', 'TinyNF' + suffix, '+')
+  return ('#70AD47', 'TinyNF' + suffix, '+')"""
 
 def save_plot(plt, name):
   plot_dir = THIS_DIR + '/plots/'
