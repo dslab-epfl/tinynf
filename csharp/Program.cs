@@ -26,12 +26,14 @@ namespace TinyNF
 
             if (args[2] == "safe")
             {
+                Console.WriteLine("Safe C# mode starting...");
                 var agent0 = new SafeAgent(env, dev0, new[] { dev1 });
                 var agent1 = new SafeAgent(env, dev1, new[] { dev0 });
                 SafeRun(agent0, agent1);
             }
             else
             {
+                Console.WriteLine("'Extended' C# mode starting...");
                 var agent0 = new Agent(env, dev0, new[] { dev1 });
                 var agent1 = new Agent(env, dev1, new[] { dev0 });
                 Run(agent0, agent1);
@@ -40,28 +42,36 @@ namespace TinyNF
 
         private static uint Processor(ref PacketData data, uint len, Array256<bool> outputs)
         {
-            /*data[0] = 0;
+            data[0] = 0;
             data[1] = 0;
             data[2] = 0;
             data[3] = 0;
             data[4] = 0;
             data[5] = 1;
             data[6] = 0;
-            data[7] = 0;*/
-            data.Write<ulong>(0, 0x00_00_01_00_00_00_00_00);
-            /*data[8] = 0;
+            data[7] = 0;
+            data[8] = 0;
             data[9] = 0;
             data[10] = 0;
-            data[11] = 0;*/
-            data.Write<uint>(8, 0);
+            data[11] = 0;
             outputs[0] = true;
             return len;
         }
 
         private static uint SafeProcessor(ref PacketData data, uint len, Span<bool> outputs)
         {
-            data.Write<ulong>(0, 0x00_00_01_00_00_00_00_00);
-            data.Write<uint>(8, 0);
+            data[0] = 0;
+            data[1] = 0;
+            data[2] = 0;
+            data[3] = 0;
+            data[4] = 0;
+            data[5] = 1;
+            data[6] = 0;
+            data[7] = 0;
+            data[8] = 0;
+            data[9] = 0;
+            data[10] = 0;
+            data[11] = 0;
             outputs[0] = true;
             return len;
         }

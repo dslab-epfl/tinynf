@@ -104,7 +104,8 @@ def bench(path, name, extra_env):
 
 
 cpu_low_power()
-bench('../code', 'C', {})
-bench('../code', 'C-LTO', {'ALLOW_LTO': '1'})
-bench('../csharp', 'CSharp', {})
+#bench('../code', 'C', {})
+#bench('../code', 'C-LTO', {'ALLOW_LTO': '1'})
+#bench('../csharp', 'CSharp', {'CSHARP_MODE': 'safe'})
+bench('../csharp', 'CSharp-Extended', {'CSHARP_MODE': 'extended'})
 cpu_full_power()

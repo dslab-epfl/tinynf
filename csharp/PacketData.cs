@@ -36,7 +36,7 @@ namespace TinyNF
         }
 
         // Workaround for the compiler not coalescing byte writes
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+/*        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public T Read<T>(int index)
             where T : struct
         {
@@ -47,6 +47,6 @@ namespace TinyNF
             where T : struct
         {
             MemoryMarshal.Write(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _contents, 1))[index..], ref value);
-        }
+        }*/
     }
 }
