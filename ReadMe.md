@@ -4,6 +4,7 @@
 - Removed fixed-size inline buffers in the agent struct, allocating them separately instead (required simplifying the external API for agent init as well)
 - Moved to a packet processor definition that has an array of uint16_t instead of both returning a length and setting the output bools
 - Moved to using 1 GB hugepages
+- Moved to `static inline` functions for endianness so they can be directly inlined without LTO, as the C# code does
 
 NOTE: the signedness and length of variables in the C# code (int, uint, long, ulong) outside of Agent itself is questionable and should be audited.
 
