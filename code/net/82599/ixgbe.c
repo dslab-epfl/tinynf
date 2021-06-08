@@ -347,10 +347,6 @@ static_assert(IXGBE_RING_SIZE % 128 == 0, "Ring size must be 0 modulo 128");
 static_assert((IXGBE_RING_SIZE & (IXGBE_RING_SIZE - 1)) == 0, "Ring size must be a power of 2 for fast modulo");
 static_assert(IXGBE_RING_SIZE <= 8096, "Ring size cannot be above 8K");
 
-// Maximum number of transmit queues assigned to an agent.
-// No constraints here... can be basically anything, the agent struct is allocated as a hugepage so taking up space is not a problem
-#define IXGBE_AGENT_OUTPUTS_MAX 4u
-
 // Max number of packets before updating the transmit tail
 #define IXGBE_AGENT_FLUSH_PERIOD 8
 static_assert(IXGBE_AGENT_FLUSH_PERIOD >= 1, "Flush period must be at least 1");
@@ -1003,57 +999,23 @@ struct tn_net_agent
 	volatile uint32_t* receive_tail_addr;
 	uint64_t processed_delimiter;
 	uint64_t outputs_count;
-	uint64_t flush_counter;
-	uint8_t _padding[3*8];
 	// transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
 	// plus, we want each head on its own cache line to avoid conflicts
 	// thus, using assumption CACHE, we multiply indices by 16
 	#define TRANSMIT_HEAD_MULTIPLIER 16
-	volatile uint32_t transmit_heads[IXGBE_AGENT_OUTPUTS_MAX * TRANSMIT_HEAD_MULTIPLIER];
-	volatile uint64_t* rings[IXGBE_AGENT_OUTPUTS_MAX]; // 0 == shared receive/transmit, rest are exclusive transmit
-	volatile uint32_t* transmit_tail_addrs[IXGBE_AGENT_OUTPUTS_MAX];
+	volatile uint32_t* transmit_heads;
+	volatile uint64_t** rings; // 0 == shared receive/transmit, rest are exclusive transmit
+	volatile uint32_t** transmit_tail_addrs;
+	uint16_t* outputs;
 };
 
-// --------------------
-// Agent initialization
-// --------------------
-
-bool tn_net_agent_init(struct tn_net_agent** out_agent)
-{
-	struct tn_net_agent* agent;
-	if (!tn_mem_allocate(sizeof(struct tn_net_agent), (void**) &agent)) {
-		TN_DEBUG("Could not allocate agent");
-		return false;
-	}
-
-	if (!tn_mem_allocate(IXGBE_RING_SIZE * PACKET_BUFFER_SIZE, (void**) &(agent->buffer))) {
-		TN_DEBUG("Could not allocate buffer for agent");
-		tn_mem_free(agent);
-		return false;
-	}
-
-	for (uint64_t n = 0; n < IXGBE_AGENT_OUTPUTS_MAX; n++) {
-		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, (void**) &(agent->rings[n]))) { // 16 bytes per descriptor, i.e. 2x64bits
-			TN_DEBUG("Could not allocate ring");
-			for (uint64_t m = 0; m < n; m++) {
-				tn_mem_free((void*) agent->rings[m]);
-			}
-			tn_mem_free(agent->buffer);
-			tn_mem_free(agent);
-			return false;
-		}
-	}
-
-	*out_agent = agent;
-	return true;
-}
 
 // ------------------------------------
 // Section 4.6.7 Receive Initialization
 // ------------------------------------
 
-bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_device* const device)
+static bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_device* const device)
 {
 	if (agent->receive_tail_addr != 0) {
 		TN_DEBUG("Agent receive was already set");
@@ -1153,13 +1115,8 @@ bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_devi
 // Section 4.6.8 Transmit Initialization
 // -------------------------------------
 
-bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_device* const device)
+static bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_device* const device)
 {
-	if (agent->outputs_count == IXGBE_AGENT_OUTPUTS_MAX) {
-		TN_DEBUG("The agent is already using the maximum amount of transmit queues");
-		return false;
-	}
-
 	uint32_t queue_index = 0;
 	for (; queue_index < TRANSMIT_QUEUES_COUNT; queue_index++) {
 		// See later for details of TXDCTL.ENABLE
@@ -1263,121 +1220,103 @@ bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_dev
 	return true;
 }
 
-// ----------------
-// Packet reception
-// ----------------
+// --------------------
+// Agent initialization
+// --------------------
 
-bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint16_t* out_packet_length)
+bool tn_net_agent_init(struct tn_net_device* input_device, size_t outputs_count, struct tn_net_device** output_devices, struct tn_net_agent** out_agent)
 {
-#ifdef VIGOR_SYMBEX
-	// Not great; but less assumptions than Vigor makes in the DPDK driver patches
-	// The core reason is the same: KLEE cannot reason about "any descriptor in the ring", the descriptor index must be concrete
-	agent->processed_delimiter = 0;
-	agent->flush_counter = IXGBE_AGENT_FLUSH_PERIOD - 1;
-#endif
-
-	// INTERPRETATION-MISSING: The data sheet does not specify the endianness of receive descriptor metadata fields.
-	// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
-
-	// Since descriptors are 16 bytes, the index must be doubled
-	uint64_t receive_metadata = tn_le_to_cpu64(agent->rings[0][2u*agent->processed_delimiter + 1]);
-	// Section 7.1.5 Legacy Receive Descriptor Format:
-	// "Status Field (8-bit offset 32, 2nd line)": Bit 0 = DD, "Descriptor Done."
-	if ((receive_metadata & BITL(32)) == 0) {
-		// No packet; flush if we need to.
-		// This is technically a part of transmission, but we must eventually flush after processing a packet even if no more packets are received
-		if (agent->flush_counter != 0) {
-			for (uint64_t n = 0; n < agent->outputs_count; n++) {
-				reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
-			}
-			agent->flush_counter = 0;
-		}
-
+	struct tn_net_agent* agent;
+	if (!tn_mem_allocate(sizeof(struct tn_net_agent), (void**) &agent)) {
+		TN_DEBUG("Could not allocate agent");
 		return false;
 	}
 
-	// This cannot overflow because the packet is by definition in an allocated block of memory
-	*out_packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
-	// "Length Field (16-bit offset 0, 2nd line): The length indicated in this field covers the data written to a receive buffer."
-	*out_packet_length = receive_metadata & 0xFFFFu;
-
-	return true;
-}
-
-// -------------------
-// Packet transmission
-// -------------------
-
-void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, bool* outputs)
-{
-	// INTERPRETATION-MISSING: The data sheet does not specify the endianness of transmit descriptor metadata fields, nor of the written-back head pointer.
-	// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
-
-	// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
-	// "Buffer Address (64)", 1st line
-	// 2nd line:
-		// "Length", bits 0-15: "Length (TDESC.LENGTH) specifies the length in bytes to be fetched from the buffer address provided"
-			// "Note: Descriptors with zero length (null descriptors) transfer no data."
-		// "CSO", bits 16-23: "A Checksum Offset (TDESC.CSO) field indicates where, relative to the start of the packet, to insert a TCP checksum if this mode is enabled"
-			// All zero
-		// "CMD", bits 24-31:
-			// "RSV (bit 7) - Reserved"
-			// "VLE (bit 6) - VLAN Packet Enable"
-			// "DEXT (bit 5) - Descriptor extension (zero for legacy mode)"
-			// "RSV (bit 4) - Reserved"
-			// "RS (bit 3) - Report Status - RS signals hardware to report the DMA completion status indication [...]"
-			// "IC (bit 2) - Insert Checksum - Hardware inserts a checksum at the offset indicated by the CSO field if the Insert Checksum bit (IC) is set."
-			// "IFCS (bit 1) - Insert FCS":
-			//	"There are several cases in which software must set IFCS as follows: Transmitting a short packet while padding is enabled by the HLREG0.TXPADEN bit. [...]"
-			//      By assumption TXPAD we need this bit set.
-			// "EOP (bit 0) - End of Packet"
-		// "STA", bits 32-35: "DD (bit 0) - Descriptor Done. The other bits in the STA field are reserved."
-			// All zero
-		// "Rsvd", bits 36-39: "Reserved."
-			// All zero
-		// "CSS", bits 40-47: "A Checksum Start (TDESC.CSS) field indicates where to begin computing the checksum."
-			// All zero
-		// "VLAN", bits 48-63: "The VLAN field is used to provide the 802.1q/802.1ac tagging information."
-			// All zero
-	// INTERPRETATION-INCORRECT: Despite being marked as "reserved", the buffer address does not get clobbered by write-back, so no need to set it again.
-	// This means all we have to do is set the length in the first 16 bits, then bits 0,1 of CMD, and bit 3 of CMD if we want write-back.
-	// Importantly, since bit 32 will stay at 0, and we share the receive ring and the first transmit ring, it will clear the Descriptor Done flag of the receive descriptor.
-	// Not setting the RS bit every time is a huge perf win in throughput (a few Gb/s) with no apparent impact on latency.
-	uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1)) << (24+3);
-	for (uint64_t n = 0; n < agent->outputs_count; n++) {
-		agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64((outputs[n] * (uint64_t) packet_length) | rs_bit | BITL(24+1) | BITL(24));
+	if (!tn_mem_allocate(IXGBE_RING_SIZE * PACKET_BUFFER_SIZE, (void**) &(agent->buffer))) {
+		TN_DEBUG("Could not allocate buffer for agent");
+		tn_mem_free(agent);
+		return false;
 	}
 
-	// Increment the processed delimiter, modulo the ring size
-	agent->processed_delimiter = (agent->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);
-
-	// Flush if we need to; not doing so every time is a huge performance win
-	agent->flush_counter = agent->flush_counter + 1;
-	if (agent->flush_counter == IXGBE_AGENT_FLUSH_PERIOD) {
-		for (uint64_t n = 0; n < agent->outputs_count; n++) {
-			reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
-		}
-		agent->flush_counter = 0;
+	if (!tn_mem_allocate(outputs_count * sizeof(uint32_t) * TRANSMIT_HEAD_MULTIPLIER, (void**) &(agent->transmit_heads))) {
+		TN_DEBUG("Could not allocate transmit heads for agent");
+		tn_mem_free(agent->buffer);
+		tn_mem_free(agent);
+		return false;
 	}
 
-	// Recycle transmitted descriptors back to receiving
-	// This should happen as rarely as asking the NIC for transmit head updates, thus we reuse rs_bit
-	if (rs_bit != 0) {
-		uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
-		uint64_t min_diff = (uint64_t) -1;
-		// There is an implicit race condition with the hardware: a transmit head could be updated just after we've read it
-		// but before we write to the receive tail. This is fine; it just means our "earliest transmit head" is not as high as it could be.
-		for (uint64_t n = 0; n < agent->outputs_count; n++) {
-			uint32_t head = tn_le_to_cpu32(agent->transmit_heads[n * TRANSMIT_HEAD_MULTIPLIER]);
-			uint64_t diff = head - agent->processed_delimiter;
-			if (diff <= min_diff) {
-				earliest_transmit_head = head;
-				min_diff = diff;
+	if (!tn_mem_allocate(outputs_count * sizeof(uint64_t*), (void**) &(agent->rings))) {
+		TN_DEBUG("Could not allocate rings for agent");
+		tn_mem_free(agent->buffer);
+		tn_mem_free((void*) agent->transmit_heads);
+		tn_mem_free(agent);
+		return false;
+	}
+
+	if (!tn_mem_allocate(outputs_count * sizeof(uint32_t*), (void**) &(agent->transmit_tail_addrs))) {
+		TN_DEBUG("Could not allocate transmit tail addrs for agent");
+		tn_mem_free(agent->buffer);
+		tn_mem_free((void*) agent->transmit_heads);
+		tn_mem_free(agent->rings);
+		tn_mem_free(agent);
+		return false;
+	}
+
+	if (!tn_mem_allocate(outputs_count * sizeof(uint16_t), (void**) &(agent->outputs))) {
+		TN_DEBUG("Could not allocate outputs for agent");
+		tn_mem_free(agent->buffer);
+		tn_mem_free((void*) agent->transmit_heads);
+		tn_mem_free(agent->rings);
+		tn_mem_free(agent->transmit_tail_addrs);
+		tn_mem_free(agent);
+		return false;
+	}
+
+	for (size_t n = 0; n < outputs_count; n++) {
+		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, (void**) &(agent->rings[n]))) { // 16 bytes per descriptor, i.e. 2x64bits
+			TN_DEBUG("Could not allocate ring");
+			for (size_t m = 0; m < n; m++) {
+				tn_mem_free((void*) agent->rings[m]);
 			}
+			tn_mem_free(agent->buffer);
+			tn_mem_free((void*) agent->transmit_heads);
+			tn_mem_free(agent->rings);
+			tn_mem_free(agent->transmit_tail_addrs);
+			tn_mem_free(agent);
+			return false;
 		}
-
-		reg_write_raw(agent->receive_tail_addr, (earliest_transmit_head - 1) & (IXGBE_RING_SIZE - 1));
 	}
+
+	if (!tn_net_agent_set_input(agent, input_device)) {
+		TN_DEBUG("Could not set input");
+		for (size_t m = 0; m < outputs_count; m++) {
+			tn_mem_free((void*) agent->rings[m]);
+		}
+		tn_mem_free(agent->buffer);
+		tn_mem_free((void*) agent->transmit_heads);
+		tn_mem_free(agent->rings);
+		tn_mem_free(agent->transmit_tail_addrs);
+		tn_mem_free(agent);
+		return false;
+	}
+
+	for (size_t n = 0; n < outputs_count; n++) {
+		if (!tn_net_agent_add_output(agent, output_devices[n])) {
+			TN_DEBUG("Could not set input");
+			for (size_t m = 0; m < outputs_count; m++) {
+				tn_mem_free((void*) agent->rings[m]);
+			}
+			tn_mem_free(agent->buffer);
+			tn_mem_free((void*) agent->transmit_heads);
+			tn_mem_free(agent->rings);
+			tn_mem_free(agent->transmit_tail_addrs);
+			tn_mem_free(agent);
+			return false;
+		}
+	}
+
+	*out_agent = agent;
+	return true;
 }
 
 // --------------
@@ -1386,7 +1325,6 @@ void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, b
 
 void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler)
 {
-	bool outputs[IXGBE_AGENT_OUTPUTS_MAX] = {0};
 	uint64_t p;
 	for (p = 0; p < IXGBE_AGENT_FLUSH_PERIOD; p++) {
 		uint64_t receive_metadata = tn_le_to_cpu64(agent->rings[0][2u*agent->processed_delimiter + 1]);
@@ -1396,11 +1334,12 @@ void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler)
 
 		uint8_t* packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
 		uint16_t packet_length = receive_metadata & 0xFFFFu;
-		uint16_t transmit_packet_length = handler(packet, packet_length, outputs);
+		handler(packet, packet_length, agent->outputs);
 
 		uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1)) << (24+3);
 		for (uint64_t n = 0; n < agent->outputs_count; n++) {
-			agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64((outputs[n] * (uint64_t) transmit_packet_length) | rs_bit | BITL(24+1) | BITL(24));
+			agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64(((uint64_t) agent->outputs[n]) | rs_bit | BITL(24+1) | BITL(24));
+			agent->outputs[n] = 0;
 		}
 
 		agent->processed_delimiter = (agent->processed_delimiter + 1u) & (IXGBE_RING_SIZE - 1);

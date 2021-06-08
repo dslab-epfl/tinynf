@@ -7,20 +7,20 @@ namespace TinyNF.Ixgbe
 {
     public ref struct SafeAgent
     {
-        private readonly Span<PacketData> _packets; // PacketData is entirely safe (TODO remove the need for unsafety in it)
+        private readonly Span<PacketData> _packets;
         private readonly Span<Descriptor> _receiveRing;
         private readonly Memory<Descriptor>[] _transmitRings;
         private readonly Span<uint> _receiveTail;
         private readonly Span<TransmitHead> _transmitHeads;
         private readonly Memory<uint>[] _transmitTails;
-        private readonly Span<bool> _outputs;
+        private readonly Span<uint> _outputs;
         private byte _processDelimiter;
 
 
         public SafeAgent(IEnvironment env, Device inputDevice, IReadOnlyList<Device> outputDevices)
         {
             _processDelimiter = 0;
-            _outputs = new Span<bool>(new bool[outputDevices.Count]);
+            _outputs = env.Allocate<uint>(outputDevices.Count).Span;
 
             _packets = env.Allocate<PacketData>(256).Span;
 
@@ -57,13 +57,14 @@ namespace TinyNF.Ixgbe
                 }
 
                 uint length = (uint)(receiveMetadata & 0xFFFFu);
-                uint transmitLength = processor(ref _packets[_processDelimiter], length, _outputs);
+                processor(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
                 byte transmitIndex = 0; // ideally _transmitRings would be an array of (array of descriptors, length) tuples so we could iterate both...
                 foreach(var ring in _transmitRings)
                 {
-                    Volatile.Write(ref ring.Span[_processDelimiter].Metadata, Endianness.ToLittle((_outputs[transmitIndex] ? transmitLength : 0) | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                    Volatile.Write(ref ring.Span[_processDelimiter].Metadata, Endianness.ToLittle(((ulong) _outputs[transmitIndex]) | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                    _outputs[transmitIndex] = 0;
                     transmitIndex++;
                 }
 

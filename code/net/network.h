@@ -8,6 +8,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "env/pci.h"
@@ -22,27 +23,13 @@ struct tn_net_agent;
 bool tn_net_device_init(struct tn_pci_address pci_address, struct tn_net_device** out_device);
 bool tn_net_device_set_promiscuous(struct tn_net_device* device);
 
-bool tn_net_agent_init(struct tn_net_agent** out_agent);
-bool tn_net_agent_set_input(struct tn_net_agent* agent, struct tn_net_device* device);
-bool tn_net_agent_add_output(struct tn_net_agent* agent, struct tn_net_device* device);
+bool tn_net_agent_init(struct tn_net_device* input_device, size_t outputs_count, struct tn_net_device** output_devices, struct tn_net_agent** out_agent);
 
 
 // Packet processing API
 // ---------------------
 
 // Returns the new length of the packet, and sets outputs[N] = whether the packet should be sent on queue N (queues are in the order they were added)
-typedef uint16_t tn_net_packet_handler(uint8_t* packet, uint16_t packet_length, bool* outputs);
+typedef void tn_net_packet_handler(uint8_t* packet, uint16_t packet_length, uint16_t* outputs);
 // Runs the agent using the given handlers
 void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler);
-
-
-// Low-level processing API
-// ------------------------
-// This API only exists for use in compatibility layers, so that programs that use existing C frameworks based on separate receive/transmit can be ported
-
-// Returns true iff there is a packet to process, in which case the out_ arguments point to valid data
-bool tn_net_agent_receive(struct tn_net_agent* agent, uint8_t** out_packet, uint16_t* out_packet_length);
-// Must be called exactly once after receive (even if the packet is to be dropped by all outputs)
-void tn_net_agent_transmit(struct tn_net_agent* agent, uint16_t packet_length, bool* outputs);
-
-

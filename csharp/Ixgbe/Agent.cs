@@ -14,14 +14,14 @@ namespace TinyNF.Ixgbe
         private readonly Ref<uint> _receiveTail;
         private readonly Span<TransmitHead> _transmitHeads;
         private readonly RefArray<uint> _transmitTails;
-        private readonly Array256<bool> _outputs; // trade off a tiny bit of unused space for no bounds checks
+        private readonly Array256<uint> _outputs; // trade off a tiny bit of unused space for no bounds checks
         private byte _processDelimiter;
 
 
         public Agent(IEnvironment env, Device inputDevice, IReadOnlyList<Device> outputDevices)
         {
             _processDelimiter = 0;
-            _outputs = new Array256<bool>(s => new bool[s]);
+            _outputs = new Array256<uint>(s => env.Allocate<uint>(s).Span);
 
             _packets = new Array256<PacketData>(s => env.Allocate<PacketData>(s).Span);
 
@@ -57,13 +57,14 @@ namespace TinyNF.Ixgbe
                 }
 
                 uint length = (uint)(receiveMetadata & 0xFFFFu);
-                uint transmitLength = processor(ref _packets[_processDelimiter], length, _outputs);
+                processor(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
                 byte transmitIndex = 0; // ideally _transmitRings would be an array of (array of descriptors, length) tuples so we could iterate both...
                 foreach (var ring in _transmitRings)
                 {
-                    Volatile.Write(ref ring[_processDelimiter].Metadata, Endianness.ToLittle((_outputs[transmitIndex] ? transmitLength : 0) | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                    Volatile.Write(ref ring[_processDelimiter].Metadata, Endianness.ToLittle(((ulong) _outputs[transmitIndex]) | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                    _outputs[transmitIndex] = 0;
                     transmitIndex++;
                 }
 

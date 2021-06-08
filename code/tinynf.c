@@ -7,7 +7,7 @@
 // This NF does as little as possible, it's only intended for benchmarking/profiling the driver
 
 #ifndef TN_DEBUG_PERF
-static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, bool* outputs)
+static void tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, uint16_t* outputs)
 {
 	// DST MAC
 	packet[0] = 0;
@@ -24,8 +24,7 @@ static uint16_t tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, b
 	packet[10] = 0;
 	packet[11] = 0;
 
-	outputs[0] = true;
-	return packet_length;
+	outputs[0] = packet_length;
 }
 #endif
 
@@ -51,17 +50,9 @@ int main(int argc, char** argv)
 
 	struct tn_net_agent* agents[2];
 	for (uint8_t n = 0; n < 2; n++) {
-		if (!tn_net_agent_init(&(agents[n]))) {
+		if (!tn_net_agent_init(devices[n], 1, &devices[1 - n], &(agents[n]))) {
 			TN_INFO("Couldn't init agent");
 			return 2 + 100*n;
-		}
-		if (!tn_net_agent_set_input(agents[n], devices[n])) {
-			TN_INFO("Couldn't set agent RX");
-			return 5 + 100*n;
-		}
-		if (!tn_net_agent_add_output(agents[n], devices[1 - n])) {
-			TN_INFO("Couldn't set agent TX");
-			return 6 + 100*n;
 		}
 	}
 

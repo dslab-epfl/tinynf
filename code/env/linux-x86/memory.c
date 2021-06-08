@@ -14,13 +14,19 @@
 #include <sys/mman.h>
 
 // We only support 2MB hugepages
-#define HUGEPAGE_SIZE_POWER (10 + 10 + 1)
+#define HUGEPAGE_SIZE_POWER (10 + 10 + 10)
 #define HUGEPAGE_SIZE (1u << HUGEPAGE_SIZE_POWER)
 
 // glibc defines it but musl doesn't
 #ifndef MAP_HUGE_SHIFT
 #define MAP_HUGE_SHIFT 26
 #endif
+
+
+static bool page_allocated;
+static uint8_t* page_addr;
+static size_t page_used_len;
+
 
 // Gets the page size, or returns 0 on error
 static uintptr_t get_page_size(void)
@@ -35,55 +41,66 @@ static uintptr_t get_page_size(void)
 
 bool tn_mem_allocate(const size_t size, void** out_addr)
 {
-	// OK if size is smaller, we'll just return too much memory
-	if (size > HUGEPAGE_SIZE) {
+	if (!page_allocated) {
+		page_addr = mmap(
+			// No specific address
+			NULL,
+			// Size of the mapping
+			HUGEPAGE_SIZE,
+			// R/W page
+			PROT_READ | PROT_WRITE,
+			// Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
+			// MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
+			// which is required if the calling code tries to get the physical address of the page without accessing it first.
+			MAP_HUGETLB | (HUGEPAGE_SIZE_POWER << MAP_HUGE_SHIFT) | MAP_ANONYMOUS | MAP_SHARED | MAP_POPULATE,
+			// Required on MAP_ANONYMOUS
+			-1,
+			// Required on MAP_ANONYMOUS
+			0
+		);
+		if (page_addr == MAP_FAILED) {
+			TN_DEBUG("Allocate mmap failed");
+			return false;
+		}
+		uint64_t node;
+		if (!tn_numa_get_addr_node(page_addr, &node)) {
+			TN_DEBUG("Could not get memory's NUMA node");
+			return false;
+		}
+		if (!tn_numa_is_current_node(node)) {
+			TN_DEBUG("Allocated memory is not in our NUMA node");
+			return false;
+		}
+		page_allocated = true;
+		page_used_len = 0;
+	}
+
+	// Weird but valid; return a likely-invalid address for debugging convenience
+	if (size == 0) {
+		*out_addr = page_addr + HUGEPAGE_SIZE;
+		return true;
+	}
+
+	// Align as required by the contract
+	const size_t align_diff = (size_t) (page_addr + page_used_len) % size;
+	if (align_diff != 0) {
+		page_used_len = page_used_len + (size - align_diff);
+	}
+
+	if (HUGEPAGE_SIZE - page_used_len < size) {
+		TN_DEBUG("Not enough space left to allocate");
 		return false;
 	}
 
-	// http://man7.org/linux/man-pages//man2/munmap.2.html
-	void* page = mmap(
-		// No specific address
-		NULL,
-		// Size of the mapping
-		HUGEPAGE_SIZE,
-		// R/W page
-		PROT_READ | PROT_WRITE,
-		// Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
-		// MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
-		// which is required if the calling code tries to get the physical address of the page without accessing it first.
-		MAP_HUGETLB | (HUGEPAGE_SIZE_POWER << MAP_HUGE_SHIFT) | MAP_ANONYMOUS | MAP_SHARED | MAP_POPULATE,
-		// Required on MAP_ANONYMOUS
-		-1,
-		// Required on MAP_ANONYMOUS
-		0
-	);
-	if (page == MAP_FAILED) {
-		TN_DEBUG("Allocate mmap failed");
-		return false;
-	}
-
-	// Default kernel policy is to allocate on-node, so this should work fine
-	uint64_t node;
-	if (!tn_numa_get_addr_node(page, &node)) {
-		TN_DEBUG("Could not get memory's NUMA node");
-		goto error;
-	}
-	if (!tn_numa_is_current_node(node)) {
-		TN_DEBUG("Allocated memory is not in our NUMA node");
-		goto error;
-	}
-
-	*out_addr = page;
+	*out_addr = page_addr + page_used_len;
+	page_used_len = page_used_len + size;
 	return true;
-
-error:
-	munmap(page, HUGEPAGE_SIZE);
-	return false;
 }
 
 void tn_mem_free(void* const addr)
 {
-	munmap(addr, HUGEPAGE_SIZE);
+	// Nothing! Too lazy to implement this. If we're freeing stuff we've failed something anyway. #ResearchCode
+	(void) addr;
 }
 
 bool tn_mem_phys_to_virt(const uint64_t addr, const size_t size, void** out_virt_addr)

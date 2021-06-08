@@ -40,7 +40,7 @@ namespace TinyNF
             }
         }
 
-        private static uint Processor(ref PacketData data, uint len, Array256<bool> outputs)
+        private static uint Processor(ref PacketData data, uint len, Array256<uint> outputs)
         {
             data[0] = 0;
             data[1] = 0;
@@ -54,11 +54,10 @@ namespace TinyNF
             data[9] = 0;
             data[10] = 0;
             data[11] = 0;
-            outputs[0] = true;
-            return len;
+            outputs[0] = len;
         }
 
-        private static uint SafeProcessor(ref PacketData data, uint len, Span<bool> outputs)
+        private static uint SafeProcessor(ref PacketData data, uint len, Span<uint> outputs)
         {
             data[0] = 0;
             data[1] = 0;
@@ -72,8 +71,7 @@ namespace TinyNF
             data[9] = 0;
             data[10] = 0;
             data[11] = 0;
-            outputs[0] = true;
-            return len;
+            outputs[0] = len;
         }
 
         // Run is separated into its own method just to make it easy to disassemble separately to observe optimizations
