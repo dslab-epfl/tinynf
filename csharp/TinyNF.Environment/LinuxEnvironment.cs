@@ -78,14 +78,16 @@ namespace TinyNF.Environment
                 _usedBytes = 0;
             }
 
+            var fullSize = size * (uint) Marshal.SizeOf<T>();
+
             // Align as required by the contract
-            var alignDiff = _usedBytes % size;
+            var alignDiff = _usedBytes % fullSize;
             _allocatedPage = _allocatedPage.Value[(int) alignDiff..];
             _usedBytes += alignDiff;
 
-            var result = _allocatedPage.Value.Slice(0, (int)size);
-            _allocatedPage = _allocatedPage.Value[(int)size..];
-            _usedBytes += size;
+            var result = _allocatedPage.Value.Slice(0, (int)fullSize);
+            _allocatedPage = _allocatedPage.Value[(int)fullSize..];
+            _usedBytes += fullSize;
 
             return new CastMemoryManager<byte, T>(result).Memory;
         }

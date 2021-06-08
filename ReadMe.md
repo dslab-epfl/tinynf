@@ -5,7 +5,7 @@
 - Moved to a packet processor definition that has an array of uint16_t instead of both returning a length and setting the output bools
 - Moved to using 1 GB hugepages
 
-
+NOTE: the signedness and length of variables in the C# code (int, uint, long, ulong) outside of Agent itself is questionable and should be audited.
 
 
 # TinyNF
