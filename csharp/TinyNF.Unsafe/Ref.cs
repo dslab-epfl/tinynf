@@ -8,7 +8,7 @@ namespace TinyNF.Unsafe
     /// "Unsafe" in the sense it uses MemoryMarshal which is unsafe, see e.g. https://github.com/dotnet/runtime/issues/41418
     /// This struct is safe iff it is only constructed using the explicit constructor, not the default one.
     /// </summary>
-    public ref struct Ref<T>
+    public readonly ref struct Ref<T>
     {
         private readonly Span<T> _value;
 
@@ -21,7 +21,7 @@ namespace TinyNF.Unsafe
             _value = value;
         }
 
-        public readonly ref T Get()
+        public ref T Get()
         {
             return ref MemoryMarshal.GetReference(_value);
         }

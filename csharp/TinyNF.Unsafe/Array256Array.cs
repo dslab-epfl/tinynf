@@ -6,7 +6,7 @@ namespace TinyNF.Unsafe
     /// An array of <see cref="Array256{T}" />.
     /// This struct is entirely safe, C# just cannot define it without unsafe yet. Same remarks as <see cref="RefArray{T}" />.
     /// </summary>
-    public unsafe ref struct Array256Array<T>
+    public unsafe readonly ref struct Array256Array<T>
         where T : unmanaged
     {
         private readonly T*[] _values;
