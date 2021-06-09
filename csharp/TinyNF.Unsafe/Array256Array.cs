@@ -44,26 +44,26 @@ namespace TinyNF.Unsafe
         public ref struct Enumerator
         {
             private readonly Array256Array<T> _array;
-            private int _index;
+            public int Index;
 
             public Enumerator(Array256Array<T> array)
             {
                 _array = array;
-                _index = -1;
+                Index = -1;
             }
 
             public Array256<T> Current
             {
                 get
                 {
-                    return _array[_index];
+                    return _array[Index];
                 }
             }
 
             public bool MoveNext()
             {
-                _index++;
-                return _index < _array.Length;
+                Index++;
+                return Index < _array.Length;
             }
         }
     }

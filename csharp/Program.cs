@@ -40,7 +40,7 @@ namespace TinyNF
             }
         }
 
-        private static void Processor(ref PacketData data, uint len, Array256<uint> outputs)
+        private static void Processor(ref PacketData data, ushort len, Array256<ushort> outputs)
         {
             data[0] = 0;
             data[1] = 0;
@@ -57,7 +57,7 @@ namespace TinyNF
             outputs[0] = len;
         }
 
-        private static void SafeProcessor(ref PacketData data, uint len, Span<uint> outputs)
+        private static void SafeProcessor(ref PacketData data, ushort len, Span<ushort> outputs)
         {
             data[0] = 0;
             data[1] = 0;

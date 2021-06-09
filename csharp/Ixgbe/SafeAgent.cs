@@ -13,14 +13,14 @@ namespace TinyNF.Ixgbe
         private readonly Span<uint> _receiveTail;
         private readonly Span<TransmitHead> _transmitHeads;
         private readonly Memory<uint>[] _transmitTails;
-        private readonly Span<uint> _outputs;
+        private readonly Span<ushort> _outputs;
         private byte _processDelimiter;
 
 
         public SafeAgent(IEnvironment env, Device inputDevice, IReadOnlyList<Device> outputDevices)
         {
             _processDelimiter = 0;
-            _outputs = env.Allocate<uint>((uint) outputDevices.Count).Span;
+            _outputs = env.Allocate<ushort>((uint) outputDevices.Count).Span;
 
             _packets = env.Allocate<PacketData>(256).Span;
 
@@ -47,7 +47,7 @@ namespace TinyNF.Ixgbe
 
         public void Run(SafePacketProcessor processor)
         {
-            uint n;
+            nint n;
             for (n = 0; n < DriverConstants.FlushPeriod; n++)
             {
                 ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _receiveRing[_processDelimiter].Metadata));
@@ -56,16 +56,14 @@ namespace TinyNF.Ixgbe
                     break;
                 }
 
-                uint length = (uint)(receiveMetadata & 0xFFFFu);
+                ushort length = (ushort)receiveMetadata;
                 processor(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                byte transmitIndex = 0; // ideally _transmitRings would be an array of (array of descriptors, length) tuples so we could iterate both...
-                foreach(var ring in _transmitRings)
+                for(int r = 0; r < _transmitRings.Length; r++)
                 {
-                    Volatile.Write(ref ring.Span[_processDelimiter].Metadata, Endianness.ToLittle(((ulong) _outputs[transmitIndex]) | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
-                    _outputs[transmitIndex] = 0;
-                    transmitIndex++;
+                    Volatile.Write(ref _transmitRings[r].Span[_processDelimiter].Metadata, Endianness.ToLittle(_outputs[r] | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                    _outputs[r] = 0;
                 }
 
                 _processDelimiter++;
