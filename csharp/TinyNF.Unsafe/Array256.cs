@@ -9,7 +9,7 @@ namespace TinyNF.Unsafe
     /// A 256-element array that can only be indexed with a byte, guaranteeing a lack of bounds checks.
     /// This struct is safe iff it is only constructed using the explicit constructor, not the default one.
     /// </summary>
-    public unsafe ref struct Array256<T>
+    public unsafe readonly ref struct Array256<T>
     {
         internal readonly Span<T> _values;
 
