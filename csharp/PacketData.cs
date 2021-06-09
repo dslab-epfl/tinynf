@@ -10,28 +10,22 @@ namespace TinyNF
     /// See https://github.com/dotnet/csharplang/blob/main/proposals/fixed-sized-buffers.md
     /// and https://github.com/dotnet/csharplang/issues/1314
     /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = Size)]
     public struct PacketData
     {
         public const int Size = 2048;
-
-        [StructLayout(LayoutKind.Explicit, Size = Size)]
-        private struct Contents
-        {
-            // nothing
-        }
-        private Contents _contents;
 
         public byte this[int index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                return MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _contents, 1))[index];
+                return MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index];
             }
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set
             {
-                MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _contents, 1))[index] = value;
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index] = value;
             }
         }
 
@@ -40,13 +34,13 @@ namespace TinyNF
         public T Read<T>(int index)
             where T : struct
         {
-            return MemoryMarshal.Read<T>(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _contents, 1))[index..]);
+            return MemoryMarshal.Read<T>(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index..]);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Write<T>(int index, T value)
             where T : struct
         {
-            MemoryMarshal.Write(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _contents, 1))[index..], ref value);
+            MemoryMarshal.Write(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index..], ref value);
         }*/
     }
 }
