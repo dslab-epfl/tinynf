@@ -4,7 +4,7 @@ TINYNF_DIR='../../code'
 EXTRACFLAGS=''
 LAYER='2'
 
-echo 'Measuring low-level stats; this will take less than an hour...'
+echo 'Measuring low-level stats; this will take less than 15min...'
 
 # Ensure the papi submodule is cloned
 git submodule update --init --recursive
