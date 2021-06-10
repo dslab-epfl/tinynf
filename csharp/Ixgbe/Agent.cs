@@ -60,10 +60,14 @@ namespace TinyNF.Ixgbe
                 processor(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                for (byte b = 0; b < _transmitRings.Length; b++)
+
+                // not clear why we have to copy _transmitRings here (its only member is an array), but this is necessary for the bounds check to be eliminated
+                // using a byte as the index likewise doesn't lead to the bounds check being eliminated
+                var _transmitRings = this._transmitRings;
+                for (int b = 0; b < _transmitRings.Length; b++)
                 {
-                    _transmitRings[b][_processDelimiter].Metadata = _outputs[b] | rsBit | (1ul << (24 + 1)) | (1ul << 24);
-                    _outputs[b] = 0;
+                    _transmitRings[b][_processDelimiter].Metadata = _outputs[(byte)b] | rsBit | (1ul << (24 + 1)) | (1ul << 24);
+                    _outputs[(byte)b] = 0;
                 }
 
                 _processDelimiter++;
