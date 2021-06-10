@@ -6,7 +6,15 @@
 
 // This NF does as little as possible, it's only intended for benchmarking/profiling the driver
 
-#ifndef TN_DEBUG_PERF
+#ifdef TN_DEBUG_PERF
+static uint64_t received_packets = 0;
+static void tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, uint16_t* outputs)
+{
+	(void) packet;
+	received_packets++;
+	outputs[0] = packet_length;
+}
+#else
 static void tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, uint16_t* outputs)
 {
 	// DST MAC
@@ -64,41 +72,13 @@ int main(int argc, char** argv)
 		tn_net_run(agents[1], &tinynf_packet_handler);
 	}
 #else
-	uint8_t lookup_table[256 * 256];
-	for (uint64_t n = 0; n < sizeof(lookup_table)/sizeof(uint8_t); n++) {
-		lookup_table[n] = (uint8_t) (n * 123);
-	}
-
-	uint8_t* packet;
-	uint16_t packet_length;
-	bool output = true;
 	TN_PERF_PAPI_INIT();
-	while(true) {
-		for (uint64_t a = 0; a < 2; a++) {
-			for (uint64_t p = 0; p < 8; p++) { // sync '8' here with PROCESS_PERIOD in ixgbe
-				TN_PERF_PAPI_RESET();
-				if (!tn_net_agent_receive(agents[a], &packet, &packet_length)) {
-					break;
-				}
-#ifdef TN_DEBUG_PERF_DOWRITE
-				packet[0] = lookup_table[0];
-				packet[1] = lookup_table[1];
-				packet[2] = lookup_table[2];
-				packet[3] = lookup_table[3];
-				packet[4] = lookup_table[4];
-				packet[5] = lookup_table[5];
-#elif defined(TN_DEBUG_PERF_DOLOOKUP)
-				packet[0] = lookup_table[(packet[6] << 8) | packet[7]];
-				packet[1] = lookup_table[(packet[7] << 8) | packet[6]];
-				packet[2] = lookup_table[(packet[8] << 8) | packet[9]];
-				packet[3] = lookup_table[(packet[9] << 8) | packet[8]];
-				packet[4] = lookup_table[(packet[10] << 8) | packet[11]];
-				packet[5] = lookup_table[(packet[11] << 8) | packet[10]];
-#endif
-				tn_net_agent_transmit(agents[a], packet_length, &output);
-				TN_PERF_PAPI_RECORD(1);
-			}
-		}
+	while (true) {
+		received_packets = 0;
+		TN_PERF_PAPI_RESET();
+		tn_net_run(agents[0], &tinynf_packet_handler);
+		tn_net_run(agents[1], &tinynf_packet_handler);
+		TN_PERF_PAPI_RECORD(received_packets);
 	}
 #endif
 }

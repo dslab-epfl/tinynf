@@ -1,34 +1,10 @@
 #!/bin/sh
 
 TINYNF_DIR='../../code'
-DPDK_DIR='../baselines/dpdk/measurable-nop'
 EXTRACFLAGS=''
 LAYER='2'
-RESULTS_SUFFIX='/nop'
-
-if [ "$1" = 'write' ]; then
-  EXTRACFLAGS='-DTN_DEBUG_PERF_DOWRITE'
-  RESULTS_SUFFIX='/write'
-elif [ "$1" = 'lookup' ]; then
-  EXTRACFLAGS='-DTN_DEBUG_PERF_DOLOOKUP'
-  RESULTS_SUFFIX='/lookup'
-elif [ "$1" = 'pol' ]; then
-  TINYNF_DIR='../baselines/policer/tinynf'
-  DPDK_DIR='../baselines/policer/dpdk'
-  LAYER='3'
-  RESULTS_SUFFIX='/pol'
-  export EXPIRATION_TIME='4000000'
-  export POLICER_BURST='1000000000000'
-  export POLICER_RATE='1000000000000'
-  export RTE_SDK="$(pwd)/../baselines/vigor/dpdk"
-  export RTE_TARGET=x86_64-native-linuxapp-gcc
-elif [ ! -z "$1" ]; then
-  echo 'Unknown parameter.'
-  exit 1
-fi
 
 echo 'Measuring low-level stats; this will take less than an hour...'
-
 
 # Ensure the papi submodule is cloned
 git submodule update --init --recursive
@@ -51,7 +27,7 @@ echo 0 | sudo dd status=none of=/proc/sys/kernel/perf_event_paranoid
 
 # Ensure the results folder is deleted so we don't accidentally end up with stale results
 mkdir -p results
-RESULTS_DIR="$(readlink -f results$RESULTS_SUFFIX)"
+RESULTS_DIR="$(readlink -f results)"
 rm -rf "$RESULTS_DIR"
 
 # Ensure there are no leftover hugepages
@@ -98,16 +74,6 @@ cd "$TINYNF_DIR"
   mkdir -p "$RESULTS_DIR/TinyNF"
   TN_DEBUG=0 TN_CFLAGS="$EXTRACFLAGS -DTN_DEBUG_PERF=10000000 -flto -s -I'$PAPI_DIR/src' -L'$PAPI_DIR/src' -lpapi" make -f "$BENCH_MAKEFILE_NAME" build
   run_nf 'TinyNF'
-cd - >/dev/null
-
-# Collect data on DPDK, without and with batching
-cd "$DPDK_DIR"
-  for batch in 1 32; do
-    mkdir -p "$RESULTS_DIR/DPDK-$batch"
-    TN_BATCH_SIZE=$batch EXTRA_CFLAGS="$EXTRACFLAGS -DTN_DEBUG_PERF=10000000 -I'$PAPI_DIR/src'" EXTRA_LDFLAGS="-L'$PAPI_DIR/src' -lpapi" make -f "$BENCH_MAKEFILE_NAME" build >/dev/null 2>&1
-    ../../../../benchmarking/bind-devices-to-uio.sh $DUT_DEVS
-    run_nf "DPDK-$batch"
-  done
 cd - >/dev/null
 
 # Stop the flood

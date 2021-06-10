@@ -1,6 +1,6 @@
 #!/bin/sh
 
-printf 'Tabulating results... This will take around 2h due to the amount of data involved.\n\n'
+printf 'Tabulating results... This will take around 10min due to the amount of data involved.\n\n'
 
 round()
 {
@@ -32,19 +32,12 @@ med99()
 
 printf '\tIPC\tCycles\t\tInstrs\t\tL1 hits\t\tL2 hits\t\tL3 hits\n'
 printf '\t50%%\t50%%\t99%%\t50%%\t99%%\t50%%\t99%%\t50%%\t99%%\t50%%\t99%%\n'
-
-for driver in 'DPDK-1' 'DPDK-32' 'TinyNF'; do
-  printf '%s\n' "$driver"
-  for nf in 'nop' 'write' 'lookup' 'pol'; do
-    if [ -d "results/$nf" ]; then
-      printf ' %s\t' "$nf"
-      d="results/$nf/$driver"
-      printf "$(med99 "$d" '$2/$1' x)"
-      printf "$(med99 "$d" '$1')"
-      printf "$(med99 "$d" '$2')"
-      printf "$(med99 "$d" '$3')"
-      printf "$(med99 "$d" '$4')"
-      printf "$(med99 "$d" '$5')\n"
-    fi
-  done
-done
+printf '\n'
+printf '\t'
+d="results/TinyNF"
+printf "$(med99 "$d" '$2/$1' x)"
+printf "$(med99 "$d" '$1')"
+printf "$(med99 "$d" '$2')"
+printf "$(med99 "$d" '$3')"
+printf "$(med99 "$d" '$4')"
+printf "$(med99 "$d" '$5')\n"
