@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace TinyNF.Unsafe
+﻿namespace TinyNF.Unsafe
 {
     /// <summary>
     /// An array of <see cref="Array256{T}" />.
@@ -26,44 +24,12 @@ namespace TinyNF.Unsafe
         {
             get
             {
-                // Safe because anything in _values[n] must have been put there by the setter, which guarantees its length is 256
-                return new Array256<T>(new Span<T>(_values[n], 256));
+                // Safe because anything in _values[n] must have been put there by the setter, which guarantees its length is 256 since it comes from an Array256
+                return new Array256<T>(_values[n]);
             }
             set
             {
-                // AsPointer is safe here because value._values is stack-only and so is _values, thus the pointer can't escape
-                _values[n] = (T*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref value._values.GetPinnableReference());
-            }
-        }
-
-        public Enumerator GetEnumerator()
-        {
-            return new Enumerator(this);
-        }
-
-        public ref struct Enumerator
-        {
-            private readonly Array256Array<T> _array;
-            public int Index;
-
-            public Enumerator(Array256Array<T> array)
-            {
-                _array = array;
-                Index = -1;
-            }
-
-            public Array256<T> Current
-            {
-                get
-                {
-                    return _array[Index];
-                }
-            }
-
-            public bool MoveNext()
-            {
-                Index++;
-                return Index < _array.Length;
+                _values[n] = value.AsPointer();
             }
         }
     }

@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.InteropServices;
 
 namespace TinyNF.Unsafe
 {
@@ -10,20 +9,22 @@ namespace TinyNF.Unsafe
     /// This struct is safe iff it is only constructed using the explicit constructor, not the default one.
     /// </summary>
     public unsafe readonly ref struct Array256<T>
+        where T : unmanaged
     {
-        internal readonly Span<T> _values;
+        private readonly T* _values;
 
         public Array256(Array256Allocator<T> allocator)
         {
-            _values = allocator(256);
-            if (_values.Length < 256)
+            var allocated = allocator(256);
+            if (allocated.Length < 256)
             {
                 throw new Exception("Allocator did not fulfill its contract");
             }
+            _values = (T*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref allocated.GetPinnableReference());
         }
 
         // Safe only if the span is of length >=256
-        internal Array256(Span<T> values)
+        internal Array256(T* values)
         {
             _values = values;
         }
@@ -32,11 +33,16 @@ namespace TinyNF.Unsafe
         {
             get
             {
-                return ref System.Runtime.CompilerServices.Unsafe.Add(ref MemoryMarshal.GetReference(_values), (uint)n); // the explicit cast leads to shorter generated code
+                return ref System.Runtime.CompilerServices.Unsafe.AsRef<T>(_values + n);
             }
         }
 
         public Span<T> AsSpan()
+        {
+            return new Span<T>(_values, 256);
+        }
+
+        internal T* AsPointer()
         {
             return _values;
         }

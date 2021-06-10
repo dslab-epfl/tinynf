@@ -26,11 +26,11 @@ namespace TinyNF.Ixgbe
             _packets = new Array256<PacketData>(s => env.Allocate<PacketData>(s).Span);
 
             _transmitRings = new Array256Array<Descriptor>(outputDevices.Count, s => env.Allocate<Descriptor>(s).Span);
-            foreach (var ring in _transmitRings)
+            for (int r = 0; r < _transmitRings.Length; r++)
             {
                 for (int n = 0; n < 256; n++)
                 {
-                    ring[(byte)n].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[(byte)n]));
+                    _transmitRings[r][(byte)n].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[(byte)n]));
                 }
             }
 
@@ -60,11 +60,10 @@ namespace TinyNF.Ixgbe
                 processor(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                var enumerator = _transmitRings.GetEnumerator();
-                while (enumerator.MoveNext()) // 'manual' foreach so we can use the index to index into _outputs
+                for (byte b = 0; b < _transmitRings.Length; b++)
                 {
-                    Volatile.Write(ref enumerator.Current[_processDelimiter].Metadata, Endianness.ToLittle(_outputs[(byte)enumerator.Index] | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
-                    _outputs[(byte)enumerator.Index] = 0;
+                    _transmitRings[b][_processDelimiter].Metadata = _outputs[b] | rsBit | (1ul << (24 + 1)) | (1ul << 24);
+                    _outputs[b] = 0;
                 }
 
                 _processDelimiter++;
