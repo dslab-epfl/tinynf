@@ -280,6 +280,8 @@ function measureStandard(queuePairs, extraPair, args)
   local rate = upperBound
   local bestRate = 0
   local bestTx = 0
+  local lastLoss = 1
+  local increased = false
   for i = 1, THROUGHPUT_STEPS_COUNT do
     io.write("[bench] Step " .. i .. ": " .. (#queuePairs * rate) .. " Mbps... ")
     local tasks = {}
@@ -300,7 +302,14 @@ function measureStandard(queuePairs, extraPair, args)
       os.exit(0)
     end
 
-    io.write("loss = " .. loss .. "\n")
+    io.write("loss = " .. loss)
+    if not increased and loss >= lastLoss then
+      io.write(", the loss did not go down significantly even though the rate went down, something is wrong!\n")
+      os.exit(1)
+    end
+    lastLoss = loss
+
+    io.write("\n")
     io.flush()
 
     if (loss <= args.acceptableloss) then
@@ -308,9 +317,11 @@ function measureStandard(queuePairs, extraPair, args)
       bestTx = tx
       lowerBound = rate
       rate = rate + (upperBound - rate)/2
+      increased = true
     else
       upperBound = rate
       rate = lowerBound + (rate - lowerBound)/2
+      increased = false
     end
 
     -- Stop if the first step is already successful, let's not do pointless iterations
