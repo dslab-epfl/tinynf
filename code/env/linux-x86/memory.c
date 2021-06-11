@@ -39,7 +39,7 @@ static uintptr_t get_page_size(void)
 	return 0;
 }
 
-bool tn_mem_allocate(const size_t size, void** out_addr)
+bool tn_mem_allocate(size_t size, void** out_addr)
 {
 	if (!page_allocated) {
 		page_addr = mmap(
@@ -79,6 +79,11 @@ bool tn_mem_allocate(const size_t size, void** out_addr)
 	if (size == 0) {
 		*out_addr = page_addr + HUGEPAGE_SIZE;
 		return true;
+	}
+
+	// Return and align to at least one full cache line; this sometimes makes a massive difference
+	if (size < 64) {
+		size = 64;
 	}
 
 	// Align as required by the contract

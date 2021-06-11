@@ -80,6 +80,11 @@ namespace TinyNF.Environment
 
             var fullSize = size * (uint) Marshal.SizeOf<T>();
 
+            // Return and align to at least one full cache line
+            if (fullSize < 64) {
+                fullSize = 64;
+            }
+
             // Align as required by the contract
             var alignDiff = _usedBytes % fullSize;
             _allocatedPage = _allocatedPage.Value[(int) alignDiff..];
