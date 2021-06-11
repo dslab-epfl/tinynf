@@ -7,25 +7,10 @@
     <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 
-  <!-- Ignore other stuff -->
-  <ItemGroup>
-    <Compile Remove="cwrapper\**" />
-    <Compile Remove="TinyNF.Environment\**" />
-    <Compile Remove="TinyNF.Unsafe\**" />
-    <EmbeddedResource Remove="cwrapper\**" />
-    <EmbeddedResource Remove="TinyNF.Environment\**" />
-    <EmbeddedResource Remove="TinyNF.Unsafe\**" />
-    <None Remove="cwrapper\**" />
-    <None Remove="TinyNF.Environment\**" />
-    <None Remove="TinyNF.Unsafe\**" />
-    <None Remove=".gitignore" />
-    <None Remove="Makefile.benchmarking" />
-  </ItemGroup>
-
   <!-- Refer other projects so we can cleanly separate unsafe code. Environment is fundamentally unsafe; Unsafe is for stuff that could be safe with improvements to C# or the runtime  -->
   <ItemGroup>
-    <ProjectReference Include="TinyNF.Environment\TinyNF.Environment.csproj" />
-    <ProjectReference Include="TinyNF.Unsafe\TinyNF.Unsafe.csproj" />
+    <ProjectReference Include="..\TinyNF.Environment\TinyNF.Environment.csproj" />
+    <ProjectReference Include="..\TinyNF.Unsafe\TinyNF.Unsafe.csproj" />
   </ItemGroup>
 
   <!-- Use JIT by default (faster to compile, so faster to prototype) -->

@@ -13,7 +13,7 @@ build:
 	@dotnet publish -r linux-x64 -c Release $(BUILD_ARGS) $(THIS_DIR)
 
 run:
-	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/bin/Release/net6.0/linux-x64/publish/TinyNF $(TN_ARGS) $(CSHARP_MODE)
+	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/TinyNF/bin/Release/net6.0/linux-x64/publish/TinyNF $(TN_ARGS) $(CSHARP_MODE)
 
 print-nf-name:
 	@echo TinyNF
