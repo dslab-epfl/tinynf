@@ -80,9 +80,10 @@ namespace TinyNF.Environment
 
             var fullSize = size * (uint) Marshal.SizeOf<T>();
 
-            // Return and align to at least one full cache line
-            if (fullSize < 64) {
-                fullSize = 64;
+            // Return and align to an integral number of cache lines
+            // This is a bit more complex than in C because we must also return a number that makes sense given the size of T
+            while (fullSize % 64 != 0) {
+                fullSize += (uint) Marshal.SizeOf<T>();
             }
 
             // Align as required by the contract

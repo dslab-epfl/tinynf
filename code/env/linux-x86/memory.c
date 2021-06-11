@@ -81,10 +81,8 @@ bool tn_mem_allocate(size_t size, void** out_addr)
 		return true;
 	}
 
-	// Return and align to at least one full cache line; this sometimes makes a massive difference
-	if (size < 64) {
-		size = 64;
-	}
+	// Return and align to an integral number of cache lines
+	size = size + (64 - (size % 64));
 
 	// Align as required by the contract
 	const size_t align_diff = (size_t) (page_addr + page_used_len) % size;

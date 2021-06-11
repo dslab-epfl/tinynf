@@ -3,6 +3,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
     <!-- Ignore startup latency, optimize for throughput / stability -->
+    <!-- In practice this doesn't seem to have much effect though -->
     <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 
