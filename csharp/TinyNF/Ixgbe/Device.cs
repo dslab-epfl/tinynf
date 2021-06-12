@@ -1,6 +1,5 @@
 ﻿using System;
 using TinyNF.Environment;
-using TinyNF.Unsafe;
 
 namespace TinyNF.Ixgbe
 {

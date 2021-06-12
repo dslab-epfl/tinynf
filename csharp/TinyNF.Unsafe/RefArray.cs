@@ -12,7 +12,7 @@ namespace TinyNF.Unsafe
     /// The reason this struct is safe is that the internal array cannot leak.
     /// That is, the struct effectively imposes 'ref struct' limitations on an array, which makes it safe to have an array of references.
     /// </remarks>
-    public unsafe readonly struct RefArray<T> where T : unmanaged
+    public readonly unsafe struct RefArray<T> where T : unmanaged
     {
         private readonly T*[] _data;
 

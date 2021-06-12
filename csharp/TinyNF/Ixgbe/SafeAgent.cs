@@ -20,14 +20,14 @@ namespace TinyNF.Ixgbe
         public SafeAgent(IEnvironment env, Device inputDevice, IReadOnlyList<Device> outputDevices)
         {
             _processDelimiter = 0;
-            _outputs = env.Allocate<ushort>((uint) outputDevices.Count).Span;
+            _outputs = env.Allocate<ushort>((uint)outputDevices.Count).Span;
 
             _packets = env.Allocate<PacketData>(256).Span;
 
             _transmitRings = new Memory<Descriptor>[outputDevices.Count];
             for (int n = 0; n < _transmitRings.Length; n++)
             {
-               _transmitRings[n] = env.Allocate<Descriptor>(256);
+                _transmitRings[n] = env.Allocate<Descriptor>(256);
                 for (int m = 0; m < _transmitRings[n].Length; m++)
                 {
                     _transmitRings[n].Span[m].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[m]));
@@ -60,7 +60,7 @@ namespace TinyNF.Ixgbe
                 processor(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                for(int r = 0; r < _transmitRings.Length; r++)
+                for (int r = 0; r < _transmitRings.Length; r++)
                 {
                     Volatile.Write(ref _transmitRings[r].Span[_processDelimiter].Metadata, Endianness.ToLittle(_outputs[r] | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
                     _outputs[r] = 0;

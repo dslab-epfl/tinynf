@@ -29,18 +29,18 @@ namespace TinyNF
             }
         }
 
-        // Workaround for the compiler not coalescing byte writes
-/*        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T Read<T>(int index)
-            where T : struct
-        {
-            return MemoryMarshal.Read<T>(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index..]);
-        }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Write<T>(int index, T value)
-            where T : struct
-        {
-            MemoryMarshal.Write(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index..], ref value);
-        }*/
+        // Workaround for the compiler not coalescing byte writes (doesn't actually seem useful though?)
+        /*        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public T Read<T>(int index)
+                    where T : struct
+                {
+                    return MemoryMarshal.Read<T>(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index..]);
+                }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public void Write<T>(int index, T value)
+                    where T : struct
+                {
+                    MemoryMarshal.Write(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index..], ref value);
+                }*/
     }
 }

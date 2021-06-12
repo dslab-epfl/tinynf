@@ -2,6 +2,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
     <!-- Ignore startup latency, optimize for throughput / stability -->
     <!-- In practice this doesn't seem to have much effect though -->
     <TieredCompilation>false</TieredCompilation>
