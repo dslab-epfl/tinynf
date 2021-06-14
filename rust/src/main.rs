@@ -1,3 +1,9 @@
+mod env;
+mod pci;
+
+mod ixgbe;
+use ixgbe::pci_regs;
+
 #[derive(Debug, Copy, Clone)] // todo remove
 struct Descriptor {
     pub buffer: u64,
