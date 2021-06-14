@@ -3,6 +3,7 @@ mod pci;
 
 mod ixgbe;
 use ixgbe::pci_regs;
+use ixgbe::regs;
 
 #[derive(Debug, Copy, Clone)] // todo remove
 struct Descriptor {
