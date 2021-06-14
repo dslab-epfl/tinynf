@@ -1,51 +1,44 @@
-/*
-pub fn Read(Memory<uint> buffer, uint reg)
-{
-    return Endianness.FromLittle(buffer.Span[(int)reg / sizeof(uint)]);
+#![allow(non_snake_case)]
+
+pub fn read(buffer: &Vec<u32>, reg: u32) -> u32 {
+    u32::from_le(buffer[reg as usize / 4])
 }
 
-pub fn ReadField(Memory<uint> buffer, uint reg, uint field)
-{
-    uint value = Read(buffer, reg);
-    int shift = BitOperations.TrailingZeroCount(field);
-    return (value & field) >> shift;
+pub fn read_field(buffer: &Vec<u32>, reg: u32, field: u32) -> u32 {
+    let value = read(buffer, reg);
+    let shift = field.trailing_zeros();
+    (value & field) >> shift
 }
 
-public static void Write(Memory<uint> buffer, uint reg, uint value)
-{
-    buffer.Span[(int)reg / sizeof(uint)] = Endianness.ToLittle(value);
+pub fn write(buffer: &mut Vec<u32>, reg: u32, value: u32) {
+    buffer[reg as usize / 4] = u32::to_le(value);
 }
 
-public static void WriteField(Memory<uint> buffer, uint reg, uint field, uint fieldValue)
-{
-    uint oldValue = Read(buffer, reg);
-    int shift = BitOperations.TrailingZeroCount(field);
-    uint newValue = (oldValue & ~field) | (fieldValue << shift);
-    Write(buffer, reg, newValue);
+pub fn write_field(buffer: &mut Vec<u32>, reg: u32, field: u32, field_value: u32) {
+    let old_value = read(buffer, reg);
+    let shift = field.trailing_zeros();
+    let new_value = (old_value & !field) | (field_value << shift);
+    write(buffer, reg, new_value);
 }
 
-public static void Clear(Memory<uint> buffer, uint reg)
-{
-    Write(buffer, reg, 0);
+pub fn clear(buffer: &mut Vec<u32>, reg: u32) {
+    write(buffer, reg, 0);
 }
 
-public static void ClearField(Memory<uint> buffer, uint reg, uint field)
-{
-    WriteField(buffer, reg, field, 0);
+pub fn clear_field(buffer: &mut Vec<u32>, reg: u32, field: u32) {
+    write_field(buffer, reg, field, 0);
 }
 
-public static void SetField(Memory<uint> buffer, uint reg, uint field)
-{
-    uint oldValue = Read(buffer, reg);
-    uint newValue = oldValue | field;
-    Write(buffer, reg, newValue);
+pub fn set_field(buffer: &mut Vec<u32>, reg: u32, field: u32) {
+    let old_value = read(buffer, reg);
+    let new_value = old_value | field;
+    write(buffer, reg, new_value);
 }
 
-public static bool IsFieldCleared(Memory<uint> buffer, uint reg, uint field)
-{
-    return ReadField(buffer, reg, field) == 0;
+pub fn is_field_cleared(buffer: &mut Vec<u32>, reg: u32, field: u32) -> bool {
+    read_field(buffer, reg, field) == 0
 }
-*/
+
 
 pub const CTRL: u32 = 0x00000;
 pub mod CTRL_ {
