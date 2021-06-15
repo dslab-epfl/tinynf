@@ -176,37 +176,18 @@ impl Device<'_> {
             tx_enabled: false
         }
     }
-}
+
+    pub fn set_promiscuous(&mut self) {
+        if self.rx_enabled {
+            regs::clear_field(self.buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
+        }
+        regs::set_field(self.buffer, regs::FCTRL, regs::FCTRL_::FCTRL_UPE);
+        regs::set_field(self.buffer, regs::FCTRL, regs::FCTRL_::MPE);
+        if self.rx_enabled {
+            regs::set_field(self.buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
+        }
+    }
 /*
-
-        }
-
-        // ----------------------------
-        // Section 7.1.1.1 L2 Filtering
-        // ----------------------------
-        public void SetPromiscuous()
-        {
-        // "A packet passes successfully through L2 Ethernet MAC address filtering if any of the following conditions are met:"
-        // 	Section 8.2.3.7.1 Filter Control Register:
-        // 	"Before receive filters are updated/modified the RXCTRL.RXEN bit should be set to 0b.
-        // 	After the proper filters have been set the RXCTRL.RXEN bit can be set to 1b to re-enable the receiver."
-        if (_rxEnabled)
-        {
-            regs::clear_field(buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
-        }
-        // "Unicast packet filtering - Promiscuous unicast filtering is enabled (FCTRL.UPE=1b) or the packet passes unicast MAC filters (host or manageability)."
-        regs::set_field(buffer, regs::FCTRL, regs::FCTRL_::FCTRL_UPE);
-        // "Multicast packet filtering - Promiscuous multicast filtering is enabled by either the host or manageability (FCTRL.MPE=1b or MANC.MCST_PASS_L2 =1b) or the packet matches one of the multicast filters."
-        regs::set_field(buffer, regs::FCTRL, regs::FCTRL_::MPE);
-        // "Broadcast packet filtering to host - Promiscuous multicast filtering is enabled (FCTRL.MPE=1b) or Broadcast Accept Mode is enabled (FCTRL.BAM = 1b)."
-        // INTERPRETATION-MISSING: Nothing to do here, since we just enabled MPE; but what is BAM for then?
-
-        if (_rxEnabled)
-        {
-            regs::set_field(buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
-        }
-        }
-
         // ------------------------------------
         // Section 4.6.7 Receive Initialization
         // ------------------------------------
@@ -384,3 +365,4 @@ impl Device<'_> {
         }
     }
 */
+}
