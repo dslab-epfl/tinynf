@@ -1,8 +1,12 @@
-// TODO rewrite once hierarchy is done
-pub mod pci_regs;
-pub mod regs;
-pub mod driver_constants;
-pub mod device_limits;
-pub mod transmit_head;
-pub mod descriptor;
+pub(super) mod descriptor;
+pub(super) mod device_limits;
+pub(super) mod driver_constants;
+pub(super) mod pci_regs;
+pub(super) mod regs;
+pub(super) mod transmit_head;
+
+pub const MAX_OUTPUTS: usize = driver_constants::MAX_OUTPUTS;
+pub const PACKET_SIZE: usize = driver_constants::PACKET_SIZE as usize;
+
+pub mod agent;
 pub mod device;

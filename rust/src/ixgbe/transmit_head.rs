@@ -1,4 +1,4 @@
 #[repr(C, align(64))]
 pub struct TransmitHead {
-    value: u32
+    pub value: u32
 }

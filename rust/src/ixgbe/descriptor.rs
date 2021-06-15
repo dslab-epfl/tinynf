@@ -1,5 +1,5 @@
 #[repr(C)]
 pub struct Descriptor {
-    buffer: u64,
-    metadata: u64
+    pub buffer: u64,
+    pub metadata: u64
 }

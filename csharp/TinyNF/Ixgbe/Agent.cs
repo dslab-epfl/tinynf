@@ -66,7 +66,7 @@ namespace TinyNF.Ixgbe
                 var _transmitRings = this._transmitRings;
                 for (int b = 0; b < _transmitRings.Length; b++)
                 {
-                    _transmitRings[b][_processDelimiter].Metadata = _outputs[(byte)b] | rsBit | (1ul << (24 + 1)) | (1ul << 24);
+                    Volatile.Write(ref _transmitRings[b][_processDelimiter].Metadata, Endianness.ToLittle(_outputs[(byte)b] | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
                     _outputs[(byte)b] = 0;
                 }
 
