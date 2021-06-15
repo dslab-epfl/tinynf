@@ -23,9 +23,19 @@ fn parse_pci_address(s: &str) -> PciAddress {
 }
 
 fn proc(data: &mut [u8; ixgbe::PACKET_SIZE], length: u16, output_lengths: &mut [u16; ixgbe::MAX_OUTPUTS]) {
-    if data[0] == 42 {
-        output_lengths[0] = length;
-    }
+    data[0] = 0;
+    data[1] = 0;
+    data[2] = 0;
+    data[3] = 0;
+    data[4] = 0;
+    data[5] = 1;
+    data[6] = 0;
+    data[7] = 0;
+    data[8] = 0;
+    data[9] = 0;
+    data[10] = 0;
+    data[11] = 0;
+    output_lengths[0] = length
 }
 
 fn run(agent0: &mut Agent, agent1: &mut Agent) {
