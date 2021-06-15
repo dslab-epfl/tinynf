@@ -44,9 +44,9 @@ impl Agent<'_> {
         let transmit_heads = env.allocate_slice::<TransmitHead>(output_devices.len());
 
         let mut transmit_tails = Vec::new();
-        transmit_tails.push(output_devices[0].add_output(env, first_ring, &mut transmit_heads[0].value));
-        for n in 1..transmit_heads.len() {
-            transmit_tails.push(output_devices[n].add_output(env, other_rings[n-1], &mut transmit_heads[n].value));
+        for dev in output_devices.iter_mut() {
+            let n = transmit_tails.len();
+            transmit_tails.push(dev.add_output(env, if n == 0 { first_ring } else { other_rings[n-1] }, &mut transmit_heads[n].value));
         }
 
         Agent {
