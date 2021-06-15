@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::mem::size_of;
 use std::ptr;
 use std::slice;
@@ -81,8 +82,9 @@ impl LinuxEnvironment {
 }
 
 impl Environment for LinuxEnvironment {
-/*    fn allocate<T, const COUNT: usize>(&mut self) -> &mut [T; COUNT] {
-    }*/
+    fn allocate<T, const COUNT: usize>(&mut self) -> &mut [T; COUNT] {
+        self.allocate_slice(COUNT).try_into().unwrap()
+    }
     fn allocate_slice<T>(&mut self, count: usize) -> &mut [T] {
         let mut full_size = count * size_of::<T>();
         while full_size % 64 != 0 {
