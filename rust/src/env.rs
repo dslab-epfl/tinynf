@@ -1,5 +1,6 @@
 use std::convert::TryInto;
-use std::fs::File;
+use std::io::{self, Read, Seek};
+use std::fs;
 use std::mem::size_of;
 use std::ptr;
 use std::slice;
@@ -114,12 +115,36 @@ impl Environment for LinuxEnvironment {
 
     fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &mut [T] {
         let full_size = size * size_of::<T>();
-        let result = &mut MmapOptions::new().offset(addr).len(full_size).map_mut(&File::open("/dev/mem").unwrap()).unwrap()[..];
+        let result = &mut MmapOptions::new().offset(addr).len(full_size).map_mut(&fs::File::open("/dev/mem").unwrap()).unwrap()[..];
         let (_prefix, result, _suffix) = result.align_to_mut::<T>();
         result
     }
-/*fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize;
-*/
+
+    fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize {
+        let page_size = libc::sysconf(libc::_SC_PAGE_SIZE) as usize;
+        let addr = value as *const T as *const () as usize; // yes, the casts are necessary
+        let page = addr / page_size;
+        let map_offset = page * size_of::<u64>();
+
+        let mut pagemap = fs::OpenOptions::new().read(true).open("/proc/self/pagemap").unwrap();
+        pagemap.seek(io::SeekFrom::Start(map_offset as u64)).unwrap();
+        
+        let mut buffer = [0; size_of::<u64>()];
+        pagemap.read_exact(&mut buffer).unwrap();
+
+        let metadata = u64::from_ne_bytes(buffer);
+        if (metadata & 0x8000000000000000) == 0 {
+            panic!("Page not present");
+        }
+
+        let pfn = metadata & 0x7FFFFFFFFFFFFF;
+        if pfn == 0 {
+            panic!("Page not mapped");
+        }
+
+        let addr_offset = addr % page_size;
+        pfn as usize * page_size + addr_offset
+    }
 
      fn pci_read(&self, addr: PciAddress, register: u8) -> u32 {
          pci_target(addr, register);
