@@ -18,7 +18,7 @@ use crate::pci::PciAddress;
 pub trait Environment {
     fn allocate<T, const COUNT: usize>(&mut self) -> &'static mut [T; COUNT];
     fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T];
-    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &mut [T];
+    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &'static mut [T];
     fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize;
 
     fn pci_read(&self, addr: PciAddress, register: u8) -> u32;

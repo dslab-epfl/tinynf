@@ -1,10 +1,26 @@
 mod env;
+use env::LinuxEnvironment;
+
 mod pci;
-mod volatile;
+use pci::PciAddress;
+
+mod volatile; // declare it so ixgbe can use it... weird
 
 mod ixgbe;
 use ixgbe::agent::Agent;
 use ixgbe::device::Device;
+
+fn parse_pci_address(s: &str) -> PciAddress {
+    let parts: Vec<&str> = s.split(&[':', '.'][..]).collect(); // technically too lax but that's fine
+    if parts.len() != 3 {
+        panic!("Bad PCI address");
+    }
+    PciAddress {
+        bus: u8::from_str_radix(parts[0], 16).unwrap(),
+        device: u8::from_str_radix(parts[1], 16).unwrap(),
+        function: u8::from_str_radix(parts[2], 16).unwrap()
+    }
+}
 
 fn proc(data: &mut [u8; ixgbe::PACKET_SIZE], length: u16, output_lengths: &mut [u16; ixgbe::MAX_OUTPUTS]) {
     if data[0] == 42 {
@@ -12,5 +28,32 @@ fn proc(data: &mut [u8; ixgbe::PACKET_SIZE], length: u16, output_lengths: &mut [
     }
 }
 
+fn run(agent0: &mut Agent, agent1: &mut Agent) {
+    loop {
+        agent0.run(proc);
+        agent1.run(proc);
+    }
+}
+
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 2 {
+        panic!("Expected 2 args");
+    }
+
+    let mut env = LinuxEnvironment::new();
+
+    let mut dev0 = Device::init(&env, parse_pci_address(&args[0][..]));
+    dev0.set_promiscuous();
+
+    let mut dev1 = Device::init(&env, parse_pci_address(&args[1][..]));
+    dev1.set_promiscuous();
+
+    let mut agent0outs = [&mut dev1];
+    let mut agent0 = Agent::create(&mut env, &mut dev0, &mut agent0outs);
+
+    let mut agent1outs = [&mut dev0];
+    let mut agent1 = Agent::create(&mut env, &mut dev1, &mut agent1outs);
+
+    run(&mut agent0, &mut agent1);
 }

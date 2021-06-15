@@ -35,7 +35,7 @@ fn if_after_timeout<F1, F2>(env: &impl Environment, duration: Duration, buffer: 
 
 
 impl Device<'_> {
-    fn create(env: &impl Environment, pci_address: PciAddress) -> Device {
+    pub fn init<'a, 'b>(env: &'a impl Environment, pci_address: PciAddress) -> Device<'b> {
         if size_of::<usize>() > 8 {
             panic!("Pointers must fit in a u64");
         }
