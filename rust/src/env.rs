@@ -34,18 +34,22 @@ const PCI_CONFIG_ADDR: u16 = 0xCF8;
 const PCI_CONFIG_DATA: u16 = 0xCFC;
 
 fn port_out_32(port: u16, value: u32) {
-    if libc::ioperm(port.into(), 4, 1) < 0 || libc::ioperm(0x80, 1, 1) < 0 {
-        panic!("Could not ioperm, are you root?");
+    unsafe {
+        if libc::ioperm(port.into(), 4, 1) < 0 || libc::ioperm(0x80, 1, 1) < 0 {
+            panic!("Could not ioperm, are you root?");
+        }
+        Port::new(port).write(value);
+        Port::new(0x80).write(0u8);
     }
-    Port::new(port).write(value);
-    Port::new(0x80).write(0u8);
 }
 
 fn port_in_32(port: u16) -> u32 {
-    if libc::ioperm(port.into(), 4, 1) < 0 {
-        panic!("Could not ioperm, are you root?");
+    unsafe {
+        if libc::ioperm(port.into(), 4, 1) < 0 {
+            panic!("Could not ioperm, are you root?");
+        }
+        Port::new(port).read()
     }
-    Port::new(port).read()
 }
 
 fn pci_target(address: PciAddress, register: u8) {
@@ -65,21 +69,23 @@ pub struct LinuxEnvironment {
 
 impl LinuxEnvironment {
     pub fn new() -> LinuxEnvironment {
-        let page = libc::mmap(
-            ptr::null_mut(),
-            HUGEPAGE_SIZE,
-            libc::PROT_READ | libc::PROT_WRITE,
-            libc::MAP_HUGETLB | (HUGEPAGE_LOG << libc::MAP_HUGE_SHIFT) as i32 | libc::MAP_ANONYMOUS | libc::MAP_SHARED | libc::MAP_POPULATE,
-            -1,
-            0
-        );
-        if page == libc::MAP_FAILED {
-            panic!("Mmap failed");
-        }
+        unsafe {
+            let page = libc::mmap(
+                ptr::null_mut(),
+                HUGEPAGE_SIZE,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_HUGETLB | (HUGEPAGE_LOG << libc::MAP_HUGE_SHIFT) as i32 | libc::MAP_ANONYMOUS | libc::MAP_SHARED | libc::MAP_POPULATE,
+                -1,
+                0
+            );
+            if page == libc::MAP_FAILED {
+                panic!("Mmap failed");
+            }
 
-        LinuxEnvironment {
-            allocated_page: page as *mut u8,
-            used_bytes: 0
+            LinuxEnvironment {
+                allocated_page: page as *mut u8,
+                used_bytes: 0
+            }
         }
     }
 }
@@ -98,8 +104,10 @@ impl Environment for LinuxEnvironment {
         if align_diff + self.used_bytes >= HUGEPAGE_SIZE {
             panic!("Not enough space for alignment");
         }
-        
-        self.allocated_page = self.allocated_page.add(align_diff);
+
+        unsafe {        
+            self.allocated_page = self.allocated_page.add(align_diff);
+        }
         self.used_bytes = self.used_bytes + align_diff;
 
         if full_size + self.used_bytes >= HUGEPAGE_SIZE {
@@ -107,43 +115,51 @@ impl Environment for LinuxEnvironment {
         }
 
         let result = self.allocated_page;
-        self.allocated_page = self.allocated_page.add(full_size);
+        unsafe {
+            self.allocated_page = self.allocated_page.add(full_size);
+        }
         self.used_bytes = self.used_bytes + full_size;
 
-        slice::from_raw_parts_mut(result as *mut T, full_size)
+        unsafe {
+            slice::from_raw_parts_mut(result as *mut T, full_size)
+        }
     }
 
     fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &mut [T] {
         let full_size = size * size_of::<T>();
-        let result = &mut MmapOptions::new().offset(addr).len(full_size).map_mut(&fs::File::open("/dev/mem").unwrap()).unwrap()[..];
-        let (_prefix, result, _suffix) = result.align_to_mut::<T>();
-        result
+        unsafe {
+            let result = &mut MmapOptions::new().offset(addr).len(full_size).map_mut(&fs::File::open("/dev/mem").unwrap()).unwrap()[..];
+            let (_prefix, result, _suffix) = result.align_to_mut::<T>();
+            result
+        }
     }
 
     fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize {
-        let page_size = libc::sysconf(libc::_SC_PAGE_SIZE) as usize;
-        let addr = value as *const T as *const () as usize; // yes, the casts are necessary
-        let page = addr / page_size;
-        let map_offset = page * size_of::<u64>();
+        unsafe {
+            let page_size = libc::sysconf(libc::_SC_PAGE_SIZE) as usize;
+            let addr = value as *const T as *const () as usize; // yes, the casts are necessary
+            let page = addr / page_size;
+            let map_offset = page * size_of::<u64>();
 
-        let mut pagemap = fs::OpenOptions::new().read(true).open("/proc/self/pagemap").unwrap();
-        pagemap.seek(io::SeekFrom::Start(map_offset as u64)).unwrap();
+            let mut pagemap = fs::OpenOptions::new().read(true).open("/proc/self/pagemap").unwrap();
+            pagemap.seek(io::SeekFrom::Start(map_offset as u64)).unwrap();
         
-        let mut buffer = [0; size_of::<u64>()];
-        pagemap.read_exact(&mut buffer).unwrap();
+            let mut buffer = [0; size_of::<u64>()];
+            pagemap.read_exact(&mut buffer).unwrap();
 
-        let metadata = u64::from_ne_bytes(buffer);
-        if (metadata & 0x8000000000000000) == 0 {
-            panic!("Page not present");
+            let metadata = u64::from_ne_bytes(buffer);
+            if (metadata & 0x8000000000000000) == 0 {
+                panic!("Page not present");
+            }
+
+            let pfn = metadata & 0x7FFFFFFFFFFFFF;
+            if pfn == 0 {
+                panic!("Page not mapped");
+            }
+
+            let addr_offset = addr % page_size;
+            pfn as usize * page_size + addr_offset
         }
-
-        let pfn = metadata & 0x7FFFFFFFFFFFFF;
-        if pfn == 0 {
-            panic!("Page not mapped");
-        }
-
-        let addr_offset = addr % page_size;
-        pfn as usize * page_size + addr_offset
     }
 
      fn pci_read(&self, addr: PciAddress, register: u8) -> u32 {
