@@ -4,6 +4,8 @@ mod pci;
 mod ixgbe;
 use ixgbe::pci_regs;
 use ixgbe::regs;
+use ixgbe::driver_constants;
+use ixgbe::device_limits;
 
 #[derive(Debug, Copy, Clone)] // todo remove
 struct Descriptor {
