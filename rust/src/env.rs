@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use std::fs::File;
 use std::mem::size_of;
 use std::ptr;
 use std::slice;
@@ -6,6 +7,7 @@ use std::time::Duration;
 use std::thread;
 
 use libc;
+use memmap::MmapOptions;
 use x86_64::instructions::port::Port;
 
 use crate::pci::PciAddress;
@@ -109,8 +111,14 @@ impl Environment for LinuxEnvironment {
 
         slice::from_raw_parts_mut(result as *mut T, full_size)
     }
-/*fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &mut [T];
-fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize;
+
+    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &mut [T] {
+        let full_size = size * size_of::<T>();
+        let result = &mut MmapOptions::new().offset(addr).len(full_size).map_mut(&File::open("/dev/mem").unwrap()).unwrap()[..];
+        let (_prefix, result, _suffix) = result.align_to_mut::<T>();
+        result
+    }
+/*fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize;
 */
 
      fn pci_read(&self, addr: PciAddress, register: u8) -> u32 {

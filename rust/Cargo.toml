@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-x86_64 = { version = "0.14.3", default-features = false, features = ["instructions", "external_asm"] }
 libc = "0.2.97"
+memmap = "0.7.0"
+x86_64 = { version = "0.14.3", default-features = false, features = ["instructions", "external_asm"] }
