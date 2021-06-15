@@ -35,7 +35,7 @@ pub fn set_field(buffer: &mut [u32], reg: u32, field: u32) {
     write(buffer, reg, new_value);
 }
 
-pub fn is_field_cleared(buffer: &mut [u32], reg: u32, field: u32) -> bool {
+pub fn is_field_cleared(buffer: &[u32], reg: u32, field: u32) -> bool {
     read_field(buffer, reg, field) == 0
 }
 
@@ -55,14 +55,14 @@ pub fn DCARXCTRL(n: u32) -> u32 {
     if n <= 63 { 0x0100C + 0x40 * n } else { 0x0D00C + 0x40 * (n - 64) }
 }
 pub mod DCARXCTRL_ {
-    pub const UNKNOWN: u32 = 1 << 12; // This bit is reserved, has no name, but must be used anyway
+    pub const UNKNOWn: u32 = 1 << 12; // This bit is reserved, has no name, but must be used anyway
 }
 
 pub fn DCATXCTRL(n: u32) -> u32 {
     0x0600C + 0x40 * n
 }
 pub mod DCATXCTRL_ {
-    pub const TX_DESC_WB_RO_EN: u32 = 1 << 11;
+    pub const TX_DESC_WB_RO_En: u32 = 1 << 11;
 }
 
 pub const DMATXCTL: u32 = 0x04A80;
@@ -125,7 +125,7 @@ pub mod HLREG0_ {
     pub const LPBK: u32 = 1 << 15;
 }
 
-pub const MFLCN: u32 = 0x04294;
+pub const MFLCn: u32 = 0x04294;
 pub mod MFLCN_ {
     pub const RFCE: u32 = 1 << 3;
 }
@@ -186,7 +186,7 @@ pub const RTTDT1C: u32 = 0x04908;
 
 pub const RXCTRL: u32 = 0x03000;
 pub mod RXCTRL_ {
-    pub const RXEN: u32 = 1 << 0;
+    pub const RXEn: u32 = 1 << 0;
 }
 
 pub fn RXDCTL(n: u32) -> u32 {
@@ -216,7 +216,7 @@ pub fn SRRCTL(n: u32) -> u32 {
 
 pub mod SRRCTL_ {
     pub const BSIZEPACKET: u32 = 0b0001_1111;
-    pub const DROP_EN: u32 = 1 << 28;
+    pub const DROP_En: u32 = 1 << 28;
 }
 
 pub const STATUS: u32 = 0x00008;

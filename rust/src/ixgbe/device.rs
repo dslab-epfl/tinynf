@@ -5,8 +5,10 @@ use std::time::Duration;
 use crate::env::Environment;
 use crate::pci::PciAddress;
 
-use crate::ixgbe::pci_regs;
-use crate::ixgbe::regs;
+use super::device_limits;
+use super::driver_constants;
+use super::pci_regs;
+use super::regs;
 
 
 pub struct Device<'a> {
@@ -16,7 +18,8 @@ pub struct Device<'a> {
 }
 
 
-fn if_after_timeout(env: &impl Environment, duration: Duration, condition: fn() -> bool, action: fn()) {
+fn if_after_timeout<F1, F2>(env: &impl Environment, duration: Duration, condition: F1, action: F2) where
+    F1: Fn() -> bool, F2: Fn() {
     env.sleep(Duration::from_nanos((duration.as_nanos() % 10).try_into().unwrap())); // will panic if 'duration' is too big
     for i in 0..10 {
         if !condition() {
@@ -58,42 +61,26 @@ impl Device<'_> {
         let pci_bar0_high = env.pci_read(pci_address, pci_regs::BAR0_HIGH);
         let dev_phys_addr = ((pci_bar0_high as u64) << 32) | ((pci_bar0_low as u64) & !0b1111);
 
+        let buffer = env.map_physical_memory::<u32>(dev_phys_addr, 128 * 1024 / size_of::<u32>());
+
+        for queue in 0..device_limits::RECEIVE_QUEUES_COUNT as u32 {
+            regs::clear_field(buffer, regs::RXDCTL(queue), regs::RXDCTL_::ENABLE);
+            if_after_timeout(env, Duration::from_secs(1), || !regs::is_field_cleared(buffer, regs::RXDCTL(queue), regs::RXDCTL_::ENABLE), || {
+                panic!("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
+            });
+            env.sleep(Duration::from_micros(100));
+        }
+
+
         panic!("TODO");
 /*        Device {
-            
+            buffer,
             rx_enabled: false,
             tx_enabled: false
         }*/
     }
 }
-
 /*
-            nuint devPhysAddr = (((nuint)pciBar0High) << 32) | (pciBar0Low & ~(nuint)0b1111);
-            // Section 8.1 Address Regions: "Region Size" of "Internal registers memories and Flash (memory BAR)" is "128 KB + Flash_Size"
-            // Thus we can ask for 128KB, since we don't know the flash size (and don't need it thus no need to actually check it)
-            _buffer = env.MapPhysicalMemory<uint>(devPhysAddr, 128 * 1024 / sizeof(uint));
-
-            //            Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", pciAddress.Bus, pciAddress.Device, pciAddress.Function, devPhysAddr);
-
-
-            // "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
-            //  The major initialization steps are:"
-            // "- Disable interrupts"
-            // "- Issue global reset and perform general configuration (see Section 4.6.3.2)."
-            // 	Section 4.6.3.1 Interrupts During Initialization:
-            // 	"Most drivers disable interrupts during initialization to prevent re-entrance.
-            // 	 Interrupts are disabled by writing to the EIMC registers.
-            //	 Note that the interrupts also need to be disabled after issuing a global reset, so a typical driver initialization flow is:
-            //	 1. Disable interrupts.
-            //	 2. Issue a global reset.
-            //	 3. Disable interrupts (again)."
-            // INTERPRETATION-POINTLESS: We do not support interrupts, there is no way we can have re-entrancy here, so we don't need step 1
-            // 	Section 4.6.3.2 Global Reset and General Configuration:
-            //	"Device initialization typically starts with a software reset that puts the device into a known state and enables the device driver to continue the initialization sequence."
-            // Section 4.2.1.6.1 Software Reset
-            // "Prior to issuing software reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
-            //   Section 5.2.5.3.2 Master Disable:
-            //   "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
             for (byte queue = 0; queue < DeviceLimits.ReceiveQueuesCount; queue++)
             {
                 // Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
