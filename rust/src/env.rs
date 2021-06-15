@@ -8,7 +8,7 @@ use std::time::Duration;
 use std::thread;
 
 use libc;
-use memmap::MmapOptions;
+use memmap;
 use x86_64::instructions::port::Port;
 
 use crate::pci::PciAddress;
@@ -16,8 +16,8 @@ use crate::pci::PciAddress;
 // TODO might be worth splitting this file into a proper module
 
 pub trait Environment {
-    fn allocate<T, const COUNT: usize>(&mut self) -> &mut [T; COUNT];
-    fn allocate_slice<T>(&mut self, count: usize) -> &mut [T];
+    fn allocate<T, const COUNT: usize>(&mut self) -> &'static mut [T; COUNT];
+    fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T];
     fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &mut [T];
     fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize;
 
@@ -62,6 +62,9 @@ fn pci_target(address: PciAddress, register: u8) {
 const HUGEPAGE_LOG: usize = 30; // 1 GB hugepages
 const HUGEPAGE_SIZE: usize = 1 << HUGEPAGE_LOG;
 
+// this is a terrible idea but I don't feel like making map_physical_memory &mut self right now, too much pain for no gain in a research prototype
+static mut MAPS: Vec<memmap::MmapMut> = Vec::new();
+
 pub struct LinuxEnvironment {
     allocated_page: *mut u8,
     used_bytes: usize
@@ -91,10 +94,11 @@ impl LinuxEnvironment {
 }
 
 impl Environment for LinuxEnvironment {
-    fn allocate<T, const COUNT: usize>(&mut self) -> &mut [T; COUNT] {
+    fn allocate<T, const COUNT: usize>(&mut self) -> &'static mut [T; COUNT] {
         self.allocate_slice(COUNT).try_into().unwrap()
     }
-    fn allocate_slice<T>(&mut self, count: usize) -> &mut [T] {
+
+    fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T] {
         let mut full_size = count * size_of::<T>();
         while full_size % 64 != 0 {
             full_size = full_size + size_of::<T>();
@@ -125,10 +129,12 @@ impl Environment for LinuxEnvironment {
         }
     }
 
-    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &mut [T] {
+    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &'static mut [T] {
         let full_size = size * size_of::<T>();
         unsafe {
-            let result = &mut MmapOptions::new().offset(addr).len(full_size).map_mut(&fs::File::open("/dev/mem").unwrap()).unwrap()[..];
+            let map = memmap::MmapOptions::new().offset(addr).len(full_size).map_mut(&fs::File::open("/dev/mem").unwrap()).unwrap();
+            MAPS.push(map);
+            let result = &mut MAPS[MAPS.len()-1][..];
             let (_prefix, result, _suffix) = result.align_to_mut::<T>();
             result
         }

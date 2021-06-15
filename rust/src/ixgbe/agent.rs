@@ -21,7 +21,7 @@ pub struct Agent<'a> {
 }
 
 impl Agent<'_> {
-    pub fn create<'a>(env: &'a impl Environment, input_device: &'a mut Device, output_devices: &'a mut [&'a mut Device]) -> Agent<'a> {
+    pub fn create<'a, 'b>(env: &'b mut impl Environment, input_device: &'a mut Device, output_devices: &'a mut [&'a mut Device]) -> Agent<'a> {
         if output_devices.len() > driver_constants::MAX_OUTPUTS {
             panic!("Too many outputs");
         }
@@ -32,7 +32,11 @@ impl Agent<'_> {
         for n in 0..driver_constants::RING_SIZE {
             first_ring[n as usize].buffer = u64::to_le(env.get_physical_address(&mut packets[n as usize]) as u64);
         }
-        let mut other_rings: Vec<&'a mut [Descriptor; driver_constants::RING_SIZE]> = (0..output_devices.len()-1).map(|_| env.allocate::<Descriptor, { driver_constants::RING_SIZE }>()).collect();
+
+        let mut other_rings = Vec::new();
+        for _n in 0..output_devices.len()-1 {
+            other_rings.push(env.allocate::<Descriptor, { driver_constants::RING_SIZE }>());
+        }
         for ring in other_rings.iter_mut() {
             for n in 0..driver_constants::RING_SIZE {
                 ring[n as usize].buffer = first_ring[n as usize].buffer;
