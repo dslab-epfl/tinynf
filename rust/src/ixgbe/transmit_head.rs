@@ -1,4 +1,4 @@
 #[repr(C, align(64))]
-struct TransmitHead {
+pub struct TransmitHead {
     value: u32
 }
