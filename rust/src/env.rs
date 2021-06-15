@@ -1,14 +1,19 @@
+use std::mem::size_of;
+use std::ptr;
+use std::slice;
 use std::time::Duration;
 use std::thread;
 
-use libc::ioperm;
+use libc;
 use x86_64::instructions::port::Port;
 
 use crate::pci::PciAddress;
 
+// TODO might be worth splitting this file into a proper module
+
 pub trait Environment {
-    fn allocate<T, const COUNT: usize>(&self) -> &mut [T; COUNT];
-    fn allocate_slice<T>(&self, count: usize) -> &mut [T];
+    fn allocate<T, const COUNT: usize>(&mut self) -> &mut [T; COUNT];
+    fn allocate_slice<T>(&mut self, count: usize) -> &mut [T];
     fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &mut [T];
     fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize;
 
@@ -19,11 +24,13 @@ pub trait Environment {
 }
 
 
+// --- PCI ---
+
 const PCI_CONFIG_ADDR: u16 = 0xCF8;
 const PCI_CONFIG_DATA: u16 = 0xCFC;
 
 fn port_out_32(port: u16, value: u32) {
-    if ioperm(port.into(), 4, 1) < 0 || ioperm(0x80, 1, 1) < 0 {
+    if libc::ioperm(port.into(), 4, 1) < 0 || libc::ioperm(0x80, 1, 1) < 0 {
         panic!("Could not ioperm, are you root?");
     }
     Port::new(port).write(value);
@@ -31,7 +38,7 @@ fn port_out_32(port: u16, value: u32) {
 }
 
 fn port_in_32(port: u16) -> u32 {
-    if ioperm(port.into(), 4, 1) < 0 {
+    if libc::ioperm(port.into(), 4, 1) < 0 {
         panic!("Could not ioperm, are you root?");
     }
     Port::new(port).read()
@@ -42,9 +49,68 @@ fn pci_target(address: PciAddress, register: u8) {
 }
 
 
-pub struct LinuxEnvironment {}
+// --- Linux ---
+
+const HUGEPAGE_LOG: usize = 30; // 1 GB hugepages
+const HUGEPAGE_SIZE: usize = 1 << HUGEPAGE_LOG;
+
+pub struct LinuxEnvironment {
+    allocated_page: *mut u8,
+    used_bytes: usize
+}
+
+impl LinuxEnvironment {
+    pub fn new() -> LinuxEnvironment {
+        let page = libc::mmap(
+            ptr::null_mut(),
+            HUGEPAGE_SIZE,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_HUGETLB | (HUGEPAGE_LOG << libc::MAP_HUGE_SHIFT) as i32 | libc::MAP_ANONYMOUS | libc::MAP_SHARED | libc::MAP_POPULATE,
+            -1,
+            0
+        );
+        if page == libc::MAP_FAILED {
+            panic!("Mmap failed");
+        }
+
+        LinuxEnvironment {
+            allocated_page: page as *mut u8,
+            used_bytes: 0
+        }
+    }
+}
 
 impl Environment for LinuxEnvironment {
+/*    fn allocate<T, const COUNT: usize>(&mut self) -> &mut [T; COUNT] {
+    }*/
+    fn allocate_slice<T>(&mut self, count: usize) -> &mut [T] {
+        let mut full_size = count * size_of::<T>();
+        while full_size % 64 != 0 {
+            full_size = full_size + size_of::<T>();
+        }
+
+        let align_diff = self.used_bytes % full_size;
+        if align_diff + self.used_bytes >= HUGEPAGE_SIZE {
+            panic!("Not enough space for alignment");
+        }
+        
+        self.allocated_page = self.allocated_page.add(align_diff);
+        self.used_bytes = self.used_bytes + align_diff;
+
+        if full_size + self.used_bytes >= HUGEPAGE_SIZE {
+            panic!("Not enough space for allocation");
+        }
+
+        let result = self.allocated_page;
+        self.allocated_page = self.allocated_page.add(full_size);
+        self.used_bytes = self.used_bytes + full_size;
+
+        slice::from_raw_parts_mut(result as *mut T, full_size)
+    }
+/*fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &mut [T];
+fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize;
+*/
+
      fn pci_read(&self, addr: PciAddress, register: u8) -> u32 {
          pci_target(addr, register);
          port_in_32(PCI_CONFIG_DATA)
