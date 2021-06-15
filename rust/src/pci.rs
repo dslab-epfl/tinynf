@@ -1,6 +1,6 @@
 #[derive(Copy, Clone)]
 pub struct PciAddress {
-    bus: u8,
-    device: u8,
-    function: u8
+    pub bus: u8,
+    pub device: u8,
+    pub function: u8
 }
