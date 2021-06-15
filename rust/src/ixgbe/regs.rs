@@ -1,41 +1,41 @@
 #![allow(non_snake_case)]
 
-pub fn read(buffer: &Vec<u32>, reg: u32) -> u32 {
+pub fn read(buffer: &[u32], reg: u32) -> u32 {
     u32::from_le(buffer[reg as usize / 4])
 }
 
-pub fn read_field(buffer: &Vec<u32>, reg: u32, field: u32) -> u32 {
+pub fn read_field(buffer: &[u32], reg: u32, field: u32) -> u32 {
     let value = read(buffer, reg);
     let shift = field.trailing_zeros();
     (value & field) >> shift
 }
 
-pub fn write(buffer: &mut Vec<u32>, reg: u32, value: u32) {
+pub fn write(buffer: &mut [u32], reg: u32, value: u32) {
     buffer[reg as usize / 4] = u32::to_le(value);
 }
 
-pub fn write_field(buffer: &mut Vec<u32>, reg: u32, field: u32, field_value: u32) {
+pub fn write_field(buffer: &mut [u32], reg: u32, field: u32, field_value: u32) {
     let old_value = read(buffer, reg);
     let shift = field.trailing_zeros();
     let new_value = (old_value & !field) | (field_value << shift);
     write(buffer, reg, new_value);
 }
 
-pub fn clear(buffer: &mut Vec<u32>, reg: u32) {
+pub fn clear(buffer: &mut [u32], reg: u32) {
     write(buffer, reg, 0);
 }
 
-pub fn clear_field(buffer: &mut Vec<u32>, reg: u32, field: u32) {
+pub fn clear_field(buffer: &mut [u32], reg: u32, field: u32) {
     write_field(buffer, reg, field, 0);
 }
 
-pub fn set_field(buffer: &mut Vec<u32>, reg: u32, field: u32) {
+pub fn set_field(buffer: &mut [u32], reg: u32, field: u32) {
     let old_value = read(buffer, reg);
     let new_value = old_value | field;
     write(buffer, reg, new_value);
 }
 
-pub fn is_field_cleared(buffer: &mut Vec<u32>, reg: u32, field: u32) -> bool {
+pub fn is_field_cleared(buffer: &mut [u32], reg: u32, field: u32) -> bool {
     read_field(buffer, reg, field) == 0
 }
 

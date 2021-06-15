@@ -28,8 +28,8 @@ struct Agent<'a> {
     packets: &'a mut [PacketData; 256],
     ring: &'a mut [Descriptor; 256],
     receive_tail: &'a mut u32,
-    transmit_heads: Vec<TransmitHead>,
-    transmit_tails: Vec<&'a mut u32>,
+    transmit_heads: &'a [TransmitHead],
+    transmit_tails: &'a mut [&'a mut u32], // the slice itself must be mutable, which is weird because conceptually it isn't
     process_delimiter: u8
 }
 
@@ -55,7 +55,7 @@ impl Agent<'_> {
             if rs_bit != 0 {
                 let mut earliest_transmit_head = self.process_delimiter as u32;
                 let mut min_diff = 0xFF_FF_FF_FF_FF_FF_FF_FF;
-                for head_ref in &self.transmit_heads {
+                for head_ref in self.transmit_heads {
                     let head = head_ref.value;
                     let diff = head as u64 - self.process_delimiter as u64;
                     if diff <= min_diff {
@@ -70,7 +70,7 @@ impl Agent<'_> {
         };
         if needs_flushing {
             for tail_ref in self.transmit_tails {
-                *tail_ref = self.process_delimiter as u32;
+                **tail_ref = self.process_delimiter as u32; // why 2 * here? I have no idea honestly
             }
         }
     }
@@ -91,8 +91,8 @@ fn main() {
         packets: &mut [PacketData{ data: [0; 2048]}; 256],
         ring: &mut [Descriptor{buffer:0,metadata:0}; 256],
         receive_tail: &mut x,
-        transmit_heads: vec![TransmitHead{value: 0, padding: [0;15]}],
-        transmit_tails: vec![&mut z, &mut y],
+        transmit_heads: &vec![TransmitHead{value: 0, padding: [0;15]}],
+        transmit_tails: &mut vec![&mut z, &mut y],
         process_delimiter: 0
     };
     agent.run(proc)
