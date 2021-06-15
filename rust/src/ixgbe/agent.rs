@@ -10,10 +10,10 @@ use super::device::Device;
 
 
 pub struct Agent<'a> {
-    packets: &'a mut [[u8; PACKET_SIZE]; driver_constants::RING_SIZE as usize],
-    receive_ring: &'a [Descriptor; driver_constants::RING_SIZE as usize],
+    packets: &'a mut [[u8; PACKET_SIZE]; driver_constants::RING_SIZE],
+    receive_ring: &'a [Descriptor; driver_constants::RING_SIZE],
     receive_tail: &'a mut u32,
-    transmit_rings: &'a mut [[Descriptor; driver_constants::RING_SIZE as usize]],
+    transmit_rings: &'a [&'a mut [Descriptor; driver_constants::RING_SIZE]],
     transmit_heads: &'a [TransmitHead],
     transmit_tails: &'a mut [&'a mut u32], // the slice itself must be mutable, which is weird because conceptually it isn't
     outputs: &'a mut [u16; driver_constants::MAX_OUTPUTS],
@@ -26,9 +26,9 @@ impl Agent<'_> {
             panic!("Too many outputs");
         }
     
-        let packets = env.allocate::<[u8; PACKET_SIZE], { driver_constants::RING_SIZE as usize }>();
+        let packets = env.allocate::<[u8; PACKET_SIZE], { driver_constants::RING_SIZE }>();
 
-        let rings = output_devices.map(|_| env.allocate::<[Descriptor; driver_constants::RING_SIZE], { driver_constants::RING_SIZE as usize }>()).collect();
+        let rings: &'a [&'a mut [Descriptor; driver_constants::RING_SIZE]] = output_devices.iter().map(|_| env.allocate::<Descriptor, { driver_constants::RING_SIZE }>()).collect();
         for ring in rings {
             for n in 0..driver_constants::RING_SIZE {
                 ring[n as usize].buffer = u64::to_le(env.get_physical_address(&mut packets[n as usize]) as u64);
@@ -37,9 +37,9 @@ impl Agent<'_> {
         
         let receive_tail = input_device.set_input(env, &mut rings[0]);
 
-        let transmit_heads = env.allocate_slice(output_devices.len());
+        let transmit_heads = env.allocate_slice::<TransmitHead>(output_devices.len());
 
-        let transmit_tails = output_devices.zip(rings).zip(transmit_heads).map(|((d, r), h)| d.add_output(env, &mut r, &mut h)).collect();
+        let transmit_tails = output_devices.iter().zip(rings.iter_mut()).zip(transmit_heads.iter_mut()).map(|((&d, &mut r), &mut h)| d.add_output(env, &mut r, &mut h.value)).collect();
 
         Agent {
             packets,
@@ -86,7 +86,7 @@ impl Agent<'_> {
                     }
                 }
                 
-                volatile::write(&mut self.receive_tail, u32::to_le((earliest_transmit_head - 1) % driver_constants::RING_SIZE));
+                volatile::write(&mut self.receive_tail, u32::to_le((earliest_transmit_head - 1) % driver_constants::RING_SIZE as u32));
             }
             n = n + 1;
         };

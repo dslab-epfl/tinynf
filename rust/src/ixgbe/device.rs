@@ -165,7 +165,7 @@ impl Device<'_> {
             regs::clear(buffer, regs::TXPBSIZE(n));
         }
 
-        regs::write_field(buffer, regs::TXPBTHRESH(0), regs::TXPBTHRESH_::THRESH, 0xA0 - driver_constants::PACKET_SIZE / 1024);
+        regs::write_field(buffer, regs::TXPBTHRESH(0), regs::TXPBTHRESH_::THRESH, 0xA0 - (driver_constants::PACKET_SIZE / 1024) as u32);
 
         regs::write_field(buffer, regs::DTXMXSZRQ, regs::DTXMXSZRQ_::MAX_BYTES_NUM_REQ, 0xFFF);
 
@@ -200,9 +200,9 @@ impl Device<'_> {
         regs::write(self.buffer, regs::RDBAH(queue_index), (ring_phys_addr >> 32) as u32);
         regs::write(self.buffer, regs::RDBAL(queue_index), ring_phys_addr as u32);
 
-        regs::write(self.buffer, regs::RDLEN(queue_index), driver_constants::RING_SIZE * 16);
+        regs::write(self.buffer, regs::RDLEN(queue_index), driver_constants::RING_SIZE as u32 * 16);
 
-        regs::write_field(self.buffer, regs::SRRCTL(queue_index), regs::SRRCTL_::BSIZEPACKET, driver_constants::PACKET_SIZE / 1024);
+        regs::write_field(self.buffer, regs::SRRCTL(queue_index), regs::SRRCTL_::BSIZEPACKET, (driver_constants::PACKET_SIZE / 1024) as u32);
 
         regs::set_field(self.buffer, regs::SRRCTL(queue_index), regs::SRRCTL_::DROP_EN);
 
@@ -212,7 +212,7 @@ impl Device<'_> {
             panic!("RXDCTL.ENABLE did not set, cannot enable queue");
         });
 
-        regs::write(self.buffer, regs::RDT(queue_index), driver_constants::RING_SIZE - 1);
+        regs::write(self.buffer, regs::RDT(queue_index), driver_constants::RING_SIZE as u32 - 1);
 
         if !self.rx_enabled {
             regs::set_field(self.buffer, regs::SECRXCTRL, regs::SECRXCTRL_::RX_DIS);
@@ -251,7 +251,7 @@ impl Device<'_> {
         regs::write(self.buffer, regs::TDBAH(queue_index), (ring_phys_addr >> 32) as u32);
         regs::write(self.buffer, regs::TDBAL(queue_index), ring_phys_addr as u32);
 
-        regs::write(self.buffer, regs::TDLEN(queue_index), driver_constants::RING_SIZE * 16);
+        regs::write(self.buffer, regs::TDLEN(queue_index), driver_constants::RING_SIZE as u32 * 16);
 
         regs::write_field(self.buffer, regs::TXDCTL(queue_index), regs::TXDCTL_::PTHRESH, 60);
         regs::write_field(self.buffer, regs::TXDCTL(queue_index), regs::TXDCTL_::HTHRESH, 4);

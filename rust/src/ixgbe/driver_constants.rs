@@ -1,6 +1,6 @@
-pub const PACKET_SIZE: u32 = 2048;
+pub const PACKET_SIZE: usize = 2048;
 
-pub const RING_SIZE: u32 = 256;
+pub const RING_SIZE: usize = 256;
 
 pub const MAX_OUTPUTS: usize = 256;
 

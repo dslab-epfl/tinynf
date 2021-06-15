@@ -6,7 +6,7 @@ pub(super) mod regs;
 pub(super) mod transmit_head;
 
 pub const MAX_OUTPUTS: usize = driver_constants::MAX_OUTPUTS;
-pub const PACKET_SIZE: usize = driver_constants::PACKET_SIZE as usize;
+pub const PACKET_SIZE: usize = driver_constants::PACKET_SIZE;
 
 pub mod agent;
 pub mod device;
