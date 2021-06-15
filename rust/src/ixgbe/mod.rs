@@ -4,3 +4,4 @@ pub mod regs;
 pub mod driver_constants;
 pub mod device_limits;
 pub mod transmit_head;
+pub mod descriptor;

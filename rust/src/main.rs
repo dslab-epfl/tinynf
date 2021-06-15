@@ -7,6 +7,7 @@ use ixgbe::regs;
 use ixgbe::driver_constants;
 use ixgbe::device_limits;
 use ixgbe::transmit_head;
+use ixgbe::descriptor;
 
 #[derive(Debug, Copy, Clone)] // todo remove
 struct Descriptor {
