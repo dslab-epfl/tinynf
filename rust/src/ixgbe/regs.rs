@@ -2,7 +2,6 @@
 
 use crate::volatile;
 
-
 pub fn read(buffer: &[u32], reg: usize) -> u32 {
     u32::from_le(volatile::read(&buffer[reg]))
 }
@@ -41,7 +40,6 @@ pub fn set_field(buffer: &mut [u32], reg: usize, field: u32) {
 pub fn is_field_cleared(buffer: &[u32], reg: usize, field: u32) -> bool {
     read_field(buffer, reg, field) == 0
 }
-
 
 // All regs divided by 4 since they'll be used to address a slice of u32, not of u8
 // And they're usize so they can index a slice without ceremony
@@ -128,11 +126,11 @@ pub mod MFLCN_ {
 }
 
 pub fn MPSAR(n: usize) -> usize {
-     (0x0A600 + 4 * n) / 4
+    (0x0A600 + 4 * n) / 4
 }
 
 pub fn MTA(n: usize) -> usize {
-     (0x05200 + 4 * n) / 4
+    (0x05200 + 4 * n) / 4
 }
 
 pub fn PFUTA(n: usize) -> usize {
@@ -200,11 +198,10 @@ pub mod TXPBTHRESH_ {
     pub const THRESH: u32 = 0b11_1111_1111;
 }
 
-
 // --- RX ---
 
 pub fn RX_ZONE_BASE(n: usize) -> usize {
-    (if n <= 63 { 0x01000 + 0x40 * n} else { 0x0D000 + 0x40 * (n - 64) }) / 4
+    (if n <= 63 { 0x01000 + 0x40 * n } else { 0x0D000 + 0x40 * (n - 64) }) / 4
 }
 pub const RX_ZONE_LEN: usize = 0x40;
 
@@ -231,7 +228,6 @@ pub const DCARXCTRL: usize = 0x0C / 4;
 pub mod DCARXCTRL_ {
     pub const UNKNOWN: u32 = 1 << 12; // This bit is reserved, has no name, but must be used anyway
 }
-
 
 // --- TX ---
 

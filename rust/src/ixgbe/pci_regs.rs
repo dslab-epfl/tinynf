@@ -3,7 +3,6 @@
 use crate::env::Environment;
 use crate::pci::PciAddress;
 
-
 pub fn read_field(env: &impl Environment, addr: PciAddress, reg: u8, field: u32) -> u32 {
     let value = env.pci_read(addr, reg);
     let shift = field.trailing_zeros();
@@ -19,7 +18,6 @@ pub fn set_field(env: &impl Environment, addr: PciAddress, reg: u8, field: u32) 
     let new_value = old_value | field;
     env.pci_write(addr, reg, new_value);
 }
-
 
 pub const BAR0_LOW: u8 = 0x10;
 pub const BAR0_HIGH: u8 = 0x14;

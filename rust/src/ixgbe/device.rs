@@ -11,13 +11,15 @@ use super::driver_constants;
 use super::pci_regs;
 use super::regs;
 
-
 pub struct Device<'a> {
     buffer: &'a mut [u32],
 }
 
-
-fn if_after_timeout<T: ?Sized, F1, F2>(env: &impl Environment, duration: Duration, buffer: &mut T, condition: F1, action: F2) where F1: Fn(&T) -> bool, F2: Fn(&mut T) {
+fn if_after_timeout<T: ?Sized, F1, F2>(env: &impl Environment, duration: Duration, buffer: &mut T, condition: F1, action: F2)
+where
+    F1: Fn(&T) -> bool,
+    F2: Fn(&mut T),
+{
     env.sleep(Duration::from_nanos((duration.as_nanos() % 10).try_into().unwrap())); // will panic if 'duration' is too big
     for _i in 0..10 {
         if !condition(buffer) {
@@ -30,7 +32,6 @@ fn if_after_timeout<T: ?Sized, F1, F2>(env: &impl Environment, duration: Duratio
     }
     action(buffer);
 }
-
 
 impl Device<'_> {
     pub fn init<'a, 'b>(env: &'a impl Environment, pci_address: PciAddress) -> Device<'b> {
@@ -63,31 +64,43 @@ impl Device<'_> {
 
         for queue in 0..device_limits::RECEIVE_QUEUES_COUNT {
             regs::clear_field(buffer, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE);
-            if_after_timeout(env, Duration::from_secs(1), buffer, |b| !regs::is_field_cleared(b, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE), |_| {
-                panic!("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
-            });
+            if_after_timeout(
+                env,
+                Duration::from_secs(1),
+                buffer,
+                |b| !regs::is_field_cleared(b, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE),
+                |_| {
+                    panic!("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
+                },
+            );
             env.sleep(Duration::from_micros(100));
         }
 
         regs::set_field(buffer, regs::CTRL, regs::CTRL_::MASTER_DISABLE);
 
-        if_after_timeout(env, Duration::from_secs(1), buffer, |b| !regs::is_field_cleared(b, regs::STATUS, regs::STATUS_::PCIE_MASTER_ENABLE_STATUS), |b| {
-            if !pci_regs::is_field_cleared(env, pci_address, pci_regs::DEVICESTATUS, pci_regs::DEVICESTATUS_::TRANSACTIONPENDING) {
-                panic!("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable to reset");
-            }
+        if_after_timeout(
+            env,
+            Duration::from_secs(1),
+            buffer,
+            |b| !regs::is_field_cleared(b, regs::STATUS, regs::STATUS_::PCIE_MASTER_ENABLE_STATUS),
+            |b| {
+                if !pci_regs::is_field_cleared(env, pci_address, pci_regs::DEVICESTATUS, pci_regs::DEVICESTATUS_::TRANSACTIONPENDING) {
+                    panic!("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable to reset");
+                }
 
-            regs::set_field(b, regs::HLREG0, regs::HLREG0_::LPBK);
-            regs::clear_field(b, regs::RXCTRL, regs::RXCTRL_::RXEN);
+                regs::set_field(b, regs::HLREG0, regs::HLREG0_::LPBK);
+                regs::clear_field(b, regs::RXCTRL, regs::RXCTRL_::RXEN);
 
-            regs::set_field(b, regs::GCREXT, regs::GCREXT_::BUFFERS_CLEAR_FUNC);
-            env.sleep(Duration::from_micros(20));
+                regs::set_field(b, regs::GCREXT, regs::GCREXT_::BUFFERS_CLEAR_FUNC);
+                env.sleep(Duration::from_micros(20));
 
-            regs::clear_field(b, regs::HLREG0, regs::HLREG0_::LPBK);
-            regs::clear_field(b, regs::GCREXT, regs::GCREXT_::BUFFERS_CLEAR_FUNC);
+                regs::clear_field(b, regs::HLREG0, regs::HLREG0_::LPBK);
+                regs::clear_field(b, regs::GCREXT, regs::GCREXT_::BUFFERS_CLEAR_FUNC);
 
-            regs::set_field(b, regs::CTRL, regs::CTRL_::RST);
-            env.sleep(Duration::from_micros(2));
-        });
+                regs::set_field(b, regs::CTRL, regs::CTRL_::RST);
+                env.sleep(Duration::from_micros(2));
+            },
+        );
 
         regs::set_field(buffer, regs::CTRL, regs::CTRL_::RST);
         env.sleep(Duration::from_millis(1));
@@ -99,17 +112,29 @@ impl Device<'_> {
 
         regs::write_field(buffer, regs::FCRTH(0), regs::FCRTH_::RTH, (512 * 1024 - 0x6000) / 32);
 
-        if_after_timeout(env, Duration::from_secs(1), buffer, |b| regs::is_field_cleared(b, regs::EEC, regs::EEC_::AUTO_RD), |_| {
-            panic!("EEPROM auto read timed out");
-        });
+        if_after_timeout(
+            env,
+            Duration::from_secs(1),
+            buffer,
+            |b| regs::is_field_cleared(b, regs::EEC, regs::EEC_::AUTO_RD),
+            |_| {
+                panic!("EEPROM auto read timed out");
+            },
+        );
 
         if regs::is_field_cleared(buffer, regs::EEC, regs::EEC_::EE_PRES) || !regs::is_field_cleared(buffer, regs::FWSM, regs::FWSM_::EXT_ERR_IND) {
             panic!("EEPROM not present or invalid");
         }
 
-        if_after_timeout(env, Duration::from_secs(1), buffer, |b| regs::is_field_cleared(b, regs::RDRXCTL, regs::RDRXCTL_::DMAIDONE), |_| {
-            panic!("DMA init timed out");
-        });
+        if_after_timeout(
+            env,
+            Duration::from_secs(1),
+            buffer,
+            |b| regs::is_field_cleared(b, regs::RDRXCTL, regs::RDRXCTL_::DMAIDONE),
+            |_| {
+                panic!("DMA init timed out");
+            },
+        );
 
         for n in 0..device_limits::UNICAST_TABLE_ARRAY_SIZE {
             regs::clear(buffer, regs::PFUTA(n));
@@ -171,9 +196,15 @@ impl Device<'_> {
 
         // Enable RX
         regs::set_field(buffer, regs::SECRXCTRL, regs::SECRXCTRL_::RX_DIS);
-        if_after_timeout(env, Duration::from_secs(1), buffer, |b| regs::is_field_cleared(b, regs::SECRXSTAT, regs::SECRXSTAT_::SECRX_RDY), |_| {
-            panic!("SECRXSTAT.SECRXRDY timed out, cannot start device");
-        });
+        if_after_timeout(
+            env,
+            Duration::from_secs(1),
+            buffer,
+            |b| regs::is_field_cleared(b, regs::SECRXSTAT, regs::SECRXSTAT_::SECRX_RDY),
+            |_| {
+                panic!("SECRXSTAT.SECRXRDY timed out, cannot start device");
+            },
+        );
         regs::set_field(buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
         regs::clear_field(buffer, regs::SECRXCTRL, regs::SECRXCTRL_::RX_DIS);
         regs::set_field(buffer, regs::CTRLEXT, regs::CTRLEXT_::NSDIS);
@@ -181,9 +212,7 @@ impl Device<'_> {
         // Enable TX
         regs::set_field(buffer, regs::DMATXCTL, regs::DMATXCTL_::TE);
 
-        Device {
-            buffer
-        }
+        Device { buffer }
     }
 
     pub fn set_promiscuous(&mut self) {
@@ -205,7 +234,7 @@ impl Device<'_> {
 }
 
 pub struct DeviceInput<'a> {
-    buffer: &'a mut [u32]
+    buffer: &'a mut [u32],
 }
 
 impl DeviceInput<'_> {
@@ -226,9 +255,15 @@ impl DeviceInput<'_> {
 
         regs::set_field(self.buffer, regs::RXDCTL, regs::RXDCTL_::ENABLE);
 
-        if_after_timeout(env, Duration::from_secs(1), self.buffer, |b| regs::is_field_cleared(b, regs::RXDCTL, regs::RXDCTL_::ENABLE), |_| {
-            panic!("RXDCTL.ENABLE did not set, cannot enable queue");
-        });
+        if_after_timeout(
+            env,
+            Duration::from_secs(1),
+            self.buffer,
+            |b| regs::is_field_cleared(b, regs::RXDCTL, regs::RXDCTL_::ENABLE),
+            |_| {
+                panic!("RXDCTL.ENABLE did not set, cannot enable queue");
+            },
+        );
 
         regs::write(self.buffer, regs::RDT, driver_constants::RING_SIZE as u32 - 1);
 
@@ -238,9 +273,8 @@ impl DeviceInput<'_> {
     }
 }
 
-
 pub struct DeviceOutput<'a> {
-    buffer: &'a mut [u32]
+    buffer: &'a mut [u32],
 }
 
 impl DeviceOutput<'_> {
@@ -269,9 +303,15 @@ impl DeviceOutput<'_> {
         regs::clear_field(self.buffer, regs::DCATXCTRL, regs::DCATXCTRL_::TX_DESC_WB_RO_EN);
 
         regs::set_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::ENABLE);
-        if_after_timeout(env, Duration::from_secs(1), self.buffer, |b| regs::is_field_cleared(b, regs::TXDCTL, regs::TXDCTL_::ENABLE), |_| {
-            panic!("TXDCTL.ENABLE did not set, cannot enable queue");
-        });
+        if_after_timeout(
+            env,
+            Duration::from_secs(1),
+            self.buffer,
+            |b| regs::is_field_cleared(b, regs::TXDCTL, regs::TXDCTL_::ENABLE),
+            |_| {
+                panic!("TXDCTL.ENABLE did not set, cannot enable queue");
+            },
+        );
 
         &mut self.buffer[regs::TDT]
     }
