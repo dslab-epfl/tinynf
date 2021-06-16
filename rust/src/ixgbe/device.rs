@@ -198,7 +198,24 @@ impl Device<'_> {
     // Ideally this should return a sequence of inputs/outputs, but good luck making the borrow checker happy
     // given the messy register layout of the 82599
     pub fn into_inout<'a>(self) -> (DeviceInput<'a>, DeviceOutput<'a>) {
-        panic!("at the disco")
+        (DeviceInput {
+            rxdctl: &mut self.buffer[regs::RXDCTL(0)],
+            rdbah: &mut self.buffer[regs::RDBAH(0)],
+            rdbal: &mut self.buffer[regs::RDBAL(0)],
+            rdlen: &mut self.buffer[regs::RDLEN(0)],
+            srrctl: &mut self.buffer[regs::SRRCTL(0)],
+            rdt: &mut self.buffer[regs::RDT(0)],
+            dcarxctrl: &mut self.buffer[regs::DCARXCTRL(0)]
+        }, DeviceOutput {
+            txdctl: &mut self.buffer[regs::TXDCTL(0)],
+            tdbah: &mut self.buffer[regs::TDBAH(0)],
+            tdbal: &mut self.buffer[regs::TDBAL(0)],
+            tdlen: &mut self.buffer[regs::TDLEN(0)],
+            tdwbah: &mut self.buffer[regs::TDWBAH(0)],
+            tdwbal: &mut self.buffer[regs::TDWBAL(0)],
+            dcatxctrl: &mut self.buffer[regs::DCATXCTRL(0)],
+            tdt: &mut self.buffer[regs::TDT(0)]
+        })
     }
 }
 
