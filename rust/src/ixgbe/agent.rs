@@ -6,7 +6,7 @@ use super::PACKET_SIZE;
 use super::driver_constants;
 use super::transmit_head::TransmitHead;
 use super::descriptor::Descriptor;
-use super::device::Device;
+use super::device::{DeviceInput, DeviceOutput};
 
 
 pub struct Agent<'a> {
@@ -21,8 +21,8 @@ pub struct Agent<'a> {
 }
 
 impl Agent<'_> {
-    pub fn create<'a, 'b>(env: &'b mut impl Environment, input_device: &'a mut Device, output_devices: &'a mut [&'a mut Device]) -> Agent<'a> {
-        if output_devices.len() > driver_constants::MAX_OUTPUTS {
+    pub fn create<'a, 'b>(env: &'b mut impl Environment, input: &'a mut DeviceInput, outputs: &'a mut [&'a mut DeviceOutput]) -> Agent<'a> {
+        if outputs.len() > driver_constants::MAX_OUTPUTS {
             panic!("Too many outputs");
         }
     
@@ -34,7 +34,7 @@ impl Agent<'_> {
         }
 
         let mut other_rings = Vec::new();
-        for _n in 0..output_devices.len()-1 {
+        for _n in 0..outputs.len()-1 {
             other_rings.push(env.allocate::<Descriptor, { driver_constants::RING_SIZE }>());
         }
         for ring in other_rings.iter_mut() {
@@ -43,14 +43,14 @@ impl Agent<'_> {
             }
         }
         
-        let receive_tail = input_device.set_input(env, first_ring);
+        let receive_tail = input.associate(env, first_ring);
 
-        let transmit_heads = env.allocate_slice::<TransmitHead>(output_devices.len());
+        let transmit_heads = env.allocate_slice::<TransmitHead>(outputs.len());
 
         let mut transmit_tails = Vec::new();
-        for dev in output_devices.iter_mut() {
+        for out in outputs.iter_mut() {
             let n = transmit_tails.len();
-            transmit_tails.push(dev.add_output(env, if n == 0 { first_ring } else { other_rings[n-1] }, &mut transmit_heads[n].value));
+            transmit_tails.push(out.associate(env, if n == 0 { first_ring } else { other_rings[n-1] }, &mut transmit_heads[n].value));
         }
 
         Agent {

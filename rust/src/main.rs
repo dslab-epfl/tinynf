@@ -55,15 +55,17 @@ fn main() {
 
     let mut dev0 = Device::init(&env, parse_pci_address(&args[0][..]));
     dev0.set_promiscuous();
+    let (mut dev0in, mut dev0out) = dev0.into_inout();
 
     let mut dev1 = Device::init(&env, parse_pci_address(&args[1][..]));
     dev1.set_promiscuous();
+    let (mut dev1in, mut dev1out) = dev1.into_inout();
 
-    let mut agent0outs = [&mut dev1];
-    let mut agent0 = Agent::create(&mut env, &mut dev0, &mut agent0outs);
+    let mut agent0outs = [&mut dev1out];
+    let mut agent0 = Agent::create(&mut env, &mut dev0in, &mut agent0outs);
 
-    let mut agent1outs = [&mut dev0];
-    let mut agent1 = Agent::create(&mut env, &mut dev1, &mut agent1outs);
+    let mut agent1outs = [&mut dev0out];
+    let mut agent1 = Agent::create(&mut env, &mut dev1in, &mut agent1outs);
 
     run(&mut agent0, &mut agent1);
 }
