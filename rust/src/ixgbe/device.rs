@@ -62,124 +62,124 @@ impl Device<'_> {
         let buffer = env.map_physical_memory::<u32>(dev_phys_addr, 128 * 1024 / size_of::<u32>());
 
         for queue in 0..device_limits::RECEIVE_QUEUES_COUNT {
-            regs::clear_field(&mut buffer[regs::RXDCTL(queue)], regs::RXDCTL_::ENABLE);
-            if_after_timeout(env, Duration::from_secs(1), buffer, |b| !regs::is_field_cleared(&b[regs::RXDCTL(queue)], regs::RXDCTL_::ENABLE), |_| {
+            regs::clear_field(buffer, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE);
+            if_after_timeout(env, Duration::from_secs(1), buffer, |b| !regs::is_field_cleared(b, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE), |_| {
                 panic!("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
             });
             env.sleep(Duration::from_micros(100));
         }
 
-        regs::set_field(&mut buffer[regs::CTRL], regs::CTRL_::MASTER_DISABLE);
+        regs::set_field(buffer, regs::CTRL, regs::CTRL_::MASTER_DISABLE);
 
-        if_after_timeout(env, Duration::from_secs(1), buffer, |b| !regs::is_field_cleared(&b[regs::STATUS], regs::STATUS_::PCIE_MASTER_ENABLE_STATUS), |b| {
+        if_after_timeout(env, Duration::from_secs(1), buffer, |b| !regs::is_field_cleared(b, regs::STATUS, regs::STATUS_::PCIE_MASTER_ENABLE_STATUS), |b| {
             if !pci_regs::is_field_cleared(env, pci_address, pci_regs::DEVICESTATUS, pci_regs::DEVICESTATUS_::TRANSACTIONPENDING) {
                 panic!("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable to reset");
             }
 
-            regs::set_field(&mut b[regs::HLREG0], regs::HLREG0_::LPBK);
-            regs::clear_field(&mut b[regs::RXCTRL], regs::RXCTRL_::RXEN);
+            regs::set_field(b, regs::HLREG0, regs::HLREG0_::LPBK);
+            regs::clear_field(b, regs::RXCTRL, regs::RXCTRL_::RXEN);
 
-            regs::set_field(&mut b[regs::GCREXT], regs::GCREXT_::BUFFERS_CLEAR_FUNC);
+            regs::set_field(b, regs::GCREXT, regs::GCREXT_::BUFFERS_CLEAR_FUNC);
             env.sleep(Duration::from_micros(20));
 
-            regs::clear_field(&mut b[regs::HLREG0], regs::HLREG0_::LPBK);
-            regs::clear_field(&mut b[regs::GCREXT], regs::GCREXT_::BUFFERS_CLEAR_FUNC);
+            regs::clear_field(b, regs::HLREG0, regs::HLREG0_::LPBK);
+            regs::clear_field(b, regs::GCREXT, regs::GCREXT_::BUFFERS_CLEAR_FUNC);
 
-            regs::set_field(&mut b[regs::CTRL], regs::CTRL_::RST);
+            regs::set_field(b, regs::CTRL, regs::CTRL_::RST);
             env.sleep(Duration::from_micros(2));
         });
 
-        regs::set_field(&mut buffer[regs::CTRL], regs::CTRL_::RST);
+        regs::set_field(buffer, regs::CTRL, regs::CTRL_::RST);
         env.sleep(Duration::from_millis(1));
         env.sleep(Duration::from_millis(10));
-        regs::write(&mut buffer[regs::EIMC(0)], 0x7FFFFFFF);
+        regs::write(buffer, regs::EIMC(0), 0x7FFFFFFF);
         for n in 1..device_limits::INTERRUPT_REGISTERS_COUNT {
-            regs::write(&mut buffer[regs::EIMC(n)], 0xFFFFFFFF);
+            regs::write(buffer, regs::EIMC(n), 0xFFFFFFFF);
         }
 
-        regs::write_field(&mut buffer[regs::FCRTH(0)], regs::FCRTH_::RTH, (512 * 1024 - 0x6000) / 32);
+        regs::write_field(buffer, regs::FCRTH(0), regs::FCRTH_::RTH, (512 * 1024 - 0x6000) / 32);
 
-        if_after_timeout(env, Duration::from_secs(1), buffer, |b| regs::is_field_cleared(&b[regs::EEC], regs::EEC_::AUTO_RD), |_| {
+        if_after_timeout(env, Duration::from_secs(1), buffer, |b| regs::is_field_cleared(b, regs::EEC, regs::EEC_::AUTO_RD), |_| {
             panic!("EEPROM auto read timed out");
         });
 
-        if regs::is_field_cleared(&buffer[regs::EEC], regs::EEC_::EE_PRES) || !regs::is_field_cleared(&buffer[regs::FWSM], regs::FWSM_::EXT_ERR_IND) {
+        if regs::is_field_cleared(buffer, regs::EEC, regs::EEC_::EE_PRES) || !regs::is_field_cleared(buffer, regs::FWSM, regs::FWSM_::EXT_ERR_IND) {
             panic!("EEPROM not present or invalid");
         }
 
-        if_after_timeout(env, Duration::from_secs(1), buffer, |b| regs::is_field_cleared(&b[regs::RDRXCTL], regs::RDRXCTL_::DMAIDONE), |_| {
+        if_after_timeout(env, Duration::from_secs(1), buffer, |b| regs::is_field_cleared(b, regs::RDRXCTL, regs::RDRXCTL_::DMAIDONE), |_| {
             panic!("DMA init timed out");
         });
 
         for n in 0..device_limits::UNICAST_TABLE_ARRAY_SIZE {
-            regs::clear(&mut buffer[regs::PFUTA(n)]);
+            regs::clear(buffer, regs::PFUTA(n));
         }
 
         for n in 0..device_limits::POOLS_COUNT {
-            regs::clear(&mut buffer[regs::PFVLVF(n)]);
+            regs::clear(buffer, regs::PFVLVF(n));
         }
 
-        regs::write(&mut buffer[regs::MPSAR(0)], 1);
+        regs::write(buffer, regs::MPSAR(0), 1);
         for n in 1..device_limits::RECEIVE_ADDRESSES_COUNT * 2 {
-            regs::clear(&mut buffer[regs::MPSAR(n)]);
+            regs::clear(buffer, regs::MPSAR(n));
         }
 
         for n in 0..device_limits::POOLS_COUNT * 2 {
-            regs::clear(&mut buffer[regs::PFVLVFB(n)]);
+            regs::clear(buffer, regs::PFVLVFB(n));
         }
 
         for n in 0..device_limits::MULTICAST_TABLE_ARRAY_SIZE / 32 {
-            regs::clear(&mut buffer[regs::MTA(n)]);
+            regs::clear(buffer, regs::MTA(n));
         }
 
         for n in 0..device_limits::FIVE_TUPLE_FILTERS_COUNT {
-            regs::clear_field(&mut buffer[regs::FTQF(n)], regs::FTQF_::QUEUE_ENABLE);
+            regs::clear_field(buffer, regs::FTQF(n), regs::FTQF_::QUEUE_ENABLE);
         }
 
-        regs::set_field(&mut buffer[regs::RDRXCTL], regs::RDRXCTL_::CRC_STRIP);
+        regs::set_field(buffer, regs::RDRXCTL, regs::RDRXCTL_::CRC_STRIP);
 
-        regs::clear_field(&mut buffer[regs::RDRXCTL], regs::RDRXCTL_::RSCFRSTSIZE);
+        regs::clear_field(buffer, regs::RDRXCTL, regs::RDRXCTL_::RSCFRSTSIZE);
 
-        regs::set_field(&mut buffer[regs::RDRXCTL], regs::RDRXCTL_::RSCACKC);
+        regs::set_field(buffer, regs::RDRXCTL, regs::RDRXCTL_::RSCACKC);
 
-        regs::set_field(&mut buffer[regs::RDRXCTL], regs::RDRXCTL_::FCOE_WRFIX);
+        regs::set_field(buffer, regs::RDRXCTL, regs::RDRXCTL_::FCOE_WRFIX);
 
         for n in 1..device_limits::TRAFFIC_CLASSES_COUNT {
-            regs::clear(&mut buffer[regs::RXPBSIZE(n)]);
+            regs::clear(buffer, regs::RXPBSIZE(n));
         }
 
-        regs::set_field(&mut buffer[regs::MFLCN], regs::MFLCN_::RFCE);
+        regs::set_field(buffer, regs::MFLCN, regs::MFLCN_::RFCE);
 
-        regs::write_field(&mut buffer[regs::FCCFG], regs::FCCFG_::TFCE, 1);
+        regs::write_field(buffer, regs::FCCFG, regs::FCCFG_::TFCE, 1);
 
         for n in 0..device_limits::TRANSMIT_QUEUES_COUNT {
-            regs::write(&mut buffer[regs::RTTDQSEL], n as u32);
-            regs::clear(&mut buffer[regs::RTTDT1C]);
+            regs::write(buffer, regs::RTTDQSEL, n as u32);
+            regs::clear(buffer, regs::RTTDT1C);
         }
 
-        regs::set_field(&mut buffer[regs::RTTDCS], regs::RTTDCS_::ARBDIS);
+        regs::set_field(buffer, regs::RTTDCS, regs::RTTDCS_::ARBDIS);
 
         for n in 1..device_limits::TRAFFIC_CLASSES_COUNT {
-            regs::clear(&mut buffer[regs::TXPBSIZE(n)]);
+            regs::clear(buffer, regs::TXPBSIZE(n));
         }
 
-        regs::write_field(&mut buffer[regs::TXPBTHRESH(0)], regs::TXPBTHRESH_::THRESH, 0xA0 - (driver_constants::PACKET_SIZE / 1024) as u32);
+        regs::write_field(buffer, regs::TXPBTHRESH(0), regs::TXPBTHRESH_::THRESH, 0xA0 - (driver_constants::PACKET_SIZE / 1024) as u32);
 
-        regs::write_field(&mut buffer[regs::DTXMXSZRQ], regs::DTXMXSZRQ_::MAX_BYTES_NUM_REQ, 0xFFF);
+        regs::write_field(buffer, regs::DTXMXSZRQ, regs::DTXMXSZRQ_::MAX_BYTES_NUM_REQ, 0xFFF);
 
-        regs::clear_field(&mut buffer[regs::RTTDCS], regs::RTTDCS_::ARBDIS);
+        regs::clear_field(buffer, regs::RTTDCS, regs::RTTDCS_::ARBDIS);
 
         // Enable RX
-        regs::set_field(&mut buffer[regs::SECRXCTRL], regs::SECRXCTRL_::RX_DIS);
-        if_after_timeout(env, Duration::from_secs(1), buffer, |b| regs::is_field_cleared(&b[regs::SECRXSTAT], regs::SECRXSTAT_::SECRX_RDY), |_| {
+        regs::set_field(buffer, regs::SECRXCTRL, regs::SECRXCTRL_::RX_DIS);
+        if_after_timeout(env, Duration::from_secs(1), buffer, |b| regs::is_field_cleared(b, regs::SECRXSTAT, regs::SECRXSTAT_::SECRX_RDY), |_| {
             panic!("SECRXSTAT.SECRXRDY timed out, cannot start device");
         });
-        regs::set_field(&mut buffer[regs::RXCTRL], regs::RXCTRL_::RXEN);
-        regs::clear_field(&mut buffer[regs::SECRXCTRL], regs::SECRXCTRL_::RX_DIS);
-        regs::set_field(&mut buffer[regs::CTRLEXT], regs::CTRLEXT_::NSDIS);
+        regs::set_field(buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
+        regs::clear_field(buffer, regs::SECRXCTRL, regs::SECRXCTRL_::RX_DIS);
+        regs::set_field(buffer, regs::CTRLEXT, regs::CTRLEXT_::NSDIS);
 
         // Enable TX
-        regs::set_field(&mut buffer[regs::DMATXCTL], regs::DMATXCTL_::TE);
+        regs::set_field(buffer, regs::DMATXCTL, regs::DMATXCTL_::TE);
 
         Device {
             buffer
@@ -187,120 +187,92 @@ impl Device<'_> {
     }
 
     pub fn set_promiscuous(&mut self) {
-        regs::clear_field(&mut self.buffer[regs::RXCTRL], regs::RXCTRL_::RXEN);
+        regs::clear_field(self.buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
 
-        regs::set_field(&mut self.buffer[regs::FCTRL], regs::FCTRL_::FCTRL_UPE);
-        regs::set_field(&mut self.buffer[regs::FCTRL], regs::FCTRL_::MPE);
+        regs::set_field(self.buffer, regs::FCTRL, regs::FCTRL_::FCTRL_UPE);
+        regs::set_field(self.buffer, regs::FCTRL, regs::FCTRL_::MPE);
 
-        regs::set_field(&mut self.buffer[regs::RXCTRL], regs::RXCTRL_::RXEN);
+        regs::set_field(self.buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
     }
 
-    // Ideally this should return a sequence of inputs/outputs, but good luck making the borrow checker happy
-    // given the messy register layout of the 82599
-    pub fn into_inout<'a>(self) -> (DeviceInput<'a>, DeviceOutput<'a>) {
-        (DeviceInput {
-            rxdctl: &mut self.buffer[regs::RXDCTL(0)],
-            rdbah: &mut self.buffer[regs::RDBAH(0)],
-            rdbal: &mut self.buffer[regs::RDBAL(0)],
-            rdlen: &mut self.buffer[regs::RDLEN(0)],
-            srrctl: &mut self.buffer[regs::SRRCTL(0)],
-            rdt: &mut self.buffer[regs::RDT(0)],
-            dcarxctrl: &mut self.buffer[regs::DCARXCTRL(0)]
-        }, DeviceOutput {
-            txdctl: &mut self.buffer[regs::TXDCTL(0)],
-            tdbah: &mut self.buffer[regs::TDBAH(0)],
-            tdbal: &mut self.buffer[regs::TDBAL(0)],
-            tdlen: &mut self.buffer[regs::TDLEN(0)],
-            tdwbah: &mut self.buffer[regs::TDWBAH(0)],
-            tdwbal: &mut self.buffer[regs::TDWBAL(0)],
-            dcatxctrl: &mut self.buffer[regs::DCATXCTRL(0)],
-            tdt: &mut self.buffer[regs::TDT(0)]
-        })
+    pub fn into_inout<'a>(&'a mut self) -> (DeviceInput<'a>, DeviceOutput<'a>) {
+        let (_x, rx_base) = self.buffer.split_at_mut(regs::RX_ZONE_BASE(0));
+        let (rx, rest) = rx_base.split_at_mut(regs::RX_ZONE_LEN);
+        let (_y, tx_base) = rest.split_at_mut(regs::TX_ZONE_BASE(0) - regs::RX_ZONE_LEN - regs::RX_ZONE_BASE(0));
+        let (tx, _z) = tx_base.split_at_mut(regs::TX_ZONE_LEN);
+        (DeviceInput { buffer: rx }, DeviceOutput { buffer: tx })
     }
 }
 
 pub struct DeviceInput<'a> {
-    pub rxdctl: &'a mut u32,
-    pub rdbah: &'a mut u32,
-    pub rdbal: &'a mut u32,
-    pub rdlen: &'a mut u32,
-    pub srrctl: &'a mut u32,
-    pub rdt: &'a mut u32,
-    pub dcarxctrl: &'a mut u32
+    buffer: &'a mut [u32]
 }
 
 impl DeviceInput<'_> {
     pub fn associate<'a>(&'a mut self, env: &impl Environment, ring: &mut [Descriptor]) -> &'a mut u32 {
-        if !regs::is_field_cleared(self.rxdctl, regs::RXDCTL_::ENABLE) {
+        if !regs::is_field_cleared(self.buffer, regs::RXDCTL, regs::RXDCTL_::ENABLE) {
             panic!("Receive queue is already in use");
         }
 
         let ring_phys_addr = env.get_physical_address(ring);
-        regs::write(self.rdbah, (ring_phys_addr >> 32) as u32);
-        regs::write(self.rdbal, ring_phys_addr as u32);
+        regs::write(self.buffer, regs::RDBAH, (ring_phys_addr >> 32) as u32);
+        regs::write(self.buffer, regs::RDBAL, ring_phys_addr as u32);
 
-        regs::write(self.rdlen, driver_constants::RING_SIZE as u32 * 16);
+        regs::write(self.buffer, regs::RDLEN, driver_constants::RING_SIZE as u32 * 16);
 
-        regs::write_field(self.srrctl, regs::SRRCTL_::BSIZEPACKET, (driver_constants::PACKET_SIZE / 1024) as u32);
+        regs::write_field(self.buffer, regs::SRRCTL, regs::SRRCTL_::BSIZEPACKET, (driver_constants::PACKET_SIZE / 1024) as u32);
 
-        regs::set_field(self.srrctl, regs::SRRCTL_::DROP_EN);
+        regs::set_field(self.buffer, regs::SRRCTL, regs::SRRCTL_::DROP_EN);
 
-        regs::set_field(self.rxdctl, regs::RXDCTL_::ENABLE);
+        regs::set_field(self.buffer, regs::RXDCTL, regs::RXDCTL_::ENABLE);
 
-        if_after_timeout(env, Duration::from_secs(1), self, |s| regs::is_field_cleared(s.rxdctl, regs::RXDCTL_::ENABLE), |_| {
+        if_after_timeout(env, Duration::from_secs(1), self.buffer, |b| regs::is_field_cleared(b, regs::RXDCTL, regs::RXDCTL_::ENABLE), |_| {
             panic!("RXDCTL.ENABLE did not set, cannot enable queue");
         });
 
-        regs::write(self.rdt, driver_constants::RING_SIZE as u32 - 1);
+        regs::write(self.buffer, regs::RDT, driver_constants::RING_SIZE as u32 - 1);
 
-        regs::clear_field(self.dcarxctrl, regs::DCARXCTRL_::UNKNOWN);
+        regs::clear_field(self.buffer, regs::DCARXCTRL, regs::DCARXCTRL_::UNKNOWN);
 
-        self.rdt
+        &mut self.buffer[regs::RDT]
     }
 }
 
 
 pub struct DeviceOutput<'a> {
-    pub txdctl: &'a mut u32,
-    pub tdbah: &'a mut u32,
-    pub tdbal: &'a mut u32,
-    pub tdlen: &'a mut u32,
-    pub tdwbah: &'a mut u32,
-    pub tdwbal: &'a mut u32,
-    pub dcatxctrl: &'a mut u32,
-    pub tdt: &'a mut u32
+    buffer: &'a mut [u32]
 }
 
 impl DeviceOutput<'_> {
     pub fn associate<'a>(&'a mut self, env: &impl Environment, ring: &mut [Descriptor], transmit_head: &mut u32) -> &'a mut u32 {
-        if !regs::is_field_cleared(self.txdctl, regs::TXDCTL_::ENABLE) {
+        if !regs::is_field_cleared(self.buffer, regs::TXDCTL, regs::TXDCTL_::ENABLE) {
             panic!("Transmit queue is not available");
         }
 
         let ring_phys_addr = env.get_physical_address(ring);
-        regs::write(self.tdbah, (ring_phys_addr >> 32) as u32);
-        regs::write(self.tdbal, ring_phys_addr as u32);
+        regs::write(self.buffer, regs::TDBAH, (ring_phys_addr >> 32) as u32);
+        regs::write(self.buffer, regs::TDBAL, ring_phys_addr as u32);
 
-        regs::write(self.tdlen, driver_constants::RING_SIZE as u32 * 16);
+        regs::write(self.buffer, regs::TDLEN, driver_constants::RING_SIZE as u32 * 16);
 
-        regs::write_field(self.txdctl, regs::TXDCTL_::PTHRESH, 60);
-        regs::write_field(self.txdctl, regs::TXDCTL_::HTHRESH, 4);
+        regs::write_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::PTHRESH, 60);
+        regs::write_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::HTHRESH, 4);
 
         let head_phys_addr = env.get_physical_address(transmit_head);
         if head_phys_addr % 16 != 0 {
             panic!("Transmit head's physical address is not aligned properly");
         }
 
-        regs::write(self.tdwbah, (head_phys_addr >> 32) as u32);
-        regs::write(self.tdwbal, head_phys_addr as u32 | 1);
+        regs::write(self.buffer, regs::TDWBAH, (head_phys_addr >> 32) as u32);
+        regs::write(self.buffer, regs::TDWBAL, head_phys_addr as u32 | 1);
 
-        regs::clear_field(self.dcatxctrl, regs::DCATXCTRL_::TX_DESC_WB_RO_EN);
+        regs::clear_field(self.buffer, regs::DCATXCTRL, regs::DCATXCTRL_::TX_DESC_WB_RO_EN);
 
-        regs::set_field(self.txdctl, regs::TXDCTL_::ENABLE);
-        if_after_timeout(env, Duration::from_secs(1), self, |s| regs::is_field_cleared(s.txdctl, regs::TXDCTL_::ENABLE), |_| {
+        regs::set_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::ENABLE);
+        if_after_timeout(env, Duration::from_secs(1), self.buffer, |b| regs::is_field_cleared(b, regs::TXDCTL, regs::TXDCTL_::ENABLE), |_| {
             panic!("TXDCTL.ENABLE did not set, cannot enable queue");
         });
 
-        self.tdt
+        &mut self.buffer[regs::TDT]
     }
 }

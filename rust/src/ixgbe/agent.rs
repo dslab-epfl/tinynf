@@ -68,7 +68,7 @@ impl Agent<'_> {
     pub fn run(&mut self, processor: fn(&mut [u8; PACKET_SIZE], u16, &mut [u16; MAX_OUTPUTS])) {
         let mut n: usize = 0;
         let needs_flushing = loop {
-            if n >= 8 {
+            if n >= driver_constants::FLUSH_PERIOD {
                 break true;
             }
             
@@ -80,7 +80,7 @@ impl Agent<'_> {
             let length = receive_metadata as u16;
             processor(&mut self.packets[self.process_delimiter as usize], length, self.outputs);
             
-            let rs_bit: u64 = if self.process_delimiter % driver_constants::FLUSH_PERIOD == (driver_constants::FLUSH_PERIOD - 1) { 1 << 24+3 } else { 0 };
+            let rs_bit: u64 = if self.process_delimiter % driver_constants::RECYCLE_PERIOD == (driver_constants::RECYCLE_PERIOD - 1) { 1 << 24+3 } else { 0 };
             volatile::write(&mut self.first_ring[self.process_delimiter as usize].metadata, u64::to_le(self.outputs[0] as u64 | (1 << 24+1) | (1 << 24) | rs_bit));
             self.outputs[0] = 0;
             for n in 0..self.other_rings.len() {
