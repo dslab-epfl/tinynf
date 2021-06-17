@@ -61,6 +61,7 @@ impl Device<'_> {
         let dev_phys_addr = ((pci_bar0_high as u64) << 32) | ((pci_bar0_low as u64) & !0b1111);
 
         let buffer = env.map_physical_memory::<u32>(dev_phys_addr, 128 * 1024 / size_of::<u32>());
+        print!("device phys = {} virt = {:p}\n", dev_phys_addr, buffer);
 
         for queue in 0..device_limits::RECEIVE_QUEUES_COUNT {
             regs::clear_field(buffer, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE);

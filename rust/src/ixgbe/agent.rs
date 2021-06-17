@@ -67,7 +67,7 @@ impl Agent<'_> {
     pub fn run(&mut self, processor: fn(&mut [u8; PACKET_SIZE], u16, &mut [u16; MAX_OUTPUTS])) {
         let mut n: usize = 0;
         let needs_flushing = loop {
-            if n >= driver_constants::FLUSH_PERIOD {
+            if n == driver_constants::FLUSH_PERIOD {
                 break true;
             }
 
@@ -78,6 +78,7 @@ impl Agent<'_> {
 
             let length = receive_metadata as u16;
             processor(&mut self.packets[self.process_delimiter as usize], length, self.outputs);
+            print!("Got packet, length = {}, output length = {}\n", length, self.outputs[0]);
 
             let rs_bit: u64 = if self.process_delimiter % driver_constants::RECYCLE_PERIOD == (driver_constants::RECYCLE_PERIOD - 1) {
                 1 << 24 + 3
@@ -102,6 +103,8 @@ impl Agent<'_> {
                 o = o + 1;
             }
 
+            self.process_delimiter = self.process_delimiter + 1;
+
             if rs_bit != 0 {
                 let mut earliest_transmit_head = self.process_delimiter as u32;
                 let mut min_diff = 0xFF_FF_FF_FF_FF_FF_FF_FF;
@@ -114,13 +117,19 @@ impl Agent<'_> {
                     }
                 }
 
-                volatile::write::<u32>(&mut self.receive_tail, u32::to_le((earliest_transmit_head - 1) % driver_constants::RING_SIZE as u32));
+                volatile::write(self.receive_tail, u32::to_le((earliest_transmit_head - 1) % driver_constants::RING_SIZE as u32));
+                print!("rx tail, which is at {:p}, is now {}\n", self.receive_tail, volatile::read(self.receive_tail));
             }
             n = n + 1;
         };
         if needs_flushing {
             for tail in self.transmit_tails.iter_mut() {
-                volatile::write::<u32>(tail, u32::to_le(self.process_delimiter as u32));
+                volatile::write(*tail, u32::to_le(self.process_delimiter as u32));
+                print!("tail, which is at {:p}, is now {}\n", *tail, volatile::read(*tail));
+                unsafe {
+                    let hd = (*tail as *mut u32).sub(2);
+                    print!("corresponding head, at {:p}, is now {}\n", hd, *hd);
+                }
             }
         }
     }
