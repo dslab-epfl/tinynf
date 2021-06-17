@@ -246,7 +246,7 @@ impl DeviceInput<'_> {
             panic!("Receive queue is already in use");
         }
 
-        let ring_phys_addr = env.get_physical_address(ring);
+        let ring_phys_addr = env.get_physical_address(&mut ring[0]);
         regs::write(self.buffer, regs::RDBAH, (ring_phys_addr >> 32) as u32);
         regs::write(self.buffer, regs::RDBAL, ring_phys_addr as u32);
 
@@ -286,7 +286,7 @@ impl DeviceOutput<'_> {
             panic!("Transmit queue is not available");
         }
 
-        let ring_phys_addr = env.get_physical_address(ring);
+        let ring_phys_addr = env.get_physical_address(&mut ring[0]);
         regs::write(self.buffer, regs::TDBAH, (ring_phys_addr >> 32) as u32);
         regs::write(self.buffer, regs::TDBAL, ring_phys_addr as u32);
 

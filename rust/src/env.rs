@@ -19,7 +19,7 @@ pub trait Environment {
     fn allocate<T, const COUNT: usize>(&mut self) -> &'static mut [T; COUNT];
     fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T];
     fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &'static mut [T];
-    fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize;
+    fn get_physical_address<T>(&self, value: *mut T) -> usize; // mut to emphasize that gaining the phys addr might allow HW to write
 
     fn pci_read(&self, addr: PciAddress, register: u8) -> u32;
     fn pci_write(&self, addr: PciAddress, register: u8, value: u32);
@@ -140,10 +140,10 @@ impl Environment for LinuxEnvironment {
         }
     }
 
-    fn get_physical_address<T: ?Sized>(&self, value: &mut T) -> usize {
+    fn get_physical_address<T>(&self, value: *mut T) -> usize {
         unsafe {
             let page_size = libc::sysconf(libc::_SC_PAGE_SIZE) as usize;
-            let addr = value as *const T as *const () as usize; // yes, the casts are necessary
+            let addr = value as usize;
             let page = addr / page_size;
             let map_offset = page * size_of::<u64>();
 

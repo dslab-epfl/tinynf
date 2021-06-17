@@ -110,14 +110,14 @@ impl Agent<'_> {
                 let mut min_diff = 0xFF_FF_FF_FF_FF_FF_FF_FF;
                 for head_ref in self.transmit_heads {
                     let head = u32::from_le(volatile::read(&head_ref.value));
-                    let diff = head as u64 - self.process_delimiter as u64;
+                    let diff = (head as u64).wrapping_sub(self.process_delimiter as u64);
                     if diff <= min_diff {
                         earliest_transmit_head = head;
                         min_diff = diff;
                     }
                 }
 
-                volatile::write(self.receive_tail, u32::to_le((earliest_transmit_head - 1) % driver_constants::RING_SIZE as u32));
+                volatile::write(self.receive_tail, u32::to_le(earliest_transmit_head.wrapping_sub(1) % driver_constants::RING_SIZE as u32));
                 print!("rx tail, which is at {:p}, is now {}\n", self.receive_tail, volatile::read(self.receive_tail));
             }
             n = n + 1;
