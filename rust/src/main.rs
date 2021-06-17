@@ -41,7 +41,7 @@ fn proc(data: &mut [u8; ixgbe::PACKET_SIZE], length: u16, output_lengths: &mut [
     data[9] = 0;
     data[10] = 0;
     data[11] = 0;
-    output_lengths[0] = length
+    output_lengths[0] = length;
 }
 
 fn run(agent0: &mut Agent<'_>, agent1: &mut Agent<'_>) {

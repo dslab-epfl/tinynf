@@ -75,7 +75,7 @@ namespace TinyNF.Ixgbe
                 if (rsBit != 0)
                 {
                     uint earliestTransmitHead = _processDelimiter;
-                    ulong minDiff = 0xFF_FF_FF_FF_FF_FF_FF_FFul;
+                    ulong minDiff = ulong.MaxValue;
                     foreach (ref var headRef in _transmitHeads)
                     {
                         uint head = Endianness.FromLittle(Volatile.Read(ref headRef.Value));

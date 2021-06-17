@@ -81,7 +81,7 @@ impl Agent<'_> {
             print!("Got packet, length = {}, output length = {}\n", length, self.outputs[0]);
 
             let rs_bit: u64 = if self.process_delimiter % driver_constants::RECYCLE_PERIOD == (driver_constants::RECYCLE_PERIOD - 1) {
-                1 << 24 + 3
+                1 << (24 + 3)
             } else {
                 0
             };
@@ -90,14 +90,14 @@ impl Agent<'_> {
             // which is illegal, so... we use first_ring separately and copy the code
             volatile::write(
                 &mut self.first_ring[self.process_delimiter as usize].metadata,
-                u64::to_le(self.outputs[0] as u64 | (1 << 24 + 1) | (1 << 24) | rs_bit),
+                u64::to_le(self.outputs[0] as u64 | (1 << (24 + 1)) | (1 << 24) | rs_bit),
             );
             self.outputs[0] = 0;
             let mut o: u8 = 1;
             for r in &mut self.other_rings { // I tried an explicit for n in 0..self.other_rings.len() but there was still a bounds check :/
                 volatile::write(
                     &mut r[self.process_delimiter as usize].metadata,
-                    u64::to_le(self.outputs[o as usize] as u64 | (1 << 24 + 1) | (1 << 24) | rs_bit),
+                    u64::to_le(self.outputs[o as usize] as u64 | (1 << (24 + 1)) | (1 << 24) | rs_bit),
                 );
                 self.outputs[o as usize] = 0;
                 o = o + 1;
@@ -107,12 +107,12 @@ impl Agent<'_> {
 
             if rs_bit != 0 {
                 let mut earliest_transmit_head = self.process_delimiter as u32;
-                let mut min_diff = 0xFF_FF_FF_FF_FF_FF_FF_FF;
-                for head_ref in self.transmit_heads {
-                    let head = u32::from_le(volatile::read(&head_ref.value));
-                    let diff = (head as u64).wrapping_sub(self.process_delimiter as u64);
+                let mut min_diff = u64::MAX;
+                for head in self.transmit_heads {
+                    let head_value = u32::from_le(volatile::read(&head.value));
+                    let diff = (head_value as u64).wrapping_sub(self.process_delimiter as u64);
                     if diff <= min_diff {
-                        earliest_transmit_head = head;
+                        earliest_transmit_head = head_value;
                         min_diff = diff;
                     }
                 }
@@ -129,7 +129,15 @@ impl Agent<'_> {
                 unsafe {
                     let hd = (*tail as *mut u32).sub(2);
                     print!("corresponding head, at {:p}, is now {}\n", hd, *hd);
-                }
+                    let ctl = (*tail as *mut u32).add(0x10 / 4);
+                    print!("and ctl {}\n", *ctl);
+  /*                  let a = (*tail as *mut u32).add((0x87A0 - 0x6018) / 4);
+                    let b = (*tail as *mut u32).add((0x87A4 - 0x6018) / 4);
+                    let c = (*tail as *mut u32).add((0x87A8 - 0x6018) / 4);
+                    let d = (*tail as *mut u32).add((0x8680 - 0x6018) / 4);
+                    let e = (*tail as *mut u32).sub(0x6018 / 4).add(0x4080 / 4);
+                    print!("stats {} {} {} {} {}\n", *a, *b, *c, *d, *e);
+*/                }
             }
         }
     }
