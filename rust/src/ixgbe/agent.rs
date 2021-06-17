@@ -15,13 +15,13 @@ pub struct Agent<'a> {
     other_rings: Vec<&'a mut [Descriptor; driver_constants::RING_SIZE]>,
     transmit_heads: &'a [TransmitHead],
     transmit_tails: Vec<&'a mut u32>,
-    outputs: &'a mut [u16; driver_constants::MAX_OUTPUTS],
+    outputs: &'a mut [u16; MAX_OUTPUTS],
     process_delimiter: u8,
 }
 
 impl Agent<'_> {
     pub fn create<'a, 'b>(env: &'b mut impl Environment, input: &'a mut DeviceInput<'_>, outputs: &'a mut [&'a mut DeviceOutput<'_>]) -> Agent<'a> {
-        if outputs.len() > driver_constants::MAX_OUTPUTS {
+        if outputs.len() > MAX_OUTPUTS {
             panic!("Too many outputs");
         }
 
