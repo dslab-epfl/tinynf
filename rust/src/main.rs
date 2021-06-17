@@ -1,3 +1,9 @@
+// Enable non-default lints
+#![warn(future_incompatible)]
+#![warn(nonstandard_style)]
+#![warn(rust_2018_idioms)]
+#![warn(unused)]
+
 mod env;
 use env::LinuxEnvironment;
 
@@ -38,7 +44,7 @@ fn proc(data: &mut [u8; ixgbe::PACKET_SIZE], length: u16, output_lengths: &mut [
     output_lengths[0] = length
 }
 
-fn run(agent0: &mut Agent, agent1: &mut Agent) {
+fn run(agent0: &mut Agent<'_>, agent1: &mut Agent<'_>) {
     loop {
         agent0.run(proc);
         agent1.run(proc);

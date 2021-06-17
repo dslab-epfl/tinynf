@@ -20,7 +20,7 @@ pub struct Agent<'a> {
 }
 
 impl Agent<'_> {
-    pub fn create<'a, 'b>(env: &'b mut impl Environment, input: &'a mut DeviceInput, outputs: &'a mut [&'a mut DeviceOutput]) -> Agent<'a> {
+    pub fn create<'a, 'b>(env: &'b mut impl Environment, input: &'a mut DeviceInput<'_>, outputs: &'a mut [&'a mut DeviceOutput<'_>]) -> Agent<'a> {
         if outputs.len() > driver_constants::MAX_OUTPUTS {
             panic!("Too many outputs");
         }
@@ -84,17 +84,22 @@ impl Agent<'_> {
             } else {
                 0
             };
+            // This is rather awkward, we can't have transmit_rings[0] as the "main" ring because then we'd incur a bounds check when using it for RX,
+            // but we also can't have a reference to transmit_rings[0] to use without a bounds check since we'd then have one mut ref inside transmit_rings and another ref for reading
+            // which is illegal, so... we use first_ring separately and copy the code
             volatile::write(
                 &mut self.first_ring[self.process_delimiter as usize].metadata,
                 u64::to_le(self.outputs[0] as u64 | (1 << 24 + 1) | (1 << 24) | rs_bit),
             );
             self.outputs[0] = 0;
-            for n in 0..self.other_rings.len() {
+            let mut o: u8 = 1;
+            for r in &mut self.other_rings { // I tried an explicit for n in 0..self.other_rings.len() but there was still a bounds check :/
                 volatile::write(
-                    &mut self.other_rings[n as usize][self.process_delimiter as usize].metadata,
-                    u64::to_le(self.outputs[(n + 1) as u8 as usize] as u64 | (1 << 24 + 1) | (1 << 24) | rs_bit),
+                    &mut r[self.process_delimiter as usize].metadata,
+                    u64::to_le(self.outputs[o as usize] as u64 | (1 << 24 + 1) | (1 << 24) | rs_bit),
                 );
-                self.outputs[(n + 1) as u8 as usize] = 0;
+                self.outputs[o as usize] = 0;
+                o = o + 1;
             }
 
             if rs_bit != 0 {
