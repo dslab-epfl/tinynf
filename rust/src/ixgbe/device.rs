@@ -211,6 +211,8 @@ impl Device<'_> {
 
         // Enable TX
         regs::set_field(buffer, regs::DMATXCTL, regs::DMATXCTL_::TE);
+        // But disable first queue, which is enabled when we enable TX globally (see 8.2.3.9.10 ENABLE)
+        regs::clear_field(buffer, regs::TX_ZONE_BASE(0) + regs::TXDCTL, regs::TXDCTL_::ENABLE);
 
         Device { buffer }
     }
