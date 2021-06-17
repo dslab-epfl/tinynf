@@ -53,17 +53,17 @@ fn run(agent0: &mut Agent<'_>, agent1: &mut Agent<'_>) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
-        panic!("Expected 2 args");
+    if args.len() != 3 {
+        panic!("Expected 2 args (+ implicit exe name)");
     }
 
     let mut env = LinuxEnvironment::new();
 
-    let mut dev0 = Device::init(&env, parse_pci_address(&args[0][..]));
+    let mut dev0 = Device::init(&env, parse_pci_address(&args[1][..]));
     dev0.set_promiscuous();
     let (mut dev0in, mut dev0out) = dev0.into_inout();
 
-    let mut dev1 = Device::init(&env, parse_pci_address(&args[1][..]));
+    let mut dev1 = Device::init(&env, parse_pci_address(&args[2][..]));
     dev1.set_promiscuous();
     let (mut dev1in, mut dev1out) = dev1.into_inout();
 

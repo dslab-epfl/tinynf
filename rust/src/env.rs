@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 use std::io::{self, Read, Seek};
-use std::fs;
+use std::fs::OpenOptions;
 use std::mem::size_of;
 use std::ptr;
 use std::slice;
@@ -125,14 +125,14 @@ impl Environment for LinuxEnvironment {
         self.used_bytes = self.used_bytes + full_size;
 
         unsafe {
-            slice::from_raw_parts_mut(result as *mut T, full_size)
+            slice::from_raw_parts_mut(result as *mut T, count)
         }
     }
 
     fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &'static mut [T] {
         let full_size = size * size_of::<T>();
         unsafe {
-            let map = memmap::MmapOptions::new().offset(addr).len(full_size).map_mut(&fs::File::open("/dev/mem").unwrap()).unwrap();
+            let map = memmap::MmapOptions::new().offset(addr).len(full_size).map_mut(&(OpenOptions::new().read(true).write(true).open("/dev/mem").unwrap())).unwrap();
             MAPS.push(map);
             let result = &mut MAPS[MAPS.len()-1][..];
             let (_prefix, result, _suffix) = result.align_to_mut::<T>();
@@ -147,7 +147,7 @@ impl Environment for LinuxEnvironment {
             let page = addr / page_size;
             let map_offset = page * size_of::<u64>();
 
-            let mut pagemap = fs::OpenOptions::new().read(true).open("/proc/self/pagemap").unwrap();
+            let mut pagemap = OpenOptions::new().read(true).open("/proc/self/pagemap").unwrap();
             pagemap.seek(io::SeekFrom::Start(map_offset as u64)).unwrap();
         
             let mut buffer = [0; size_of::<u64>()];
