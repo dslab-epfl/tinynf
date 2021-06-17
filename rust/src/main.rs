@@ -73,7 +73,7 @@ fn main() {
     let mut agent1outs = [&mut dev0out];
     let mut agent1 = Agent::create(&mut env, &mut dev1in, &mut agent1outs);
 
-    print!("All good, running...\n");
+    println!("All good, running...\n");
 
     run(&mut agent0, &mut agent1);
 }

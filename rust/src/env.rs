@@ -7,8 +7,6 @@ use std::slice;
 use std::time::Duration;
 use std::thread;
 
-use libc;
-use memmap;
 use x86_64::instructions::port::Port;
 
 use crate::pci::PciAddress;
@@ -101,7 +99,7 @@ impl Environment for LinuxEnvironment {
     fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T] {
         let mut full_size = count * size_of::<T>();
         while full_size % 64 != 0 {
-            full_size = full_size + size_of::<T>();
+            full_size += size_of::<T>();
         }
 
         let align_diff = self.used_bytes % full_size;
@@ -112,7 +110,7 @@ impl Environment for LinuxEnvironment {
         unsafe {        
             self.allocated_page = self.allocated_page.add(align_diff);
         }
-        self.used_bytes = self.used_bytes + align_diff;
+        self.used_bytes += align_diff;
 
         if full_size + self.used_bytes >= HUGEPAGE_SIZE {
             panic!("Not enough space for allocation");
@@ -122,7 +120,7 @@ impl Environment for LinuxEnvironment {
         unsafe {
             self.allocated_page = self.allocated_page.add(full_size);
         }
-        self.used_bytes = self.used_bytes + full_size;
+        self.used_bytes += full_size;
 
         unsafe {
             slice::from_raw_parts_mut(result as *mut T, count)

@@ -184,7 +184,7 @@ namespace TinyNF.Ixgbe
         public static class FCTRL_
         {
             public const uint MPE = 1 << 8;
-            public const uint FCTRL_UPE = 1 << 9;
+            public const uint UPE = 1 << 9;
         }
 
         // Section 8.2.3.7.19 Five tuple Queue Filter

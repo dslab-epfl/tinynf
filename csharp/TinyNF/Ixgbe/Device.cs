@@ -516,7 +516,7 @@ namespace TinyNF.Ixgbe
                 Regs.ClearField(_buffer, Regs.RXCTRL, Regs.RXCTRL_.RXEN);
             }
             // "Unicast packet filtering - Promiscuous unicast filtering is enabled (FCTRL.UPE=1b) or the packet passes unicast MAC filters (host or manageability)."
-            Regs.SetField(_buffer, Regs.FCTRL, Regs.FCTRL_.FCTRL_UPE);
+            Regs.SetField(_buffer, Regs.FCTRL, Regs.FCTRL_.UPE);
             // "Multicast packet filtering - Promiscuous multicast filtering is enabled by either the host or manageability (FCTRL.MPE=1b or MANC.MCST_PASS_L2 =1b) or the packet matches one of the multicast filters."
             Regs.SetField(_buffer, Regs.FCTRL, Regs.FCTRL_.MPE);
             // "Broadcast packet filtering to host - Promiscuous multicast filtering is enabled (FCTRL.MPE=1b) or Broadcast Accept Mode is enabled (FCTRL.BAM = 1b)."

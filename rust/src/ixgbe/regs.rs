@@ -1,4 +1,6 @@
 #![allow(non_snake_case)]
+#![allow(clippy::eq_op)]
+#![allow(clippy::erasing_op)]
 
 use crate::volatile;
 
@@ -76,7 +78,7 @@ pub mod EEC_ {
     pub const AUTO_RD: u32 = 1 << 9;
 }
 
-pub fn EIMC(n: usize) -> usize {
+pub const fn EIMC(n: usize) -> usize {
     (if n == 0 { 0x00888 } else { 0x00AB0 + 4 * (n - 1) }) / 4
 }
 
@@ -85,7 +87,7 @@ pub mod FCCFG_ {
     pub const TFCE: u32 = 0b0001_1000;
 }
 
-pub fn FCRTH(n: usize) -> usize {
+pub const fn FCRTH(n: usize) -> usize {
     (0x03260 + 4 * n) / 4
 }
 pub mod FCRTH_ {
@@ -95,10 +97,10 @@ pub mod FCRTH_ {
 pub const FCTRL: usize = 0x05080 / 4;
 pub mod FCTRL_ {
     pub const MPE: u32 = 1 << 8;
-    pub const FCTRL_UPE: u32 = 1 << 9;
+    pub const UPE: u32 = 1 << 9;
 }
 
-pub fn FTQF(n: usize) -> usize {
+pub const fn FTQF(n: usize) -> usize {
     (0x0E600 + 4 * n) / 4
 }
 pub mod FTQF_ {
@@ -125,23 +127,23 @@ pub mod MFLCN_ {
     pub const RFCE: u32 = 1 << 3;
 }
 
-pub fn MPSAR(n: usize) -> usize {
+pub const fn MPSAR(n: usize) -> usize {
     (0x0A600 + 4 * n) / 4
 }
 
-pub fn MTA(n: usize) -> usize {
+pub const fn MTA(n: usize) -> usize {
     (0x05200 + 4 * n) / 4
 }
 
-pub fn PFUTA(n: usize) -> usize {
+pub const fn PFUTA(n: usize) -> usize {
     (0x0F400 + 4 * n) / 4
 }
 
-pub fn PFVLVF(n: usize) -> usize {
+pub const fn PFVLVF(n: usize) -> usize {
     (0x0F100 + 4 * n) / 4
 }
 
-pub fn PFVLVFB(n: usize) -> usize {
+pub const fn PFVLVFB(n: usize) -> usize {
     (0x0F200 + 4 * n) / 4
 }
 
@@ -168,7 +170,7 @@ pub mod RXCTRL_ {
     pub const RXEN: u32 = 1 << 0;
 }
 
-pub fn RXPBSIZE(n: usize) -> usize {
+pub const fn RXPBSIZE(n: usize) -> usize {
     (0x03C00 + 4 * n) / 4
 }
 
@@ -187,11 +189,11 @@ pub mod STATUS_ {
     pub const PCIE_MASTER_ENABLE_STATUS: u32 = 1 << 19;
 }
 
-pub fn TXPBSIZE(n: usize) -> usize {
+pub const fn TXPBSIZE(n: usize) -> usize {
     (0x0CC00 + 4 * n) / 4
 }
 
-pub fn TXPBTHRESH(n: usize) -> usize {
+pub const fn TXPBTHRESH(n: usize) -> usize {
     (0x04950 + 4 * n) / 4
 }
 pub mod TXPBTHRESH_ {
@@ -200,7 +202,7 @@ pub mod TXPBTHRESH_ {
 
 // --- RX ---
 
-pub fn RX_ZONE_BASE(n: usize) -> usize {
+pub const fn RX_ZONE_BASE(n: usize) -> usize {
     (if n <= 63 { 0x01000 + 0x40 * n } else { 0x0D000 + 0x40 * (n - 64) }) / 4
 }
 pub const RX_ZONE_LEN: usize = 0x40;
@@ -231,7 +233,7 @@ pub mod DCARXCTRL_ {
 
 // --- TX ---
 
-pub fn TX_ZONE_BASE(n: usize) -> usize {
+pub const fn TX_ZONE_BASE(n: usize) -> usize {
     (0x06000 + 0x40 * n) / 4
 }
 pub const TX_ZONE_LEN: usize = 0x40;
