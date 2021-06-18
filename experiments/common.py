@@ -28,6 +28,8 @@ def get_pyplot_ax_fig(title=None, figsize=None):
   return (plt, ax, fig)
 
 def get_color_and_marker(nf):
+  if 'Rust' in nf:
+    return ('#70AD47', '.')
   if 'C#' in nf:
     if 'AOT' in nf:
       if 'extended' in nf:
