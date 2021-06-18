@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Threading;
 using TinyNF.Environment;
 
+// Safe version of Agent (i.e., does not use any unsafe code even transitively)
+// See the comments in Agent for some explanations
+
 namespace TinyNF.Ixgbe
 {
     public ref struct SafeAgent
@@ -45,7 +48,7 @@ namespace TinyNF.Ixgbe
             }
         }
 
-        public void Run(SafePacketProcessor processor)
+        public void Run<T>(T processor) where T : struct, ISafePacketProcessor
         {
             nint n;
             for (n = 0; n < DriverConstants.FlushPeriod; n++)
@@ -57,12 +60,13 @@ namespace TinyNF.Ixgbe
                 }
 
                 ushort length = (ushort)receiveMetadata;
-                processor(ref _packets[_processDelimiter], length, _outputs);
+                processor.Process(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
-                for (int r = 0; r < _transmitRings.Length; r++)
+                var transmitRings = _transmitRings;
+                for (int r = 0; r < transmitRings.Length; r++)
                 {
-                    Volatile.Write(ref _transmitRings[r].Span[_processDelimiter].Metadata, Endianness.ToLittle(_outputs[r] | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                    Volatile.Write(ref transmitRings[r].Span[_processDelimiter].Metadata, Endianness.ToLittle(_outputs[r] | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
                     _outputs[r] = 0;
                 }
 

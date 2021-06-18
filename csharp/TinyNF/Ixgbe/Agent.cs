@@ -45,7 +45,10 @@ namespace TinyNF.Ixgbe
             }
         }
 
-        public void Run<T>(T processor) where T: struct, IPacketProcessor
+        // Allow the JIT to inline the processor by making it a struct with a method instead of a delegate.
+        // The JIT doesn't inline delegates, as far as I know; however, it will generate a specialized version
+        // of the method per value type (and one shared version for all reference types), at which point it can inline the ""virtual"" call.
+        public void Run<T>(T processor) where T : struct, IPacketProcessor
         {
             nint n;
             for (n = 0; n < DriverConstants.FlushPeriod; n++)

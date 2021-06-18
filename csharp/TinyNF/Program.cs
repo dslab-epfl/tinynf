@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using TinyNF.Environment;
 using TinyNF.Ixgbe;
 using TinyNF.Unsafe;
@@ -39,47 +40,54 @@ namespace TinyNF
                 Run(agent0, agent1);
             }
         }
-private struct Processor:IPacketProcessor{
-[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-        public void Process(ref PacketData data, ushort len, Array256<ushort> outputs)
+
+        private struct Processor : IPacketProcessor
         {
-            data[0] = 0;
-            data[1] = 0;
-            data[2] = 0;
-            data[3] = 0;
-            data[4] = 0;
-            data[5] = 1;
-            data[6] = 0;
-            data[7] = 0;
-            data[8] = 0;
-            data[9] = 0;
-            data[10] = 0;
-            data[11] = 0;
-            outputs[0] = len;
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public void Process(ref PacketData data, ushort len, Array256<ushort> outputs)
+            {
+                data[0] = 0;
+                data[1] = 0;
+                data[2] = 0;
+                data[3] = 0;
+                data[4] = 0;
+                data[5] = 1;
+                data[6] = 0;
+                data[7] = 0;
+                data[8] = 0;
+                data[9] = 0;
+                data[10] = 0;
+                data[11] = 0;
+                outputs[0] = len;
+            }
         }
-}
-        private static void SafeProcessor(ref PacketData data, ushort len, Span<ushort> outputs)
+
+        private struct SafeProcessor : ISafePacketProcessor
         {
-            data[0] = 0;
-            data[1] = 0;
-            data[2] = 0;
-            data[3] = 0;
-            data[4] = 0;
-            data[5] = 1;
-            data[6] = 0;
-            data[7] = 0;
-            data[8] = 0;
-            data[9] = 0;
-            data[10] = 0;
-            data[11] = 0;
-            outputs[0] = len;
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public void Process(ref PacketData data, ushort len, Span<ushort> outputs)
+            {
+                data[0] = 0;
+                data[1] = 0;
+                data[2] = 0;
+                data[3] = 0;
+                data[4] = 0;
+                data[5] = 1;
+                data[6] = 0;
+                data[7] = 0;
+                data[8] = 0;
+                data[9] = 0;
+                data[10] = 0;
+                data[11] = 0;
+                outputs[0] = len;
+            }
         }
 
         // Run is separated into its own method just to make it easy to disassemble separately to observe optimizations
 
         private static void Run(Agent agent0, Agent agent1)
         {
-        Processor proc = new Processor();
+            var proc = new Processor();
             while (true)
             {
                 agent0.Run(proc);
@@ -89,8 +97,7 @@ private struct Processor:IPacketProcessor{
 
         private static void SafeRun(SafeAgent agent0, SafeAgent agent1)
         {
-            // same remark as Run
-            SafePacketProcessor proc = SafeProcessor;
+            var proc = new SafeProcessor();
             while (true)
             {
                 agent0.Run(proc);
