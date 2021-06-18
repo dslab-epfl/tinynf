@@ -45,7 +45,7 @@ namespace TinyNF.Ixgbe
             }
         }
 
-        public void Run(PacketProcessor processor)
+        public void Run<T>(T processor) where T: struct, IPacketProcessor
         {
             nint n;
             for (n = 0; n < DriverConstants.FlushPeriod; n++)
@@ -57,7 +57,7 @@ namespace TinyNF.Ixgbe
                 }
 
                 ushort length = (ushort)receiveMetadata;
-                processor(ref _packets[_processDelimiter], length, _outputs);
+                processor.Process(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
 

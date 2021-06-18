@@ -39,8 +39,9 @@ namespace TinyNF
                 Run(agent0, agent1);
             }
         }
-
-        private static void Processor(ref PacketData data, ushort len, Array256<ushort> outputs)
+private struct Processor:IPacketProcessor{
+[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        public void Process(ref PacketData data, ushort len, Array256<ushort> outputs)
         {
             data[0] = 0;
             data[1] = 0;
@@ -56,7 +57,7 @@ namespace TinyNF
             data[11] = 0;
             outputs[0] = len;
         }
-
+}
         private static void SafeProcessor(ref PacketData data, ushort len, Span<ushort> outputs)
         {
             data[0] = 0;
@@ -78,8 +79,7 @@ namespace TinyNF
 
         private static void Run(Agent agent0, Agent agent1)
         {
-            // The compiler and runtime could do better here, there's no reason not to do this pre-init outside the loop automatically...
-            PacketProcessor proc = Processor;
+        Processor proc = new Processor();
             while (true)
             {
                 agent0.Run(proc);
