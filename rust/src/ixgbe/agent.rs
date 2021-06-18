@@ -66,14 +66,10 @@ impl Agent<'_> {
 
     pub fn run(&mut self, processor: fn(&mut [u8; PACKET_SIZE], u16, &mut [u16; MAX_OUTPUTS])) {
         let mut n: usize = 0;
-        let needs_flushing = loop {
-            if n == driver_constants::FLUSH_PERIOD {
-                break true;
-            }
-
+        while n < driver_constants::FLUSH_PERIOD {
             let receive_metadata = u64::from_le(volatile::read(&self.first_ring[self.process_delimiter as usize].metadata));
             if (receive_metadata & (1 << 32)) == 0 {
-                break n != 0;
+                break;
             }
 
             let length = receive_metadata as u16;
@@ -90,14 +86,14 @@ impl Agent<'_> {
             // which is illegal, so... we use first_ring separately and copy the code
             volatile::write(
                 &mut self.first_ring[self.process_delimiter as usize].metadata,
-                u64::to_le(self.outputs[0] as u64 | (1 << (24 + 1)) | (1 << 24) | rs_bit),
+                u64::to_le(self.outputs[0] as u64 | rs_bit | (1 << (24 + 1)) | (1 << 24)),
             );
             self.outputs[0] = 0;
             let mut o: u8 = 1;
             for r in &mut self.other_rings { // I tried an explicit for n in 0..self.other_rings.len() but there was still a bounds check :/
                 volatile::write(
                     &mut r[self.process_delimiter as usize].metadata,
-                    u64::to_le(self.outputs[o as usize] as u64 | (1 << (24 + 1)) | (1 << 24) | rs_bit),
+                    u64::to_le(self.outputs[o as usize] as u64 | rs_bit | (1 << (24 + 1)) | (1 << 24)),
                 );
                 self.outputs[o as usize] = 0;
                 o += 1;
@@ -122,7 +118,7 @@ impl Agent<'_> {
             }
             n += 1;
         };
-        if needs_flushing {
+        if n != 0 {
             for tail in &mut self.transmit_tails {
                 volatile::write(*tail, u32::to_le(self.process_delimiter as u32));
                 println!("tail, which is at {:p}, is now {}\n", *tail, volatile::read(*tail));

@@ -10,6 +10,9 @@ use env::LinuxEnvironment;
 mod pci;
 use pci::PciAddress;
 
+// todo remove
+use crate::env::Environment;
+
 mod volatile; // declare it so ixgbe can use it... weird
 
 mod ixgbe;
@@ -59,11 +62,13 @@ fn main() {
 
     let mut env = LinuxEnvironment::new();
 
-    let mut dev0 = Device::init(&env, parse_pci_address(&args[1][..]));
+    let pci0 = parse_pci_address(&args[1][..]);
+    let mut dev0 = Device::init(&env, pci0);
     dev0.set_promiscuous();
     let (mut dev0in, mut dev0out) = dev0.into_inout();
 
-    let mut dev1 = Device::init(&env, parse_pci_address(&args[2][..]));
+    let pci1 = parse_pci_address(&args[2][..]);
+    let mut dev1 = Device::init(&env, pci1);
     dev1.set_promiscuous();
     let (mut dev1in, mut dev1out) = dev1.into_inout();
 
@@ -73,7 +78,9 @@ fn main() {
     let mut agent1outs = [&mut dev0out];
     let mut agent1 = Agent::create(&mut env, &mut dev1in, &mut agent1outs);
 
-    println!("All good, running...\n");
+    println!("All good, running...");
 
     run(&mut agent0, &mut agent1);
+
+    env.pci_write(pci0, 1, 1);
 }

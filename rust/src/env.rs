@@ -16,7 +16,7 @@ use crate::pci::PciAddress;
 pub trait Environment {
     fn allocate<T, const COUNT: usize>(&mut self) -> &'static mut [T; COUNT];
     fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T];
-    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &'static mut [T];
+    fn map_physical_memory<T>(&self, addr: usize, size: usize) -> &'static mut [T];
     fn get_physical_address<T>(&self, value: *mut T) -> usize; // mut to emphasize that gaining the phys addr might allow HW to write
 
     fn pci_read(&self, addr: PciAddress, register: u8) -> u32;
@@ -127,13 +127,17 @@ impl Environment for LinuxEnvironment {
         }
     }
 
-    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &'static mut [T] {
+    fn map_physical_memory<T>(&self, addr: usize, size: usize) -> &'static mut [T] {
         let full_size = size * size_of::<T>();
+        let file = OpenOptions::new().read(true).write(true).open("/dev/mem").unwrap();
         unsafe {
-            let map = memmap::MmapOptions::new().offset(addr).len(full_size).map_mut(&(OpenOptions::new().read(true).write(true).open("/dev/mem").unwrap())).unwrap();
+            let map = memmap::MmapOptions::new().offset(addr.try_into().unwrap()).len(full_size).map_mut(&file).unwrap();
             MAPS.push(map);
             let result = &mut MAPS[MAPS.len()-1][..];
-            let (_prefix, result, _suffix) = result.align_to_mut::<T>();
+            let (prefix, result, suffix) = result.align_to_mut::<T>();
+            if prefix.len() != 0 || suffix.len() != 0 {
+                panic!("Something went wrong with the /dev/mem mapping");
+            }
             result
         }
     }
@@ -152,11 +156,11 @@ impl Environment for LinuxEnvironment {
             pagemap.read_exact(&mut buffer).unwrap();
 
             let metadata = u64::from_ne_bytes(buffer);
-            if (metadata & 0x8000000000000000) == 0 {
+            if (metadata & 0x8000_0000_0000_0000) == 0 {
                 panic!("Page not present");
             }
 
-            let pfn = metadata & 0x7FFFFFFFFFFFFF;
+            let pfn = metadata & 0x7F_FFFF_FFFF_FFFF;
             if pfn == 0 {
                 panic!("Page not mapped");
             }

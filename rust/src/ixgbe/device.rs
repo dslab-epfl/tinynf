@@ -58,7 +58,7 @@ impl<'a> Device<'a> {
         }
 
         let pci_bar0_high = env.pci_read(pci_address, pci_regs::BAR0_HIGH);
-        let dev_phys_addr = ((pci_bar0_high as u64) << 32) | ((pci_bar0_low as u64) & !0b1111);
+        let dev_phys_addr = ((pci_bar0_high as usize) << 32) | ((pci_bar0_low as usize) & !0b1111);
 
         let buffer = env.map_physical_memory::<u32>(dev_phys_addr, 128 * 1024 / size_of::<u32>());
         println!("device phys = {} virt = {:p}\n", dev_phys_addr, buffer);
@@ -104,11 +104,14 @@ impl<'a> Device<'a> {
         );
 
         regs::set_field(buffer, regs::CTRL, regs::CTRL_::RST);
+ 
         env.sleep(Duration::from_millis(1));
+ 
         env.sleep(Duration::from_millis(10));
-        regs::write(buffer, regs::EIMC(0), 0x7FFFFFFF);
+ 
+        regs::write(buffer, regs::EIMC(0), 0x7FFF_FFFF);
         for n in 1..device_limits::INTERRUPT_REGISTERS_COUNT {
-            regs::write(buffer, regs::EIMC(n), 0xFFFFFFFF);
+            regs::write(buffer, regs::EIMC(n), 0xFFFF_FFFF);
         }
 
         regs::write_field(buffer, regs::FCRTH(0), regs::FCRTH_::RTH, (512 * 1024 - 0x6000) / 32);
@@ -137,7 +140,7 @@ impl<'a> Device<'a> {
             },
         );
 
-        for n in 0..device_limits::UNICAST_TABLE_ARRAY_SIZE {
+        for n in 0..device_limits::UNICAST_TABLE_ARRAY_SIZE / 32 {
             regs::clear(buffer, regs::PFUTA(n));
         }
 
