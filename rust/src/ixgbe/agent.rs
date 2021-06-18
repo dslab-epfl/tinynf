@@ -89,7 +89,8 @@ impl Agent<'_> {
             );
             self.outputs[0] = 0;
             let mut o: u8 = 1;
-            for r in &mut self.other_rings { // I tried an explicit for n in 0..self.other_rings.len() but there was still a bounds check :/
+            // I tried an explicit for n in 0..self.other_rings.len() but there was still a bounds check :/
+            for r in &mut self.other_rings {
                 volatile::write(
                     &mut r[self.process_delimiter as usize].metadata,
                     u64::to_le(self.outputs[o as usize] as u64 | rs_bit | (1 << (24 + 1)) | (1 << 24)),
@@ -115,7 +116,7 @@ impl Agent<'_> {
                 volatile::write(self.receive_tail, u32::to_le(earliest_transmit_head.wrapping_sub(1) % driver_constants::RING_SIZE as u32));
             }
             n += 1;
-        };
+        }
         if n != 0 {
             for tail in &mut self.transmit_tails {
                 volatile::write(*tail, u32::to_le(self.process_delimiter as u32));

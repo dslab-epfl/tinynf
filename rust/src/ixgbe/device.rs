@@ -103,11 +103,11 @@ impl<'a> Device<'a> {
         );
 
         regs::set_field(buffer, regs::CTRL, regs::CTRL_::RST);
- 
+
         env.sleep(Duration::from_millis(1));
- 
+
         env.sleep(Duration::from_millis(10));
- 
+
         regs::write(buffer, regs::EIMC(0), 0x7FFF_FFFF);
         for n in 1..device_limits::INTERRUPT_REGISTERS_COUNT {
             regs::write(buffer, regs::EIMC(n), 0xFFFF_FFFF);

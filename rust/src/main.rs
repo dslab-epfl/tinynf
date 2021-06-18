@@ -24,7 +24,7 @@ fn parse_pci_address(s: &str) -> PciAddress {
     PciAddress {
         bus: u8::from_str_radix(parts[0], 16).unwrap(),
         device: u8::from_str_radix(parts[1], 16).unwrap(),
-        function: u8::from_str_radix(parts[2], 16).unwrap()
+        function: u8::from_str_radix(parts[2], 16).unwrap(),
     }
 }
 

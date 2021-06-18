@@ -2,5 +2,5 @@
 pub struct PciAddress {
     pub bus: u8,
     pub device: u8,
-    pub function: u8
+    pub function: u8,
 }

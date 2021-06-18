@@ -1,9 +1,7 @@
 use std::ptr;
 
 pub fn read<T>(r: &T) -> T {
-    unsafe {
-        ptr::read_volatile(r as *const T)
-    }
+    unsafe { ptr::read_volatile(r as *const T) }
 }
 
 pub fn write<T>(r: &mut T, value: T) {

@@ -1,11 +1,11 @@
 use std::convert::TryInto;
-use std::io::{self, Read, Seek};
 use std::fs::OpenOptions;
+use std::io::{self, Read, Seek};
 use std::mem::size_of;
 use std::ptr;
 use std::slice;
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
 use x86_64::instructions::port::Port;
 
@@ -24,7 +24,6 @@ pub trait Environment {
 
     fn sleep(&self, duration: Duration);
 }
-
 
 // --- PCI ---
 
@@ -51,9 +50,11 @@ fn port_in_32(port: u16) -> u32 {
 }
 
 fn pci_target(address: PciAddress, register: u8) {
-    port_out_32(PCI_CONFIG_ADDR, 0x80000000 | ((address.bus as u32) << 16) | ((address.device as u32) << 11) | ((address.function as u32) << 8) | register as u32);
+    port_out_32(
+        PCI_CONFIG_ADDR,
+        0x80000000 | ((address.bus as u32) << 16) | ((address.device as u32) << 11) | ((address.function as u32) << 8) | register as u32,
+    );
 }
-
 
 // --- Linux ---
 
@@ -65,7 +66,7 @@ static mut MAPS: Vec<memmap::MmapMut> = Vec::new();
 
 pub struct LinuxEnvironment {
     allocated_page: *mut u8,
-    used_bytes: usize
+    used_bytes: usize,
 }
 
 impl LinuxEnvironment {
@@ -77,7 +78,7 @@ impl LinuxEnvironment {
                 libc::PROT_READ | libc::PROT_WRITE,
                 libc::MAP_HUGETLB | (HUGEPAGE_LOG << libc::MAP_HUGE_SHIFT) as i32 | libc::MAP_ANONYMOUS | libc::MAP_SHARED | libc::MAP_POPULATE,
                 -1,
-                0
+                0,
             );
             if page == libc::MAP_FAILED {
                 panic!("Mmap failed");
@@ -85,7 +86,7 @@ impl LinuxEnvironment {
 
             LinuxEnvironment {
                 allocated_page: page as *mut u8,
-                used_bytes: 0
+                used_bytes: 0,
             }
         }
     }
@@ -107,7 +108,7 @@ impl Environment for LinuxEnvironment {
             panic!("Not enough space for alignment");
         }
 
-        unsafe {        
+        unsafe {
             self.allocated_page = self.allocated_page.add(align_diff);
         }
         self.used_bytes += align_diff;
@@ -122,9 +123,7 @@ impl Environment for LinuxEnvironment {
         }
         self.used_bytes += full_size;
 
-        unsafe {
-            slice::from_raw_parts_mut(result as *mut T, count)
-        }
+        unsafe { slice::from_raw_parts_mut(result as *mut T, count) }
     }
 
     fn map_physical_memory<T>(&self, addr: usize, size: usize) -> &'static mut [T] {
@@ -133,7 +132,7 @@ impl Environment for LinuxEnvironment {
         unsafe {
             let map = memmap::MmapOptions::new().offset(addr.try_into().unwrap()).len(full_size).map_mut(&file).unwrap();
             MAPS.push(map);
-            let result = &mut MAPS[MAPS.len()-1][..];
+            let result = &mut MAPS[MAPS.len() - 1][..];
             let (prefix, result, suffix) = result.align_to_mut::<T>();
             if !prefix.is_empty() || !suffix.is_empty() {
                 panic!("Something went wrong with the /dev/mem mapping");
@@ -151,7 +150,7 @@ impl Environment for LinuxEnvironment {
 
             let mut pagemap = OpenOptions::new().read(true).open("/proc/self/pagemap").unwrap();
             pagemap.seek(io::SeekFrom::Start(map_offset as u64)).unwrap();
-        
+
             let mut buffer = [0; size_of::<u64>()];
             pagemap.read_exact(&mut buffer).unwrap();
 
@@ -170,15 +169,15 @@ impl Environment for LinuxEnvironment {
         }
     }
 
-     fn pci_read(&self, addr: PciAddress, register: u8) -> u32 {
-         pci_target(addr, register);
-         port_in_32(PCI_CONFIG_DATA)
-     }
+    fn pci_read(&self, addr: PciAddress, register: u8) -> u32 {
+        pci_target(addr, register);
+        port_in_32(PCI_CONFIG_DATA)
+    }
 
-     fn pci_write(&self, addr: PciAddress, register: u8, value: u32) {
-         pci_target(addr, register);
-         port_out_32(PCI_CONFIG_DATA, value);
-     }
+    fn pci_write(&self, addr: PciAddress, register: u8, value: u32) {
+        pci_target(addr, register);
+        port_out_32(PCI_CONFIG_DATA, value);
+    }
 
     fn sleep(&self, duration: Duration) {
         thread::sleep(duration);
