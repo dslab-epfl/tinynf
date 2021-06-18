@@ -10,9 +10,6 @@ use env::LinuxEnvironment;
 mod pci;
 use pci::PciAddress;
 
-// todo remove
-use crate::env::Environment;
-
 mod volatile; // declare it so ixgbe can use it... weird
 
 mod ixgbe;
@@ -81,6 +78,4 @@ fn main() {
     println!("All good, running...");
 
     run(&mut agent0, &mut agent1);
-
-    env.pci_write(pci0, 1, 1);
 }

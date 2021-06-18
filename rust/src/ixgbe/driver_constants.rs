@@ -6,4 +6,4 @@ pub const MAX_OUTPUTS: usize = 256;
 
 pub const FLUSH_PERIOD: usize = 8;
 
-pub const RECYCLE_PERIOD: u8 = 16;
+pub const RECYCLE_PERIOD: u8 = 64;

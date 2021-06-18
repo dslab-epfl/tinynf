@@ -74,7 +74,6 @@ impl Agent<'_> {
 
             let length = receive_metadata as u16;
             processor(&mut self.packets[self.process_delimiter as usize], length, self.outputs);
-            println!("Got packet, length = {}, output length = {}\n", length, self.outputs[0]);
 
             let rs_bit: u64 = if self.process_delimiter % driver_constants::RECYCLE_PERIOD == (driver_constants::RECYCLE_PERIOD - 1) {
                 1 << (24 + 3)
@@ -114,26 +113,12 @@ impl Agent<'_> {
                 }
 
                 volatile::write(self.receive_tail, u32::to_le(earliest_transmit_head.wrapping_sub(1) % driver_constants::RING_SIZE as u32));
-                println!("rx tail, which is at {:p}, is now {}\n", self.receive_tail, volatile::read(self.receive_tail));
             }
             n += 1;
         };
         if n != 0 {
             for tail in &mut self.transmit_tails {
                 volatile::write(*tail, u32::to_le(self.process_delimiter as u32));
-                println!("tail, which is at {:p}, is now {}\n", *tail, volatile::read(*tail));
-                unsafe {
-                    let hd = (*tail as *mut u32).sub(2);
-                    println!("corresponding head, at {:p}, is now {}\n", hd, *hd);
-                    let ctl = (*tail as *mut u32).add(0x10 / 4);
-                    println!("and ctl {}\n", *ctl);
-  /*                  let a = (*tail as *mut u32).add((0x87A0 - 0x6018) / 4);
-                    let b = (*tail as *mut u32).add((0x87A4 - 0x6018) / 4);
-                    let c = (*tail as *mut u32).add((0x87A8 - 0x6018) / 4);
-                    let d = (*tail as *mut u32).add((0x8680 - 0x6018) / 4);
-                    let e = (*tail as *mut u32).sub(0x6018 / 4).add(0x4080 / 4);
-                    println!("stats {} {} {} {} {}\n", *a, *b, *c, *d, *e);
-*/                }
             }
         }
     }

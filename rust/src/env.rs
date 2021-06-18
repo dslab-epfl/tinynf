@@ -135,7 +135,7 @@ impl Environment for LinuxEnvironment {
             MAPS.push(map);
             let result = &mut MAPS[MAPS.len()-1][..];
             let (prefix, result, suffix) = result.align_to_mut::<T>();
-            if prefix.len() != 0 || suffix.len() != 0 {
+            if !prefix.is_empty() || !suffix.is_empty() {
                 panic!("Something went wrong with the /dev/mem mapping");
             }
             result
