@@ -64,8 +64,7 @@ def get_env(nf, env):
 
 def get_cflags(nf, env):
   result = []
-  if env.get('ALLOW_LTO', '0') == '1':
-    result.append('-flto') # LTO
+  result.append('-flto') # LTO
   result.append('-s') # strip
   return result
 
@@ -97,7 +96,6 @@ def bench(path, name, extra_env):
     if result == 0:
       break
     else:
-      sys.exit(1)
       time.sleep(60)
 
   remove(out_folder + '/latencies') # don't keep old latencies around
@@ -105,11 +103,10 @@ def bench(path, name, extra_env):
 
 
 cpu_low_power()
-#bench('../code', 'C', {})
-#bench('../code', 'C, LTO', {'ALLOW_LTO': '1'})
-#bench('../csharp', 'C#, JIT', {'CSHARP_MODE': 'safe'})
+bench('../code', 'C', {})
+bench('../csharp', 'C#, JIT', {'CSHARP_MODE': 'safe'})
 bench('../csharp', 'C# extended, JIT', {'CSHARP_MODE': 'extended'})
-#bench('../csharp', 'C#, AOT', {'CSHARP_MODE': 'safe', 'CSHARP_AOT': 'y'})
-#bench('../csharp', 'C# extended, AOT', {'CSHARP_MODE': 'extended', 'CSHARP_AOT': 'y'})
-#bench('../rust', 'Rust', {})
+bench('../csharp', 'C#, AOT', {'CSHARP_MODE': 'safe', 'CSHARP_AOT': 'y'})
+bench('../csharp', 'C# extended, AOT', {'CSHARP_MODE': 'extended', 'CSHARP_AOT': 'y'})
+bench('../rust', 'Rust', {})
 cpu_full_power()

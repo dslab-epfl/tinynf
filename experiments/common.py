@@ -38,8 +38,6 @@ def get_color_and_marker(nf):
     if 'extended' in nf:
       return ('#D16D2B', 'x')
     return ('#ED7D31', 'X')
-  if 'LTO' in nf:
-    return ('#203864', 'P')
   return ('#4472C4', '+')
 
   """# same colors as the figures
