@@ -86,9 +86,9 @@ void tn_mem_free(void* const addr)
 	munmap(addr, HUGEPAGE_SIZE);
 }
 
-bool tn_mem_phys_to_virt(const uintptr_t addr, const size_t size, void** out_virt_addr)
+bool tn_mem_phys_to_virt(const uint64_t addr, const size_t size, void** out_virt_addr)
 {
-	if (addr != (uintptr_t) (off_t) addr) {
+	if (addr != (uint64_t) (off_t) addr) {
 		TN_DEBUG("Cannot phys-to-virt an addr that does not roundtrip to off_t");
 		return false;
 	}

@@ -547,7 +547,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 	struct tn_net_device device = { 0 };
 	// Section 9.3.6.1 Memory and IO Base Address Registers:
 	// As indicated in Table 9-4, the low 4 bits are read-only and not part of the address
-	uintptr_t dev_phys_addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
+	uint64_t dev_phys_addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
 	// Section 8.1 Address Regions: "Region Size" of "Internal registers memories and Flash (memory BAR)" is "128 KB + Flash_Size"
 	// Thus we can ask for 128KB, since we don't know the flash size (and don't need it thus no need to actually check it)
 	if (!tn_mem_phys_to_virt(dev_phys_addr, 128 * 1024, &device.addr)) {

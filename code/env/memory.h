@@ -18,7 +18,7 @@ bool tn_mem_allocate(size_t size, void** out_addr);
 void tn_mem_free(void* addr);
 
 // Maps the region of physical address memory defined by (address, size) into virtual memory, or returns false.
-bool tn_mem_phys_to_virt(uintptr_t addr, size_t size, void** out_virt_addr);
+bool tn_mem_phys_to_virt(uint64_t addr, size_t size, void** out_virt_addr); // addr is uint64_t, not uintptr_t, because PCI BARs are 64-bit
 
 // Gets the physical address corresponding to the given virtual address, or returns false.
 bool tn_mem_virt_to_phys(void* addr, uintptr_t* out_phys_addr);
