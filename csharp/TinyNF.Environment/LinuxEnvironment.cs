@@ -122,7 +122,7 @@ namespace TinyNF.Environment
             return (nuint)(pfn * pageSize + addrOffset);
         }
 
-        public unsafe Memory<T> MapPhysicalMemory<T>(nuint addr, uint size)
+        public unsafe Memory<T> MapPhysicalMemory<T>(ulong addr, uint size)
             where T : unmanaged
         {
             if (size > int.MaxValue)

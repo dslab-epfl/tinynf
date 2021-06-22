@@ -58,7 +58,7 @@ impl<'a> Device<'a> {
         }
 
         let pci_bar0_high = env.pci_read(pci_address, pci_regs::BAR0_HIGH);
-        let dev_phys_addr = ((pci_bar0_high as usize) << 32) | ((pci_bar0_low as usize) & !0b1111);
+        let dev_phys_addr = ((pci_bar0_high as u64) << 32) | ((pci_bar0_low as u64) & !0b1111);
 
         let buffer = env.map_physical_memory::<u32>(dev_phys_addr, 128 * 1024 / size_of::<u32>());
 

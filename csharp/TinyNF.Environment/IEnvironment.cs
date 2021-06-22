@@ -6,7 +6,7 @@ namespace TinyNF.Environment
     {
         // Memory
         Memory<T> Allocate<T>(uint size) where T : unmanaged;
-        Memory<T> MapPhysicalMemory<T>(nuint addr, uint size) where T : unmanaged;
+        Memory<T> MapPhysicalMemory<T>(ulong addr, uint size) where T : unmanaged; // addr is ulong, not nuint, because PCI BARs are 64-bit
         nuint GetPhysicalAddress<T>(ref T value);
 
         // PCI

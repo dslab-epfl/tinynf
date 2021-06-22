@@ -59,7 +59,7 @@ namespace TinyNF.Ixgbe
             }
             uint pciBar0High = env.PciRead(pciAddress, PciRegs.BAR0_HIGH);
 
-            nuint devPhysAddr = (((nuint)pciBar0High) << 32) | (pciBar0Low & ~(nuint)0b1111);
+            ulong devPhysAddr = (((ulong)pciBar0High) << 32) | (pciBar0Low & ~(ulong)0b1111);
             _buffer = env.MapPhysicalMemory<uint>(devPhysAddr, 128 * 1024 / sizeof(uint));
 
             //            Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", pciAddress.Bus, pciAddress.Device, pciAddress.Function, devPhysAddr);

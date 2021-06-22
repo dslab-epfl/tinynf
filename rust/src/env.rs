@@ -16,7 +16,7 @@ use crate::pci::PciAddress;
 pub trait Environment {
     fn allocate<T, const COUNT: usize>(&mut self) -> &'static mut [T; COUNT];
     fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T];
-    fn map_physical_memory<T>(&self, addr: usize, size: usize) -> &'static mut [T];
+    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &'static mut [T]; // addr is u64, not usize, because PCI BARs are 64-bit
     fn get_physical_address<T>(&self, value: *mut T) -> usize; // mut to emphasize that gaining the phys addr might allow HW to write
 
     fn pci_read(&self, addr: PciAddress, register: u8) -> u32;
@@ -126,11 +126,11 @@ impl Environment for LinuxEnvironment {
         unsafe { slice::from_raw_parts_mut(result as *mut T, count) }
     }
 
-    fn map_physical_memory<T>(&self, addr: usize, size: usize) -> &'static mut [T] {
+    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &'static mut [T] {
         let full_size = size * size_of::<T>();
         let file = OpenOptions::new().read(true).write(true).open("/dev/mem").unwrap();
         unsafe {
-            let map = memmap::MmapOptions::new().offset(addr.try_into().unwrap()).len(full_size).map_mut(&file).unwrap();
+            let map = memmap::MmapOptions::new().offset(addr).len(full_size).map_mut(&file).unwrap();
             MAPS.push(map);
             let result = &mut MAPS[MAPS.len() - 1][..];
             let (prefix, result, suffix) = result.align_to_mut::<T>();
