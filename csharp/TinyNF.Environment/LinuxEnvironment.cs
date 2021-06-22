@@ -35,14 +35,14 @@ namespace TinyNF.Environment
         // Necessary because .NET has no port I/O intrinsics
         private static unsafe class PortInterop
         {
-            public const uint PCI_CONFIG_ADDR = 0xCF8;
-            public const uint PCI_CONFIG_DATA = 0xCFC;
+            public const ushort PCI_CONFIG_ADDR = 0xCF8;
+            public const ushort PCI_CONFIG_DATA = 0xCFC;
 
             [DllImport("cwrapper")]
-            public static extern bool port_out_32(uint port, uint value);
+            public static extern bool port_out_32(ushort port, uint value);
 
             [DllImport("cwrapper")]
-            public static extern uint port_in_32(uint port);
+            public static extern uint port_in_32(ushort port);
         }
 
         private Memory<byte>? _allocatedPage;
