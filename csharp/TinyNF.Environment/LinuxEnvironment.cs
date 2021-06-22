@@ -45,39 +45,38 @@ namespace TinyNF.Environment
             public static extern uint port_in_32(ushort port);
         }
 
-        private Memory<byte>? _allocatedPage;
+        private Memory<byte> _allocatedPage;
         private ulong _usedBytes;
+
+        public unsafe LinuxEnvironment()
+        {
+            void* page = OSInterop.mmap(
+                // No specific address
+                0,
+                // Size of the mapping
+                HugepageSize,
+                // R/W page
+                OSInterop.PROT_READ | OSInterop.PROT_WRITE,
+                // Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
+                // MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
+                // which is required if the calling code tries to get the physical address of the page without accessing it first.
+                OSInterop.MAP_HUGETLB | ((int)Math.Log2(HugepageSize) << OSInterop.MAP_HUGE_SHIFT) | OSInterop.MAP_ANONYMOUS | OSInterop.MAP_SHARED | OSInterop.MAP_POPULATE,
+                // Required on MAP_ANONYMOUS
+                -1,
+                // Required on MAP_ANONYMOUS
+                0
+            );
+            if (page == OSInterop.MAP_FAILED)
+            {
+                throw new Exception("mmap failed");
+            }
+            _allocatedPage = new UnmanagedMemoryManager<byte>((byte*)page, HugepageSize).Memory;
+            _usedBytes = 0;
+        }
 
         public unsafe Memory<T> Allocate<T>(uint size)
             where T : unmanaged
         {
-            if (_allocatedPage == null)
-            {
-                void* page = OSInterop.mmap(
-                    // No specific address
-                    0,
-                    // Size of the mapping
-                    HugepageSize,
-                    // R/W page
-                    OSInterop.PROT_READ | OSInterop.PROT_WRITE,
-                    // Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
-                    // MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
-                    // which is required if the calling code tries to get the physical address of the page without accessing it first.
-                    OSInterop.MAP_HUGETLB | ((int)Math.Log2(HugepageSize) << OSInterop.MAP_HUGE_SHIFT) | OSInterop.MAP_ANONYMOUS | OSInterop.MAP_SHARED | OSInterop.MAP_POPULATE,
-                    // Required on MAP_ANONYMOUS
-                    -1,
-                    // Required on MAP_ANONYMOUS
-                    0
-                );
-                if (page == OSInterop.MAP_FAILED)
-                {
-                    throw new Exception("mmap failed");
-                }
-
-                _allocatedPage = new UnmanagedMemoryManager<byte>((byte*)page, HugepageSize).Memory;
-                _usedBytes = 0;
-            }
-
             var fullSize = size * (uint)Marshal.SizeOf<T>();
 
             // Return and align to an integral number of cache lines
@@ -89,11 +88,11 @@ namespace TinyNF.Environment
 
             // Align as required by the contract
             var alignDiff = _usedBytes % fullSize;
-            _allocatedPage = _allocatedPage.Value[(int)alignDiff..];
+            _allocatedPage = _allocatedPage[(int)alignDiff..];
             _usedBytes += alignDiff;
 
-            var result = _allocatedPage.Value.Slice(0, (int)fullSize);
-            _allocatedPage = _allocatedPage.Value[(int)fullSize..];
+            var result = _allocatedPage.Slice(0, (int)fullSize);
+            _allocatedPage = _allocatedPage[(int)fullSize..];
             _usedBytes += fullSize;
 
             return new CastMemoryManager<byte, T>(result).Memory;
