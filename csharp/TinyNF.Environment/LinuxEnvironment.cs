@@ -66,23 +66,14 @@ namespace TinyNF.Environment
             _usedBytes = 0;
         }
 
-        public unsafe Memory<T> Allocate<T>(uint size)
+        public unsafe Memory<T> Allocate<T>(uint count)
             where T : unmanaged
         {
-            var fullSize = size * (uint)Marshal.SizeOf<T>();
-
-            // Return and align to an integral number of cache lines
-            // This is a bit more complex than in C because we must also return a number that makes sense given the size of T
-            while (fullSize % 64 != 0)
-            {
-                fullSize += (uint)Marshal.SizeOf<T>();
-            }
-
-            // Align as required by the contract
-            var alignDiff = _usedBytes % fullSize;
+            var alignDiff = _usedBytes % (ulong)(Marshal.SizeOf<T>() + 64 - (Marshal.SizeOf<T>() % 64));
             _allocatedPage = _allocatedPage[(int)alignDiff..];
             _usedBytes += alignDiff;
 
+            var fullSize = count * (uint)Marshal.SizeOf<T>();
             var result = _allocatedPage.Slice(0, (int)fullSize);
             _allocatedPage = _allocatedPage[(int)fullSize..];
             _usedBytes += fullSize;
@@ -122,20 +113,20 @@ namespace TinyNF.Environment
             return (nuint)(pfn * pageSize + addrOffset);
         }
 
-        public unsafe Memory<T> MapPhysicalMemory<T>(ulong addr, uint size)
+        public unsafe Memory<T> MapPhysicalMemory<T>(ulong addr, uint count)
             where T : unmanaged
         {
-            if (size > int.MaxValue)
+            if (count > int.MaxValue)
             {
-                throw new ArgumentOutOfRangeException(nameof(size), "Cannot map this much memory");
+                throw new ArgumentOutOfRangeException(nameof(count), "Cannot map this much memory");
             }
 
             byte* ptr = null;
             // we'll never call ReleasePointer, but that's ok, the memory will be released when we exit
             MemoryMappedFile.CreateFromFile("/dev/mem", FileMode.Open, null, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes)
-                            .CreateViewAccessor((long)addr, size * Marshal.SizeOf<T>())
+                            .CreateViewAccessor((long)addr, count * Marshal.SizeOf<T>())
                             .SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
-            return new UnmanagedMemoryManager<T>((T*)ptr, (int)size).Memory;
+            return new UnmanagedMemoryManager<T>((T*)ptr, (int)count).Memory;
         }
 
         private static void PciTarget(PciAddress address, byte reg)

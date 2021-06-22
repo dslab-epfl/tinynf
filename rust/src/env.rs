@@ -16,7 +16,7 @@ use crate::pci::PciAddress;
 pub trait Environment {
     fn allocate<T, const COUNT: usize>(&mut self) -> &'static mut [T; COUNT];
     fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T];
-    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &'static mut [T]; // addr is u64, not usize, because PCI BARs are 64-bit
+    fn map_physical_memory<T>(&self, addr: u64, count: usize) -> &'static mut [T]; // addr is u64, not usize, because PCI BARs are 64-bit
     fn get_physical_address<T>(&self, value: *mut T) -> usize; // mut to emphasize that gaining the phys addr might allow HW to write
 
     fn pci_read(&self, addr: PciAddress, register: u8) -> u32;
@@ -98,12 +98,7 @@ impl Environment for LinuxEnvironment {
     }
 
     fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T] {
-        let mut full_size = count * size_of::<T>();
-        while full_size % 64 != 0 {
-            full_size += size_of::<T>();
-        }
-
-        let align_diff = self.used_bytes % full_size;
+        let align_diff = self.used_bytes % (size_of::<T>() + 64 - (size_of::<T>() % 64));
         if align_diff + self.used_bytes >= HUGEPAGE_SIZE {
             panic!("Not enough space for alignment");
         }
@@ -113,6 +108,7 @@ impl Environment for LinuxEnvironment {
         }
         self.used_bytes += align_diff;
 
+        let full_size = count * size_of::<T>();
         if full_size + self.used_bytes >= HUGEPAGE_SIZE {
             panic!("Not enough space for allocation");
         }
@@ -126,8 +122,8 @@ impl Environment for LinuxEnvironment {
         unsafe { slice::from_raw_parts_mut(result as *mut T, count) }
     }
 
-    fn map_physical_memory<T>(&self, addr: u64, size: usize) -> &'static mut [T] {
-        let full_size = size * size_of::<T>();
+    fn map_physical_memory<T>(&self, addr: u64, count: usize) -> &'static mut [T] {
+        let full_size = count * size_of::<T>();
         let file = OpenOptions::new().read(true).write(true).open("/dev/mem").unwrap();
         unsafe {
             let map = memmap::MmapOptions::new().offset(addr).len(full_size).map_mut(&file).unwrap();
