@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Numerics;
+using System.Threading;
 using TinyNF.Environment;
 
 namespace TinyNF.Ixgbe
@@ -66,7 +67,7 @@ namespace TinyNF.Ixgbe
     {
         public static uint Read(Memory<uint> buffer, uint reg)
         {
-            return Endianness.FromLittle(buffer.Span[(int)reg / sizeof(uint)]);
+            return Endianness.FromLittle(Volatile.Read(ref buffer.Span[(int)reg / sizeof(uint)]));
         }
 
         public static uint ReadField(Memory<uint> buffer, uint reg, uint field)
@@ -78,7 +79,7 @@ namespace TinyNF.Ixgbe
 
         public static void Write(Memory<uint> buffer, uint reg, uint value)
         {
-            buffer.Span[(int)reg / sizeof(uint)] = Endianness.ToLittle(value);
+            Volatile.Write(ref buffer.Span[(int)reg / sizeof(uint)], Endianness.ToLittle(value));
         }
 
         public static void WriteField(Memory<uint> buffer, uint reg, uint field, uint fieldValue)
