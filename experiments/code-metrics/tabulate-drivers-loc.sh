@@ -1,30 +1,12 @@
 #!/bin/sh
 
-git submodule update --init --recursive
+printf 'NOTE: C# includes two versions, normal and extended, which inflates the numbers...'
 
-printf 'This is going to take a few minutes...\n\n'
-
-DRIVERS='DPDK Ixy TinyNF'
-
-get_code()
-{
-  if [ "$1" = 'Ixy' ]; then
-    printf '../baselines/ixy/ixy/src/driver'
-  elif [ "$1" = 'DPDK' ]; then
-    printf '../baselines/dpdk/dpdk/drivers/net/ixgbe'
-  else
-    printf '../../code/net/82599'
-  fi
-}
-
-printf '\tInit\t\tRX\t\tTX\n'
-printf '\t#funs\t#LoCs\t#funs\t#LoCs\t#funs\t#LoCs\n'
-
-for d in $DRIVERS; do
-  printf '%s\t' "$d"
-  for x in 'Init' 'RX' 'TX'; do
-    ./count-functions-loc.py "$(get_code $d)" "data/$d-$x.md"
-    printf '\t'
-  done
-  printf '\n'
+printf 'Lang\tLines\n'
+for lang in c csharp rust; do
+  ext="$lang"
+  if [ "$lang" = 'csharp' ]; then ext='cs'; fi
+  if [ "$lang" = 'rust' ]; then ext='rs'; fi
+  lines=$(cloc "../../$lang" --include-ext="$ext" --quiet | tail -n 2 | head -n 1 | awk '{print $5}')
+  printf '%s\t%s\n' "$lang" "$lines"
 done
