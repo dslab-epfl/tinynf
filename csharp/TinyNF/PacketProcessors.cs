@@ -3,9 +3,9 @@ using TinyNF.Unsafe;
 
 namespace TinyNF
 {
-    public interface IPacketProcessor 
-    { 
-        void Process(ref PacketData data, ushort length, Array256<ushort> outputs); 
+    public interface IPacketProcessor
+    {
+        void Process(ref PacketData data, ushort length, Array256<ushort> outputs);
     }
 
     public interface ISafePacketProcessor
