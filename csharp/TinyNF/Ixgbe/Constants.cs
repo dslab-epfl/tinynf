@@ -113,7 +113,7 @@ namespace TinyNF.Ixgbe
         }
 
         // Section 8.2.3.1.1 Device Control Register
-        public static uint CTRL => 0x00000u;
+        public const uint CTRL = 0x00000u;
         public static class CTRL_
         {
             public const uint MASTER_DISABLE = 1 << 2;
@@ -121,7 +121,7 @@ namespace TinyNF.Ixgbe
         }
 
         // Section 8.2.3.1.3 Extended Device Control Register
-        public static uint CTRLEXT => 0x00018u;
+        public const uint CTRLEXT = 0x00018u;
         public static class CTRLEXT_
         {
             public const uint NSDIS = 1 << 16;
@@ -142,21 +142,21 @@ namespace TinyNF.Ixgbe
         }
 
         // Section 8.2.3.9.2 DMA Tx Control
-        public static uint DMATXCTL => 0x04A80u;
+        public const uint DMATXCTL = 0x04A80u;
         public static class DMATXCTL_
         {
             public const uint TE = 1 << 0;
         }
 
         // Section 8.2.3.9.1 DMA Tx TCP Max Allow Size Requests
-        public static uint DTXMXSZRQ => 0x08100u;
+        public const uint DTXMXSZRQ = 0x08100u;
         public static class DTXMXSZRQ_
         {
             public const uint MAX_BYTES_NUM_REQ = 0b0111_1111_1111;
         }
 
         // Section 8.2.3.2.1 EEPROM/Flash Control Register
-        public static uint EEC => 0x10010u;
+        public const uint EEC = 0x10010u;
         public static class EEC_
         {
             public const uint EE_PRES = 1 << 8;
@@ -167,7 +167,7 @@ namespace TinyNF.Ixgbe
         public static uint EIMC(uint n) => n == 0 ? 0x00888u : (0x00AB0u + 4u * (n - 1u));
 
         // Section 8.2.3.3.7 Flow Control Configuration
-        public static uint FCCFG => 0x03D00u;
+        public const uint FCCFG = 0x03D00u;
         public static class FCCFG_
         {
             public const uint TFCE = 0b0001_1000;
@@ -181,7 +181,7 @@ namespace TinyNF.Ixgbe
         }
 
         // Section 8.2.3.7.1 Filter Control Register (FCTRL)
-        public static uint FCTRL => 0x05080u;
+        public const uint FCTRL = 0x05080u;
         public static class FCTRL_
         {
             public const uint MPE = 1 << 8;
@@ -196,28 +196,28 @@ namespace TinyNF.Ixgbe
         }
 
         // Section 8.2.3.4.10 Firmware Semaphore Register
-        public static uint FWSM => 0x10148u;
+        public const uint FWSM = 0x10148u;
         public static class FWSM_
         {
             public const uint EXT_ERR_IND = 0b0001_1111_1000_0000_0000_0000_0000;
         }
 
         // Section 8.2.3.4.12 PCIe Control Extended Register
-        public static uint GCREXT => 0x11050u;
+        public const uint GCREXT = 0x11050u;
         public static class GCREXT_
         {
             public const uint BUFFERS_CLEAR_FUNC = 1 << 30;
         }
 
         // Section 8.2.3.22.8 MAC Core Control 0 Register
-        public static uint HLREG0 => 0x04240u;
+        public const uint HLREG0 = 0x04240u;
         public static class HLREG0_
         {
             public const uint LPBK = 1 << 15;
         }
 
         // Section 8.2.3.22.34 MAC Flow Control Register
-        public static uint MFLCN => 0x04294u;
+        public const uint MFLCN = 0x04294u;
         public static class MFLCN_
         {
             public const uint RFCE = 1 << 3;
@@ -249,7 +249,7 @@ namespace TinyNF.Ixgbe
 
         // Section 8.2.3.8.8 Receive DMA Control Register
         // INTERPRETATION-MISSING: Bit 0, which is not mentioned in the table, is reserved
-        public static uint RDRXCTL => 0x02F00u;
+        public const uint RDRXCTL = 0x02F00u;
         public static class RDRXCTL_
         {
             public const uint CRC_STRIP = 1 << 1;
@@ -263,20 +263,20 @@ namespace TinyNF.Ixgbe
         public static uint RDT(uint n) => n <= 63u ? (0x01018u + 0x40u * n) : (0x0D018u + 0x40u * (n - 64u));
 
         // Section 8.2.3.10.2 DCB Transmit Descriptor Plane Control and Status
-        public static uint RTTDCS => 0x04900u;
+        public const uint RTTDCS = 0x04900u;
         public static class RTTDCS_
         {
             public const uint ARBDIS = 1 << 6;
         }
 
         // Section 8.2.3.10.13 DCB Transmit Descriptor Plane Queue Select
-        public static uint RTTDQSEL => 0x04904u;
+        public const uint RTTDQSEL = 0x04904u;
 
         // Section 8.2.3.10.14 DCB Transmit Descriptor Plane T1 Config
-        public static uint RTTDT1C => 0x04908u;
+        public const uint RTTDT1C = 0x04908u;
 
         // Section 8.2.3.8.10 Receive Control Register
-        public static uint RXCTRL => 0x03000u;
+        public const uint RXCTRL = 0x03000u;
         public static class RXCTRL_
         {
             public const uint RXEN = 1 << 0;
@@ -293,14 +293,14 @@ namespace TinyNF.Ixgbe
         public static uint RXPBSIZE(uint n) => 0x03C00u + 4u * n;
 
         // Section 8.2.3.12.5 Security Rx Control
-        public static uint SECRXCTRL => 0x08D00u;
+        public const uint SECRXCTRL = 0x08D00u;
         public static class SECRXCTRL_
         {
             public const uint RX_DIS = 1 << 1;
         }
 
         // Section 8.2.3.12.6 Security Rx Status
-        public static uint SECRXSTAT => 0x08D04u;
+        public const uint SECRXSTAT = 0x08D04u;
         public static class SECRXSTAT_
         {
             public const uint SECRX_RDY = 1 << 0;
@@ -315,7 +315,7 @@ namespace TinyNF.Ixgbe
         }
 
         // Section 8.2.3.1.2 Device Status Register
-        public static uint STATUS => 0x00008u;
+        public const uint STATUS = 0x00008u;
         public static class STATUS_
         {
             public const uint PCIE_MASTER_ENABLE_STATUS = 1 << 19;
