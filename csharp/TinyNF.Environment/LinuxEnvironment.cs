@@ -51,19 +51,11 @@ namespace TinyNF.Environment
         public unsafe LinuxEnvironment()
         {
             void* page = OSInterop.mmap(
-                // No specific address
                 0,
-                // Size of the mapping
                 HugepageSize,
-                // R/W page
                 OSInterop.PROT_READ | OSInterop.PROT_WRITE,
-                // Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
-                // MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
-                // which is required if the calling code tries to get the physical address of the page without accessing it first.
                 OSInterop.MAP_HUGETLB | ((int)Math.Log2(HugepageSize) << OSInterop.MAP_HUGE_SHIFT) | OSInterop.MAP_ANONYMOUS | OSInterop.MAP_SHARED | OSInterop.MAP_POPULATE,
-                // Required on MAP_ANONYMOUS
                 -1,
-                // Required on MAP_ANONYMOUS
                 0
             );
             if (page == OSInterop.MAP_FAILED)
@@ -98,7 +90,6 @@ namespace TinyNF.Environment
             return new CastMemoryManager<byte, T>(result).Memory;
         }
 
-        // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
         public unsafe nuint GetPhysicalAddress<T>(ref T value)
         {
             nuint pageSize = (nuint)System.Environment.SystemPageSize;
@@ -117,12 +108,10 @@ namespace TinyNF.Environment
             }
 
             ulong metadata = MemoryMarshal.Cast<byte, ulong>(readBytes)[0];
-            // We want the PFN, but it's only meaningful if the page is present; bit 63 indicates whether it is
             if ((metadata & 0x8000000000000000ul) == 0)
             {
                 throw new Exception("Page not present");
             }
-            // PFN = bits 0-54
             ulong pfn = metadata & 0x7FFFFFFFFFFFFFul;
             if (pfn == 0)
             {
