@@ -1,17 +1,26 @@
-with Interfaces;
-
 package Ixgbe is
-  subtype UInt32 is Interfaces.Unsigned_32;
-  subtype Int64 is Interfaces.Integer_64;
+  type VolatileUInt32 is mod 2 ** 32
+    with Volatile;
+  type VolatileUInt64 is mod 2 ** 64
+    with Volatile;
+
+  function From_Little(Value: in VolatileUInt32) return VolatileUInt32
+    with Inline_Always;
+  function From_Little(Value: in VolatileUInt64) return VolatileUInt64
+    with Inline_Always;
+  function To_Little(Value: in VolatileUInt32) return VolatileUInt32
+    with Inline_Always;
+  function To_Little(Value: in VolatileUInt64) return VolatileUInt64
+    with Inline_Always;
 
   type Descriptor is record
-    Buffer: Int64;
-    Metadata: Int64;
+    Buffer: VolatileUInt64;
+    Metadata: VolatileUInt64;
   end record
-  with Pack;
+    with Pack;
 
-  type TransmitHead is record
-    Value: UInt32;
+  type Transmit_Head is record
+    Value: VolatileUInt32;
   end record;
-  for TransmitHead'Alignment use 64; -- full cache line to avoid contention
+  for Transmit_Head'Alignment use 64; -- full cache line to avoid contention
 end Ixgbe;
