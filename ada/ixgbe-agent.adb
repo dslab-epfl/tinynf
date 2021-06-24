@@ -8,7 +8,7 @@ package body Ixgbe.Agent is
   procedure Run(This: in out Agent;
                 Proc: in Processor)
   is
-    N: Integer range 0 .. 8;
+    N: Integer range 0 .. Ixgbe.Constants.Flush_Period;
     Receive_Metadata: VolatileUInt64;
     Length: Packet_Length;
     RS_Bit: VolatileUInt64;
@@ -18,14 +18,14 @@ package body Ixgbe.Agent is
     Diff: VolatileUInt64;
   begin
     N := 0;
-    while N < 8 loop
+    while N < Ixgbe.Constants.Flush_Period loop
       Receive_Metadata := From_Little(This.Receive_Ring(This.Process_Delimiter).Metadata);
       exit when (Receive_Metadata and 16#00_00_00_01_00_00_00_00#) = 0;
 
       Length := Packet_Length(Receive_Metadata);
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
-      RS_Bit := (if (This.Process_Delimiter mod 64) = 63 then 16#00_00_00_00_08_00_00_00# else 0);
+      RS_Bit := (if (This.Process_Delimiter mod Ixgbe.Constants.Recycle_Period) = (Ixgbe.Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
       for N in This.Transmit_Rings'Range loop
         This.Transmit_Rings(N)(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(N)) or RS_Bit or 16#00_00_00_00_03_00_00_00#);
