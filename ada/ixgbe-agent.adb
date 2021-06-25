@@ -9,6 +9,7 @@ package body Ixgbe.Agent is
                 Proc: in Processor)
   is
     N: Integer range 0 .. Ixgbe.Constants.Flush_Period;
+    M: Outputs_Range;
     Receive_Metadata: VolatileUInt64;
     Length: Packet_Length;
     RS_Bit: VolatileUInt64;
@@ -22,14 +23,18 @@ package body Ixgbe.Agent is
       Receive_Metadata := From_Little(This.Receive_Ring(This.Process_Delimiter).Metadata);
       exit when (Receive_Metadata and 16#00_00_00_01_00_00_00_00#) = 0;
 
-      Length := Packet_Length(Receive_Metadata);
+      Length := Packet_Length(Receive_Metadata mod 2 ** 16);
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
       RS_Bit := (if (This.Process_Delimiter mod Ixgbe.Constants.Recycle_Period) = (Ixgbe.Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
-      for N in This.Transmit_Rings'Range loop
-        This.Transmit_Rings(N)(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(N)) or RS_Bit or 16#00_00_00_00_03_00_00_00#);
-        This.Outputs(N) := 0;
+      -- Ideally this'd be done with "for R in This.Transmit_Rings'Range" but the compiler inserts an unnecessary bounds check for This.Outputs,
+      -- even though Tranmit_Rings'Range is a subrange of Outputs'Range by definition :/
+      M := 0;
+      for R of This.Transmit_Rings.all loop
+        R(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(M)) or RS_Bit or 16#00_00_00_00_03_00_00_00#);
+        This.Outputs(M) := 0;
+        M := M + 1;
       end loop;
 
       This.Process_Delimiter := This.Process_Delimiter + 1;
@@ -37,8 +42,8 @@ package body Ixgbe.Agent is
       if RS_Bit /= 0 then
         Earliest_Transmit_Head := VolatileUInt32(This.Process_Delimiter);
         Min_Diff := VolatileUint64'Last;
-        for N in This.Transmit_Heads'Range loop
-          Head := From_Little(This.Transmit_Heads(N).Value);
+        for H of This.Transmit_Heads.all loop
+          Head := From_Little(H.Value);
           Diff := VolatileUInt64(Head) - VolatileUInt64(This.Process_Delimiter);
           if Diff <= Min_Diff then
             Earliest_Transmit_Head := Head;
@@ -50,8 +55,8 @@ package body Ixgbe.Agent is
       end if;
     end loop;
     if N /= 0 then
-      for N in This.Transmit_Tails'Range loop
-        This.Transmit_Tails(N).all := To_Little(VolatileUInt32(This.Process_Delimiter));
+      for T of This.Transmit_Tails.all loop
+        T.all := To_Little(VolatileUInt32(This.Process_Delimiter));
       end loop;
     end if;
   end Run;
