@@ -28,8 +28,7 @@ package body Ixgbe.Agent is
 
       RS_Bit := (if (This.Process_Delimiter mod Ixgbe.Constants.Recycle_Period) = (Ixgbe.Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
-      -- Ideally this'd be done with "for R in This.Transmit_Rings'Range" but the compiler inserts an unnecessary bounds check for This.Outputs,
-      -- even though Tranmit_Rings'Range is a subrange of Outputs'Range by definition :/
+      -- I cannot find a way to get GNAT to not emit bounds checks when using a single index for both :/
       M := 0;
       for R of This.Transmit_Rings.all loop
         R(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(M)) or RS_Bit or 16#00_00_00_00_03_00_00_00#);
