@@ -25,4 +25,6 @@ package Environment is
   type Pci_Value is mod 2 ** 32;
   function Pci_Read(Addr: in Pci_Address; Reg: in Pci_Register) return Pci_Value;
   procedure Pci_Write(Addr: in Pci_Address; Reg: in Pci_Register; Value: in Pci_Value);
+
+  -- no "sleep" function here like in C; Ada has a built-in "delay" statement
 end Environment;
