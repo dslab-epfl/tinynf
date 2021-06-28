@@ -1,4 +1,16 @@
+with Interfaces; use Interfaces;
+
 package Ixgbe.Regs is
+  function Read(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
+  function Read_Field(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Field: Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
+  procedure Write(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32);
+  procedure Write_Field(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Field: Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32);
+  procedure Clear(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32);
+  procedure Clear_Field(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Field: Interfaces.Unsigned_32);
+  procedure Set_Field(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Field: Interfaces.Unsigned_32);
+  function Is_Field_Cleared(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Field: Interfaces.Unsigned_32) return Boolean is (Read_Field(Buffer, Reg, Field) = 0);
+
+
   CTRL: constant := 16#00000#;
   CTRL_MASTER_DISABLE: constant := 2#100#;
   CTRL_RST: constant := 2#100_0000_0000_0000_0000_0000_0000#; -- bit 26

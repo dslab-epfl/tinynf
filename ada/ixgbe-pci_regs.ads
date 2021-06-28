@@ -1,4 +1,12 @@
+with Interfaces; use Interfaces;
+
+with Environment; use Environment;
+
 package Ixgbe.Pci_Regs is
+   function Read_Field(Addr: Pci_Address; Reg: Pci_Register; Field: Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
+   function Is_Field_Cleared(Addr: Pci_Address; Reg: Pci_Register; Field: Interfaces.Unsigned_32) return Boolean is (Read_Field(Addr, Reg, Field) = 0);
+   procedure Set_Field(Addr: Pci_Address; Reg: Pci_Register; Field: Interfaces.Unsigned_32);
+
    BAR0_LOW: constant := 16#10#;
    BAR0_HIGH: constant := 16#14#;
 

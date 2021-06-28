@@ -197,17 +197,17 @@ package body Environment is
     end if;
   end;
 
-  function Pci_Read(Addr: in Pci_Address; Reg: in Pci_Register) return Pci_Value is
+  function Pci_Read(Addr: in Pci_Address; Reg: in Pci_Register) return Interfaces.Unsigned_32 is
   begin
     IO_Ensure_Access;
     Pci_Target(Addr, Reg);
-    return Pci_Value(IO_inl(PCI_CONFIG_DATA));
+    return IO_inl(PCI_CONFIG_DATA);
   end;
 
-  procedure Pci_Write(Addr: in Pci_Address; Reg: in Pci_Register; Value: in Pci_Value) is
+  procedure Pci_Write(Addr: in Pci_Address; Reg: in Pci_Register; Value: in Interfaces.Unsigned_32) is
   begin
     IO_Ensure_Access;
     Pci_Target(Addr, Reg);
-    IO_outl(PCI_CONFIG_DATA, Interfaces.Unsigned_32(Value));
+    IO_outl(PCI_CONFIG_DATA, Value);
   end;
 end Environment;
