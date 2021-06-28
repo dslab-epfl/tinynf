@@ -35,12 +35,10 @@ package body Environment is
                                   Interfaces.C.long(0));
   Allocator_Used_Bytes: Storage_Offset := 0;
 
-  function Int_To_Address is new Ada.Unchecked_Conversion (Integer, Address);
-
   function Allocate(Count: in Integer) return T_Array is
     Align_Diff: Storage_Offset;
   begin
-    if Allocator_Page = Int_To_Address(-1) then -- MAP_FAILED
+    if Allocator_Page = To_Address(-1) then -- MAP_FAILED
       GNAT.OS_Lib.OS_Exit(1);
     end if;
 
