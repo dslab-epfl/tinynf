@@ -1,8 +1,10 @@
 with Ada.Unchecked_Conversion;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
+with System.Address_to_Access_Conversions;
+with Interfaces; use Interfaces;
 with Interfaces.C;
-with GNAT.OS_Lib;
+with GNAT.OS_Lib; use GNAT.OS_Lib;
 
 package body Environment is
   -- void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
@@ -39,7 +41,7 @@ package body Environment is
     Align_Diff: Storage_Offset;
   begin
     if Allocator_Page = To_Address(-1) then -- MAP_FAILED
-      GNAT.OS_Lib.OS_Exit(1);
+      OS_Exit(1);
     end if;
 
     -- Note that Ada's 'Size is in bits!
@@ -56,5 +58,51 @@ package body Environment is
       Allocator_Used_Bytes := Allocator_Used_bytes + Storage_Offset(Count * T'Size*8);
       return Result;
     end;
+  end;
+
+
+  -- long sysconf(int name);
+  function Sysconf(Name: Interfaces.C.int) return Interfaces.C.long
+    with Import => True,
+         Convention => C,
+         External_Name => "sysconf";
+
+  SC_PAGESIZE: constant Interfaces.C.int := 30;
+
+  function Get_Physical_Address(Value: T_Access) return Interfaces.Unsigned_64 is
+    package T_Conversions is new System.Address_to_Access_Conversions(T);
+    Page_Size: Integer_Address;
+    Addr: Integer_Address;
+    Page: Integer_Address;
+    Page_Map_FD: File_Descriptor;
+    Metadata: Interfaces.Unsigned_64;
+    Read_Count: Integer;
+    PFN: Interfaces.Unsigned_64;
+  begin
+    Page_Size := Integer_Address(Sysconf(SC_PAGESIZE));
+    if Page_Size < 0 then
+      OS_Exit(2);
+    end if;
+
+    Addr := To_Integer(T_Conversions.To_Address(T_Conversions.Object_Pointer(Value)));
+    Page := Addr / Page_Size;
+
+    Page_Map_FD := GNAT.OS_Lib.Open_Read("/proc/self/pagemap", Binary);
+    LSeek(Page_Map_FD, Long_Integer(Page) / 64, Seek_Cur);
+    Read_Count := Read(Page_Map_FD, Metadata'Address, Metadata'Size*8);
+    if Read_Count < Metadata'Size*8 then
+      OS_Exit(3);
+    end if;
+
+    if (Metadata and 16#8000000000000000#) = 0 then
+      OS_Exit(4);
+    end if;
+
+    PFN := Metadata and 16#7FFFFFFFFFFFFF#;
+    if PFN = 0 then
+      OS_Exit(5);
+    end if;
+
+    return PFN * Interfaces.Unsigned_64(Page_Size) + Interfaces.Unsigned_64(Addr rem Page_Size);
   end;
 end Environment;
