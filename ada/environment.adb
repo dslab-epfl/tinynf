@@ -6,6 +6,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 with Interfaces.C;
 with GNAT.OS_Lib; use GNAT.OS_Lib;
+with Text_IO;
 
 package body Environment is
   -- void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
@@ -42,7 +43,8 @@ package body Environment is
     Align_Diff: Storage_Offset;
   begin
     if Allocator_Page = To_Address(-1) then -- MAP_FAILED
-      OS_Exit(1);
+      Text_IO.Put_Line("Mmap of hugepage for allocator failed");
+      OS_Abort;
     end if;
 
     -- Note that Ada's 'Size is in bits!
@@ -82,7 +84,8 @@ package body Environment is
   begin
     Page_Size := Integer_Address(Sysconf(SC_PAGESIZE));
     if Page_Size < 0 then
-      OS_Exit(2);
+      Text_IO.Put_Line("Could not get page size");
+      OS_Abort;
     end if;
 
     Addr := To_Integer(T_Conversions.To_Address(T_Conversions.Object_Pointer(Value)));
@@ -90,22 +93,26 @@ package body Environment is
 
     Page_Map_FD := Open_Read("/proc/self/pagemap", Binary);
     if Page_Map_FD < 0 then
-      OS_Exit(3);
+      Text_IO.Put_Line("Could not open pagemap");
+      OS_Abort;
     end if;
 
     LSeek(Page_Map_FD, Long_Integer(Page) / 64, Seek_Cur);
     Read_Count := Read(Page_Map_FD, Metadata'Address, Metadata'Size/8);
     if Read_Count < Metadata'Size/8 then
-      OS_Exit(4);
+      Text_IO.Put_Line("Could not read from pagemap");
+      OS_Abort;
     end if;
 
     if (Metadata and 16#8000000000000000#) = 0 then
-      OS_Exit(5);
+      Text_IO.Put_Line("Page not present");
+      OS_Abort;
     end if;
 
     PFN := Metadata and 16#7FFFFFFFFFFFFF#;
     if PFN = 0 then
-      OS_Exit(6);
+      Text_IO.Put_Line("PFN is zero");
+      OS_Abort;
     end if;
 
     return PFN * Interfaces.Unsigned_64(Page_Size) + Interfaces.Unsigned_64(Addr rem Page_Size);
@@ -118,7 +125,8 @@ package body Environment is
   begin
     Mem_FD := Open_Read_Write("/dev/mem", Binary);
     if Mem_FD < 0 then
-      OS_Exit(7);
+      Text_IO.Put_Line("Could not open dev mem");
+      OS_Abort;
     end if;
 
     Mapped_Address := Mmap(Null_Address,
@@ -128,7 +136,8 @@ package body Environment is
                            Interfaces.C.int(Mem_FD),
                            Interfaces.C.long(Addr));
     if Mapped_Address = To_Address(-1) then
-      OS_Exit(8);
+      Text_IO.Put_Line("Could not mmap dev mem");
+      OS_Abort;
     end if;
 
     Close(Mem_FD);
@@ -183,7 +192,8 @@ package body Environment is
   procedure IO_Ensure_Access is
   begin
     if Integer(IOPerm(16#80#, 1, 1)) < 0 or else Integer(IOPerm(PCI_CONFIG_ADDR, 4, 1)) < 0 or else Integer(IOPerm(PCI_CONFIG_DATA, 4, 1)) < 0 then
-      OS_Exit(10);
+      Text_IO.Put_Line("Could not ioperm, are you root?");
+      OS_Abort;
     end if;
   end;
 
