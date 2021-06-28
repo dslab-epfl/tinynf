@@ -8,4 +8,8 @@ package Environment is
   generic type T is private;
   type T_Access is access all T;
   function Get_Physical_Address(Value: T_Access) return Interfaces.Unsigned_64;
+
+  generic type T is private;
+  type T_Array is array(Integer range <>) of T;
+  function Map_Physical_Memory(Addr: Integer; Count: Integer) return T_Array;
 end Environment;

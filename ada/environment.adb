@@ -46,7 +46,7 @@ package body Environment is
 
     -- Note that Ada's 'Size is in bits!
 
-    Align_Diff := Allocator_Used_Bytes rem (T'Size*8 + 64 - (T'Size*8 rem 64));
+    Align_Diff := Allocator_Used_Bytes rem (T'Size/8 + 64 - (T'Size/8 rem 64));
     Allocator_Page := Allocator_Page + Align_Diff;
     Allocator_Used_Bytes := Allocator_Used_Bytes + Align_Diff;
 
@@ -54,8 +54,8 @@ package body Environment is
       Result: T_Array(0.. Count - 1);
       for Result'Address use Allocator_Page;
     begin
-      Allocator_Page := Allocator_Page + Storage_Offset(Count * T'Size*8);
-      Allocator_Used_Bytes := Allocator_Used_bytes + Storage_Offset(Count * T'Size*8);
+      Allocator_Page := Allocator_Page + Storage_Offset(Count * T'Size/8);
+      Allocator_Used_Bytes := Allocator_Used_bytes + Storage_Offset(Count * T'Size/8);
       return Result;
     end;
   end;
@@ -87,22 +87,56 @@ package body Environment is
     Addr := To_Integer(T_Conversions.To_Address(T_Conversions.Object_Pointer(Value)));
     Page := Addr / Page_Size;
 
-    Page_Map_FD := GNAT.OS_Lib.Open_Read("/proc/self/pagemap", Binary);
-    LSeek(Page_Map_FD, Long_Integer(Page) / 64, Seek_Cur);
-    Read_Count := Read(Page_Map_FD, Metadata'Address, Metadata'Size*8);
-    if Read_Count < Metadata'Size*8 then
+    Page_Map_FD := Open_Read("/proc/self/pagemap", Binary);
+    if Page_Map_FD < 0 then
       OS_Exit(3);
     end if;
 
-    if (Metadata and 16#8000000000000000#) = 0 then
+    LSeek(Page_Map_FD, Long_Integer(Page) / 64, Seek_Cur);
+    Read_Count := Read(Page_Map_FD, Metadata'Address, Metadata'Size/8);
+    if Read_Count < Metadata'Size/8 then
       OS_Exit(4);
+    end if;
+
+    if (Metadata and 16#8000000000000000#) = 0 then
+      OS_Exit(5);
     end if;
 
     PFN := Metadata and 16#7FFFFFFFFFFFFF#;
     if PFN = 0 then
-      OS_Exit(5);
+      OS_Exit(6);
     end if;
 
     return PFN * Interfaces.Unsigned_64(Page_Size) + Interfaces.Unsigned_64(Addr rem Page_Size);
+  end;
+
+
+  function Map_Physical_Memory(Addr: Integer; Count: Integer) return T_Array is
+    Mem_FD: File_Descriptor;
+    Mapped_Address: Address;
+  begin
+    Mem_FD := Open_Read_Write("/dev/mem", Binary);
+    if Mem_FD < 0 then
+      OS_Exit(7);
+    end if;
+
+    Mapped_Address := Mmap(Null_Address,
+                           Interfaces.C.size_t(Count * T'Size/8),
+                           Interfaces.C.int(PROT_READ or PROT_WRITE),
+                           Interfaces.C.int(MAP_SHARED),
+                           Interfaces.C.int(Mem_FD),
+                           Interfaces.C.long(Addr));
+    if Mapped_Address = To_Address(-1) then
+      OS_Exit(8);
+    end if;
+
+    Close(Mem_FD);
+
+    declare
+      Result: T_Array(0 .. Count - 1);
+      for Result'Address use Mapped_Address;
+    begin
+      return Result;
+    end;
   end;
 end Environment;
