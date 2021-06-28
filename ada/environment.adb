@@ -1,7 +1,8 @@
 with Ada.Unchecked_Conversion;
 with System; use System;
-with System.Storage_Elements; use System.Storage_Elements;
 with System.Address_to_Access_Conversions;
+with System.Machine_Code;
+with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 with Interfaces.C;
 with GNAT.OS_Lib; use GNAT.OS_Lib;
@@ -138,5 +139,65 @@ package body Environment is
     begin
       return Result;
     end;
+  end;
+
+
+
+  -- int ioperm(unsigned long from, unsigned long num, int turn_on);
+  function IOPerm(From: Interfaces.C.unsigned_long; Num: Interfaces.C.unsigned_long; Turn_On: Interfaces.C.int) return Interfaces.C.int
+    with Import => True,
+         Convention => C,
+         External_Name => "ioperm";
+
+  PCI_CONFIG_ADDR: constant := 16#CF8#;
+  PCI_CONFIG_DATA: constant := 16#CFC#;
+
+  procedure IO_outl(Port: in Interfaces.Unsigned_16; Value: in Interfaces.Unsigned_32) is
+  begin
+    System.Machine_Code.Asm("outl %0, %w1", Inputs => (Interfaces.Unsigned_32'Asm_Input("a", Value), Interfaces.Unsigned_16'Asm_Input("Nd", Port)), Volatile => True);
+  end;
+
+  procedure IO_outb(Port: in Interfaces.Unsigned_16; Value: in Interfaces.Unsigned_8) is
+  begin
+    System.Machine_Code.Asm("outb %b0, %w1", Inputs => (Interfaces.Unsigned_8'Asm_Input("a", Value), Interfaces.Unsigned_16'Asm_Input("Nd", Port)), Volatile => True);
+  end;
+
+  function IO_inl(Port: in Interfaces.Unsigned_16) return Interfaces.Unsigned_32 is
+    Value: Interfaces.Unsigned_32;
+  begin
+    System.Machine_Code.Asm("inl %w1, %0", Outputs => Interfaces.Unsigned_32'Asm_Output("=a", Value), Inputs => Interfaces.Unsigned_16'Asm_Input("Nd", Port), Volatile => True);
+    return Value;
+  end;
+
+  procedure Pci_Target(Addr: in Pci_Address; Reg: in Pci_Register) is
+  begin
+    IO_outl(PCI_CONFIG_ADDR,
+            16#80000000# or
+            Shift_Left(Interfaces.Unsigned_32(Addr.Bus), 16) or
+            Shift_Left(Interfaces.Unsigned_32(Addr.Device), 11) or
+            Shift_Left(Interfaces.Unsigned_32(Addr.Func), 8) or
+            Interfaces.Unsigned_32(Reg));
+    IO_outb(16#80#, 0);
+  end;
+
+  procedure IO_Ensure_Access is
+  begin
+    if Integer(IOPerm(16#80#, 1, 1)) < 0 or else Integer(IOPerm(PCI_CONFIG_ADDR, 4, 1)) < 0 or else Integer(IOPerm(PCI_CONFIG_DATA, 4, 1)) < 0 then
+      OS_Exit(10);
+    end if;
+  end;
+
+  function Pci_Read(Addr: in Pci_Address; Reg: in Pci_Register) return Pci_Value is
+  begin
+    IO_Ensure_Access;
+    Pci_Target(Addr, Reg);
+    return Pci_Value(IO_inl(PCI_CONFIG_DATA));
+  end;
+
+  procedure Pci_Write(Addr: in Pci_Address; Reg: in Pci_Register; Value: in Pci_Value) is
+  begin
+    IO_Ensure_Access;
+    Pci_Target(Addr, Reg);
+    IO_outl(PCI_CONFIG_DATA, Interfaces.Unsigned_32(Value));
   end;
 end Environment;
