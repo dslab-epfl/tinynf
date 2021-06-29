@@ -1,9 +1,10 @@
 with System.Storage_Elements;
-with Ixgbe.Constants;
+with Ixgbe; use Ixgbe;
+with Ixgbe_Constants;
 
-package Ixgbe.Agent is
+package Ixgbe_Agent is
   type Outputs_Range is mod 2 ** 8;
-  type Packet_Buffer_Length is mod Ixgbe.Constants.Packet_Buffer_Size;
+  type Packet_Buffer_Length is mod Ixgbe_Constants.Packet_Buffer_Size;
   type Packet_Length is mod 2 ** 16;
 
   type Packet_Data is array(Packet_Buffer_Length) of System.Storage_Elements.Storage_Element;
@@ -19,7 +20,7 @@ package Ixgbe.Agent is
                 Proc: in Processor);
 
 private
-  type Delimiter_Range is mod Ixgbe.Constants.Ring_Size;
+  type Delimiter_Range is mod Ixgbe_Constants.Ring_Size;
 
   type Packet_Array is array(Delimiter_Range) of Packet_Data;
   type Descriptor_Ring is array(Delimiter_Range) of Descriptor;
@@ -38,4 +39,4 @@ private
     Process_Delimiter: Delimiter_Range;
   end record;
 
-end Ixgbe.Agent;
+end Ixgbe_Agent;

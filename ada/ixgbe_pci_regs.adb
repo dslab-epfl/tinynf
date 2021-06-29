@@ -1,4 +1,4 @@
-package body Ixgbe.Pci_Regs is
+package body Ixgbe_Pci_Regs is
   function CountTrailingZeroes(N: Interfaces.Unsigned_32) return Integer
     with Import => True,
          Convention => Intrinsic,
@@ -21,4 +21,4 @@ package body Ixgbe.Pci_Regs is
     New_Value := Old_Value or Field;
     Environment.Pci_Write(Addr, Reg, New_Value);
   end;
-end Ixgbe.Pci_Regs;
+end Ixgbe_Pci_Regs;

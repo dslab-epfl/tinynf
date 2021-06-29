@@ -1,4 +1,4 @@
-package body Ixgbe.Agent is
+package body Ixgbe_Agent is
   function Init_Agent return Agent is
   begin
     raise Program_Error;
@@ -8,7 +8,7 @@ package body Ixgbe.Agent is
   procedure Run(This: in out Agent;
                 Proc: in Processor)
   is
-    N: Integer range 0 .. Ixgbe.Constants.Flush_Period;
+    N: Integer range 0 .. Ixgbe_Constants.Flush_Period;
     M: Outputs_Range;
     Receive_Metadata: VolatileUInt64;
     Length: Packet_Length;
@@ -19,14 +19,14 @@ package body Ixgbe.Agent is
     Diff: VolatileUInt64;
   begin
     N := 0;
-    while N < Ixgbe.Constants.Flush_Period loop
+    while N < Ixgbe_Constants.Flush_Period loop
       Receive_Metadata := From_Little(This.Receive_Ring(This.Process_Delimiter).Metadata);
       exit when (Receive_Metadata and 16#00_00_00_01_00_00_00_00#) = 0;
 
       Length := Packet_Length(Receive_Metadata mod 2 ** 16);
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
-      RS_Bit := (if (This.Process_Delimiter mod Ixgbe.Constants.Recycle_Period) = (Ixgbe.Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
+      RS_Bit := (if (This.Process_Delimiter mod Ixgbe_Constants.Recycle_Period) = (Ixgbe_Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
       -- I cannot find a way to get GNAT to not emit bounds checks when using a single index for both :/
       M := 0;
@@ -59,4 +59,4 @@ package body Ixgbe.Agent is
       end loop;
     end if;
   end Run;
-end Ixgbe.Agent;
+end Ixgbe_Agent;

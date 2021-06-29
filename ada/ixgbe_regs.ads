@@ -1,6 +1,8 @@
 with Interfaces; use Interfaces;
 
-package Ixgbe.Regs is
+with Ixgbe; use Ixgbe;
+
+package Ixgbe_Regs is
   function Read(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
   function Read_Field(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Field: Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
   procedure Write(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32);
@@ -135,4 +137,4 @@ package Ixgbe.Regs is
 
   function TXPBTHRESH(n: VolatileUInt32) return VolatileUInt32 is (16#04950# + 4*n);
   TXPBTHRESH_THRESH: constant := 2#11_1111_1111#; -- BITS(0,9)
-end Ixgbe.Regs;
+end Ixgbe_Regs;

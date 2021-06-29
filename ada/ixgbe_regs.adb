@@ -1,4 +1,4 @@
-package body Ixgbe.Regs is
+package body Ixgbe_Regs is
   function CountTrailingZeroes(N: Interfaces.Unsigned_32) return Integer
     with Import => True,
          Convention => Intrinsic,
@@ -52,4 +52,4 @@ package body Ixgbe.Regs is
     New_Value := Old_Value or Field;
     Write(Buffer, Reg, New_value);
   end;
-end Ixgbe.Regs;
+end Ixgbe_Regs;
