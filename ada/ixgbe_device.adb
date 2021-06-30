@@ -3,12 +3,19 @@ with System.Storage_Elements;
 with Text_IO;
 with GNAT.OS_Lib;
 
+with Ixgbe_Constants;
+with Ixgbe_Limits;
 with Ixgbe_Pci_Regs;
+with Ixgbe_Regs;
+
+-- NOTE: No "if after timeout" like in C because I don't see a clean way to do it, so we just always wait
 
 package body Ixgbe_Device is
   package Pci_Regs renames Ixgbe_Pci_Regs;
+  package Regs renames Ixgbe_Regs;
 
   function Init_Device(Addr: in Pci_Address) return Dev is
+    Buffer: Dev_Buffer_Access;
   begin
     if System.Storage_Elements.Integer_Address'Size > 64 then
       Text_IO.Put_Line("Pointers must fit in 64 bits");
@@ -25,153 +32,154 @@ package body Ixgbe_Device is
       end if;
     end;
 
-            if (!PciRegs.IsFieldCleared(env, pciAddress, PciRegs.PMCSR, PciRegs.PMCSR_.POWER_STATE))
-            {
-                throw new Exception("PCI device not in D0.");
-            }
+    if not Pci_Regs.Is_Field_Cleared(Addr, Pci_Regs.PMCSR, Pci_Regs.PMCSR_POWER_STATE) then
+      Text_IO.Put_Line("PCI device not in D0.");
+      GNAT.OS_Lib.OS_Abort;
+    end if;
 
-            PciRegs.SetField(env, pciAddress, PciRegs.COMMAND, PciRegs.COMMAND_.BUS_MASTER_ENABLE);
-            PciRegs.SetField(env, pciAddress, PciRegs.COMMAND, PciRegs.COMMAND_.MEMORY_ACCESS_ENABLE);
-            PciRegs.SetField(env, pciAddress, PciRegs.COMMAND, PciRegs.COMMAND_.INTERRUPT_DISABLE);
+    Pci_Regs.Set_Field(Addr, Pci_Regs.COMMAND, Pci_Regs.COMMAND_BUS_MASTER_ENABLE);
+    Pci_Regs.Set_Field(Addr, Pci_Regs.COMMAND, Pci_Regs.COMMAND_MEMORY_ACCESS_ENABLE);
+    Pci_Regs.Set_Field(Addr, Pci_Regs.COMMAND, Pci_Regs.COMMAND_INTERRUPT_DISABLE);
 
-            uint pciBar0Low = env.PciRead(pciAddress, PciRegs.BAR0_LOW);
-            if ((pciBar0Low & 0b0100) == 0 || (pciBar0Low & 0b0010) != 0)
-            {
-                throw new Exception("BAR0 is not a 64-bit BAR");
-            }
-            uint pciBar0High = env.PciRead(pciAddress, PciRegs.BAR0_HIGH);
+    declare
+      Pci_Bar0_Low: Interfaces.Unsigned_32;
+      Pci_Bar0_High: Interfaces.Unsigned_32;
+      Dev_Phys_Addr: Integer;
+      function Map_Buffer is new Environment.Map_Physical_Memory(T => VolatileUInt32, T_Array => Dev_Buffer);
+    begin
+      Pci_Bar0_Low := Environment.Pci_Read(Addr, Pci_Regs.BAR0_LOW);
+      if (Pci_Bar0_Low and 2#0100#) = 0 or (Pci_Bar0_Low and 2#0010#) /= 0 then
+        Text_IO.Put_Line("BAR0 is not a 64-bit BAR");
+        GNAT.OS_Lib.OS_Abort;
+      end if;
+      Pci_Bar0_High := Environment.Pci_Read(Addr, Pci_Regs.BAR0_HIGH);
+      Dev_Phys_Addr := Integer(Shift_Left(Interfaces.Unsigned_64(Pci_Bar0_High), 32) or Interfaces.Unsigned_64(Pci_Bar0_Low and not 2#1111#));
+      Buffer := Map_Buffer(Dev_Phys_Addr, 128 * 1024 / 4)'Access;
+    end;
 
-            ulong devPhysAddr = (((ulong)pciBar0High) << 32) | (pciBar0Low & ~(ulong)0b1111);
-            _buffer = env.MapPhysicalMemory<uint>(devPhysAddr, 128 * 1024 / sizeof(uint));
+    --  todo translate?  Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", Addr.Bus, Addr.Device, Addr.Function, devPhysAddr);
 
-            //            Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", pciAddress.Bus, pciAddress.Device, pciAddress.Function, devPhysAddr);
+    for Queue in 0 .. Ixgbe_Limits.Receive_Queues_Count - 1 loop
+      Regs.Clear_Field(Buffer, Regs.RXDCTL(Queue), Regs.RXDCTL_ENABLE);
+      delay 0.05; -- we're going to do this 128 times so let's not always wait 1sec here...
+      if not Regs.Is_Field_Cleared(Buffer, Regs.RXDCTL(Queue), Regs.RXDCTL_ENABLE) then
+        delay 0.95;
+        if not Regs.Is_Field_Cleared(Buffer, Regs.RXDCTL(Queue), Regs.RXDCTL_ENABLE) then
+          Text_IO.Put_Line("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
+          GNAT.OS_Lib.OS_Abort;
+        end if;
+      end if;
+      delay 0.0001;
+    end loop;
 
+    Regs.Set_Field(Buffer, Regs.CTRL, Regs.CTRL_MASTER_DISABLE);
+    delay 1.0;
+    if not Regs.Is_Field_Cleared(Buffer, Regs.STATUS, Regs.STATUS_PCIE_MASTER_ENABLE_STATUS) then
+      if not Pci_Regs.Is_Field_Cleared(Addr, Pci_Regs.DEVICESTATUS, Pci_Regs.DEVICESTATUS_TRANSACTIONPENDING) then
+        Text_IO.Put_Line("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable to reset");
+        GNAT.OS_Lib.OS_Abort;
+      end if;
 
-            for (byte queue = 0; queue < DeviceLimits.ReceiveQueuesCount; queue++)
-            {
-                Regs.ClearField(_buffer, Regs.RXDCTL(queue), Regs.RXDCTL_.ENABLE);
-                IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => !Regs.IsFieldCleared(_buffer, Regs.RXDCTL(queue), Regs.RXDCTL_.ENABLE), () =>
-                {
-                    throw new Exception("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
-                });
-                env.Sleep(TimeSpan.FromMilliseconds(0.1));
-            }
+      Regs.Set_Field(Buffer, Regs.HLREG0, Regs.HLREG0_LPBK);
+      Regs.Clear_Field(Buffer, Regs.RXCTRL, Regs.RXCTRL_RXEN);
 
-            Regs.SetField(_buffer, Regs.CTRL, Regs.CTRL_.MASTER_DISABLE);
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => !Regs.IsFieldCleared(_buffer, Regs.STATUS, Regs.STATUS_.PCIE_MASTER_ENABLE_STATUS), () =>
-            {
-                if (!PciRegs.IsFieldCleared(env, pciAddress, PciRegs.DEVICESTATUS, PciRegs.DEVICESTATUS_.TRANSACTIONPENDING))
-                {
-                    throw new Exception("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable to reset");
-                }
+      Regs.Set_Field(Buffer, Regs.GCREXT, Regs.GCREXT_BUFFERS_CLEAR_FUNC);
+      delay 0.00002;
 
-                Regs.SetField(_buffer, Regs.HLREG0, Regs.HLREG0_.LPBK);
-                Regs.ClearField(_buffer, Regs.RXCTRL, Regs.RXCTRL_.RXEN);
+      Regs.Clear_Field(Buffer, Regs.HLREG0, Regs.HLREG0_LPBK);
+      Regs.Clear_Field(Buffer, Regs.GCREXT, Regs.GCREXT_BUFFERS_CLEAR_FUNC);
 
-                Regs.SetField(_buffer, Regs.GCREXT, Regs.GCREXT_.BUFFERS_CLEAR_FUNC);
-                env.Sleep(TimeSpan.FromMilliseconds(0.02));
+      Regs.Set_Field(Buffer, Regs.CTRL, Regs.CTRL_RST);
+      delay 0.00002;
+    end if;
 
-                Regs.ClearField(_buffer, Regs.HLREG0, Regs.HLREG0_.LPBK);
-                Regs.ClearField(_buffer, Regs.GCREXT, Regs.GCREXT_.BUFFERS_CLEAR_FUNC);
+    Regs.Set_Field(Buffer, Regs.CTRL, Regs.CTRL_RST);
 
-                Regs.SetField(_buffer, Regs.CTRL, Regs.CTRL_.RST);
-                env.Sleep(TimeSpan.FromMilliseconds(0.002));
-            });
+    delay 0.001;
+    delay 0.01;
 
-            Regs.SetField(_buffer, Regs.CTRL, Regs.CTRL_.RST);
+    Regs.Write(Buffer, Regs.EIMC(0), 16#7FFFFFFF#);
+    for N in 1 .. Ixgbe_Limits.Interrupt_Registers_Count - 1 loop
+      Regs.Write(Buffer, Regs.EIMC(N), 16#FFFFFFFF#);
+    end loop;
 
-            env.Sleep(TimeSpan.FromMilliseconds(1));
-            env.Sleep(TimeSpan.FromMilliseconds(10));
+    Regs.Write_Field(Buffer, Regs.FCRTH(0), Regs.FCRTH_RTH, (512 * 1024 - 16#6000#) / 32);
 
-            Regs.Write(_buffer, Regs.EIMC(0), 0x7FFFFFFFu);
-            for (byte n = 1; n < DeviceLimits.InterruptRegistersCount; n++)
-            {
-                Regs.Write(_buffer, Regs.EIMC(n), 0xFFFFFFFFu);
-            }
+    delay 1.0;
+    if Regs.Is_Field_Cleared(Buffer, Regs.EEC, Regs.EEC_AUTO_RD) then
+      Text_IO.Put_Line("EEPROM auto read timed out");
+      GNAT.OS_Lib.OS_Abort;
+    end if;
 
-            Regs.WriteField(_buffer, Regs.FCRTH(0), Regs.FCRTH_.RTH, (512 * 1024 - 0x6000) / 32);
+    if Regs.Is_Field_Cleared(Buffer, Regs.EEC, Regs.EEC_EE_PRES) or not Regs.Is_Field_Cleared(Buffer, Regs.FWSM, Regs.FWSM_EXT_ERR_IND) then
+      Text_IO.Put_Line("EEPROM not present or invalid");
+      GNAT.OS_Lib.OS_Abort;
+    end if;
 
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.EEC, Regs.EEC_.AUTO_RD), () =>
-            {
-                throw new Exception("EEPROM auto read timed out");
-            });
+    delay 1.0;
+    if Regs.Is_Field_Cleared(Buffer, Regs.RDRXCTL, Regs.RDRXCTL_DMAIDONE) then
+      Text_IO.Put_Line("DMA init timed out");
+      GNAT.OS_Lib.OS_Abort;
+    end if;
 
-            if (Regs.IsFieldCleared(_buffer, Regs.EEC, Regs.EEC_.EE_PRES) || !Regs.IsFieldCleared(_buffer, Regs.FWSM, Regs.FWSM_.EXT_ERR_IND))
-            {
-                throw new Exception("EEPROM not present or invalid");
-            }
+    for N in 0 .. Ixgbe_Limits.Unicast_Table_Array_Size / 32 - 1 loop
+      Regs.Clear(Buffer, Regs.PFUTA(N));
+    end loop;
 
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.RDRXCTL, Regs.RDRXCTL_.DMAIDONE), () =>
-            {
-                throw new Exception("DMA init timed out");
-            });
+    for N in 0 .. Ixgbe_Limits.Pools_Count - 1 loop
+      Regs.Clear(Buffer, Regs.PFVLVF(N));
+    end loop;
 
-            for (uint n = 0; n < DeviceLimits.UnicastTableArraySize / 32; n++)
-            {
-                Regs.Clear(_buffer, Regs.PFUTA(n));
-            }
+    Regs.Write(Buffer, Regs.MPSAR(0), 1);
+    for N in 1 .. Ixgbe_Limits.Receive_Addresses_Count * 2 - 1 loop
+      Regs.Clear(Buffer, Regs.MPSAR(N));
+    end loop;
 
-            for (byte n = 0; n < DeviceLimits.PoolsCount; n++)
-            {
-                Regs.Clear(_buffer, Regs.PFVLVF(n));
-            }
+    for N in 0 .. Ixgbe_Limits.Pools_Count * 2 - 1 loop
+      Regs.Clear(Buffer, Regs.PFVLVFB(N));
+    end loop;
 
-            Regs.Write(_buffer, Regs.MPSAR(0), 1);
-            for (ushort n = 1; n < DeviceLimits.ReceiveAddressesCount * 2; n++)
-            {
-                Regs.Clear(_buffer, Regs.MPSAR(n));
-            }
+    for N in 0 .. Ixgbe_Limits.Multicast_Table_Array_Size / 32 - 1 loop
+      Regs.Clear(Buffer, Regs.MTA(N));
+    end loop;
 
-            for (byte n = 0; n < DeviceLimits.PoolsCount * 2; n++)
-            {
-                Regs.Clear(_buffer, Regs.PFVLVFB(n));
-            }
+    for N in 0 .. Ixgbe_Limits.FiveTuple_Filters_Count - 1 loop
+      Regs.Clear_Field(Buffer, Regs.FTQF(N), Regs.FTQF_QUEUE_ENABLE);
+    end loop;
 
-            for (uint n = 0; n < DeviceLimits.MulticastTableArraySize / 32; n++)
-            {
-                Regs.Clear(_buffer, Regs.MTA(n));
-            }
+    Regs.Set_Field(Buffer, Regs.RDRXCTL, Regs.RDRXCTL_CRC_STRIP);
 
-            for (byte n = 0; n < DeviceLimits.FiveTupleFiltersCount; n++)
-            {
-                Regs.ClearField(_buffer, Regs.FTQF(n), Regs.FTQF_.QUEUE_ENABLE);
-            }
+    Regs.Clear_Field(Buffer, Regs.RDRXCTL, Regs.RDRXCTL_RSCFRSTSIZE);
 
-            Regs.SetField(_buffer, Regs.RDRXCTL, Regs.RDRXCTL_.CRC_STRIP);
+    Regs.Set_Field(Buffer, Regs.RDRXCTL, Regs.RDRXCTL_RSCACKC);
 
-            Regs.ClearField(_buffer, Regs.RDRXCTL, Regs.RDRXCTL_.RSCFRSTSIZE);
+    Regs.Set_Field(Buffer, Regs.RDRXCTL, Regs.RDRXCTL_FCOE_WRFIX);
 
-            Regs.SetField(_buffer, Regs.RDRXCTL, Regs.RDRXCTL_.RSCACKC);
+    for N in 1 .. Ixgbe_Limits.Traffic_Classes_Count - 1 loop
+      Regs.Clear(Buffer, Regs.RXPBSIZE(N));
+    end loop;
 
-            Regs.SetField(_buffer, Regs.RDRXCTL, Regs.RDRXCTL_.FCOE_WRFIX);
+    Regs.Set_Field(Buffer, Regs.MFLCN, Regs.MFLCN_RFCE);
 
-            for (byte n = 1; n < DeviceLimits.TrafficClassesCount; n++)
-            {
-                Regs.Clear(_buffer, Regs.RXPBSIZE(n));
-            }
+    Regs.Write_Field(Buffer, Regs.FCCFG, Regs.FCCFG_TFCE, 1);
 
-            Regs.SetField(_buffer, Regs.MFLCN, Regs.MFLCN_.RFCE);
+    for N in 0 .. Ixgbe_Limits.Transmit_Queues_Count - 1 loop
+      Regs.Write(Buffer, Regs.RTTDQSEL, Interfaces.Unsigned_32(N));
+      Regs.Clear(Buffer, Regs.RTTDT1C);
+    end loop;
 
-            Regs.WriteField(_buffer, Regs.FCCFG, Regs.FCCFG_.TFCE, 1);
+    Regs.Set_Field(Buffer, Regs.RTTDCS, Regs.RTTDCS_ARBDIS);
 
-            for (byte n = 0; n < DeviceLimits.TransmitQueuesCount; n++)
-            {
-                Regs.Write(_buffer, Regs.RTTDQSEL, n);
-                Regs.Clear(_buffer, Regs.RTTDT1C);
-            }
+    for N in 1 .. Ixgbe_Limits.Traffic_Classes_Count - 1 loop
+      Regs.Clear(Buffer, Regs.TXPBSIZE(N));
+    end loop;
 
-            Regs.SetField(_buffer, Regs.RTTDCS, Regs.RTTDCS_.ARBDIS);
+    Regs.Write_Field(Buffer, Regs.TXPBTHRESH(0), Regs.TXPBTHRESH_THRESH, 16#A0# - (Ixgbe_Constants.Packet_Buffer_Size / 1024));
 
-            for (byte n = 1; n < DeviceLimits.TrafficClassesCount; n++)
-            {
-                Regs.Clear(_buffer, Regs.TXPBSIZE(n));
-            }
+    Regs.Write_Field(Buffer, Regs.DTXMXSZRQ, Regs.DTXMXSZRQ_MAX_BYTES_NUM_REQ, 16#FFF#);
 
-            Regs.WriteField(_buffer, Regs.TXPBTHRESH(0), Regs.TXPBTHRESH_.THRESH, 0xA0u - (PacketData.Size / 1024u));
+    Regs.Clear_Field(Buffer, Regs.RTTDCS, Regs.RTTDCS_ARBDIS);
 
-            Regs.WriteField(_buffer, Regs.DTXMXSZRQ, Regs.DTXMXSZRQ_.MAX_BYTES_NUM_REQ, 0xFFF);
-
-            Regs.ClearField(_buffer, Regs.RTTDCS, Regs.RTTDCS_.ARBDIS);
-        }
+    return (Buffer => Buffer, RX_Enabled => False, TX_Enabled => False);
   end;
 end Ixgbe_Device;
