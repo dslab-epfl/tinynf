@@ -39,7 +39,7 @@ package body Environment is
                                   Interfaces.C.long(0));
   Allocator_Used_Bytes: Storage_Offset := 0;
 
-  function Allocate(Count: in Integer) return T_Array is
+  function Allocate return T_Array is
     Align_Diff: Storage_Offset;
   begin
     if Allocator_Page = To_Address(-1) then -- MAP_FAILED
@@ -54,11 +54,12 @@ package body Environment is
     Allocator_Used_Bytes := Allocator_Used_Bytes + Align_Diff;
 
     declare
-      Result: T_Array(0.. Count - 1);
+      Result: T_Array;
       for Result'Address use Allocator_Page;
+      Result_Length: Storage_Offset := Storage_Offset(R'Last - R'First + 1) * T'Size/8;
     begin
-      Allocator_Page := Allocator_Page + Storage_Offset(Count * T'Size/8);
-      Allocator_Used_Bytes := Allocator_Used_bytes + Storage_Offset(Count * T'Size/8);
+      Allocator_Page := Allocator_Page + Result_Length;
+      Allocator_Used_Bytes := Allocator_Used_bytes + Result_Length;
       return Result;
     end;
   end;
@@ -72,7 +73,7 @@ package body Environment is
 
   SC_PAGESIZE: constant Interfaces.C.int := 30;
 
-  function Get_Physical_Address(Value: T_Access) return Interfaces.Unsigned_64 is
+  function Get_Physical_Address(Value: access T) return Interfaces.Unsigned_64 is
     package T_Conversions is new System.Address_to_Access_Conversions(T);
     Page_Size: Integer_Address;
     Addr: Integer_Address;
@@ -119,7 +120,7 @@ package body Environment is
   end;
 
 
-  function Map_Physical_Memory(Addr: Integer; Count: Integer) return T_Array is
+  function Map_Physical_Memory(Addr: Integer) return T_Array is
     Mem_FD: File_Descriptor;
     Mapped_Address: Address;
   begin
@@ -130,7 +131,7 @@ package body Environment is
     end if;
 
     Mapped_Address := Mmap(Null_Address,
-                           Interfaces.C.size_t(Count * T'Size/8),
+                           Interfaces.C.size_t((R'Last - R'First + 1) * T'Size/8),
                            Interfaces.C.int(PROT_READ or PROT_WRITE),
                            Interfaces.C.int(MAP_SHARED),
                            Interfaces.C.int(Mem_FD),
@@ -143,7 +144,7 @@ package body Environment is
     Close(Mem_FD);
 
     declare
-      Result: T_Array(0 .. Count - 1);
+      Result: T_Array;
       for Result'Address use Mapped_Address;
     begin
       return Result;

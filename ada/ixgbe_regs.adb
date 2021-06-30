@@ -4,12 +4,12 @@ package body Ixgbe_Regs is
          Convention => Intrinsic,
          External_Name => "__builtin_ctz";
 
-  function Read(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32) return Interfaces.Unsigned_32 is
+  function Read(Buffer: in Dev_Buffer; Reg: in Interfaces.Unsigned_32) return Interfaces.Unsigned_32 is
   begin
-    return Interfaces.Unsigned_32(From_Little(Buffer(Integer(Reg / 4))));
+    return Interfaces.Unsigned_32(From_Little(Buffer(Dev_Buffer_Range(Reg / 4))));
   end;
 
-  function Read_Field(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Field: Interfaces.Unsigned_32) return Interfaces.Unsigned_32 is
+  function Read_Field(Buffer: in Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32) return Interfaces.Unsigned_32 is
     Value: Interfaces.Unsigned_32;
     Shift: Integer;
   begin
@@ -18,12 +18,12 @@ package body Ixgbe_Regs is
     return Shift_Right(Value and Field, Shift);
   end;
 
-  procedure Write(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32) is
+  procedure Write(Buffer: in out Dev_Buffer; Reg: in Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32) is
   begin
-    Buffer(Integer(Reg / 4)) := To_Little(VolatileUInt32(Value));
+    Buffer(Dev_Buffer_Range(Reg / 4)) := To_Little(VolatileUInt32(Value));
   end;
 
-  procedure Write_Field(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Field: Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32) is
+  procedure Write_Field(Buffer: in out Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32) is
     Old_Value: Interfaces.Unsigned_32;
     Shift: Integer;
     New_Value: Interfaces.Unsigned_32;
@@ -34,17 +34,17 @@ package body Ixgbe_Regs is
     Write(Buffer, Reg, New_Value);
   end;
 
-  procedure Clear(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32) is
+  procedure Clear(Buffer: in out Dev_Buffer; Reg: in Interfaces.Unsigned_32) is
   begin
     Write(Buffer, Reg, 0);
   end;
 
-  procedure Clear_Field(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Field: Interfaces.Unsigned_32) is
+  procedure Clear_Field(Buffer: in out Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32) is
   begin
     Write_Field(Buffer, Reg, Field, 0);
   end;
 
-  procedure Set_Field(Buffer: Dev_Buffer_Access; Reg: Interfaces.Unsigned_32; Field: Interfaces.Unsigned_32) is
+  procedure Set_Field(Buffer: in out Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32) is
     Old_Value: Interfaces.Unsigned_32;
     New_Value: Interfaces.Unsigned_32;
   begin

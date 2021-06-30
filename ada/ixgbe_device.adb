@@ -15,7 +15,7 @@ package body Ixgbe_Device is
   package Regs renames Ixgbe_Regs;
 
   function Init_Device(Addr: in Pci_Address) return Dev is
-    Buffer: Dev_Buffer_Access;
+    Buffer: Dev_Buffer;
   begin
     if System.Storage_Elements.Integer_Address'Size > 64 then
       Text_IO.Put_Line("Pointers must fit in 64 bits");
@@ -45,7 +45,7 @@ package body Ixgbe_Device is
       Pci_Bar0_Low: Interfaces.Unsigned_32;
       Pci_Bar0_High: Interfaces.Unsigned_32;
       Dev_Phys_Addr: Integer;
-      function Map_Buffer is new Environment.Map_Physical_Memory(T => VolatileUInt32, T_Array => Dev_Buffer);
+      function Map_Buffer is new Environment.Map_Physical_Memory(T => VolatileUInt32, R => Dev_Buffer_Range, T_Array => Dev_Buffer);
     begin
       Pci_Bar0_Low := Environment.Pci_Read(Addr, Pci_Regs.BAR0_LOW);
       if (Pci_Bar0_Low and 2#0100#) = 0 or (Pci_Bar0_Low and 2#0010#) /= 0 then
@@ -54,7 +54,7 @@ package body Ixgbe_Device is
       end if;
       Pci_Bar0_High := Environment.Pci_Read(Addr, Pci_Regs.BAR0_HIGH);
       Dev_Phys_Addr := Integer(Shift_Left(Interfaces.Unsigned_64(Pci_Bar0_High), 32) or Interfaces.Unsigned_64(Pci_Bar0_Low and not 2#1111#));
-      Buffer := Map_Buffer(Dev_Phys_Addr, 128 * 1024 / 4)'Access;
+      Buffer := Map_Buffer(Dev_Phys_Addr);
     end;
 
     --  todo translate?  Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", Addr.Bus, Addr.Device, Addr.Function, devPhysAddr);
