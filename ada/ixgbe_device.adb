@@ -18,7 +18,7 @@ package body Ixgbe_Device is
     Buffer: access Dev_Buffer;
     Pci_Bar0_Low: Interfaces.Unsigned_32;
     Pci_Bar0_High: Interfaces.Unsigned_32;
-    Dev_Phys_Addr: Integer;
+    Dev_Phys_Addr: System.Storage_Elements.Integer_Address;
     function Map_Buffer is new Environment.Map_Physical_Memory(T => VolatileUInt32, R => Dev_Buffer_Range, T_Array => Dev_Buffer);
   begin
     if System.Storage_Elements.Integer_Address'Size > 64 then
@@ -51,7 +51,7 @@ package body Ixgbe_Device is
       GNAT.OS_Lib.OS_Abort;
     end if;
     Pci_Bar0_High := Environment.Pci_Read(Addr, Pci_Regs.BAR0_HIGH);
-    Dev_Phys_Addr := Integer(Shift_Left(Interfaces.Unsigned_64(Pci_Bar0_High), 32) or Interfaces.Unsigned_64(Pci_Bar0_Low and not 2#1111#));
+    Dev_Phys_Addr := System.Storage_Elements.Integer_Address(Shift_Left(Interfaces.Unsigned_64(Pci_Bar0_High), 32) or Interfaces.Unsigned_64(Pci_Bar0_Low and not 2#1111#));
     Buffer := Map_Buffer(Dev_Phys_Addr);
 
     --  todo translate?  Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", Addr.Bus, Addr.Device, Addr.Function, devPhysAddr);

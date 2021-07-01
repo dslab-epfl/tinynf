@@ -1,3 +1,4 @@
+with System.Storage_Elements;
 with Interfaces;
 
 package Environment is
@@ -9,13 +10,13 @@ package Environment is
 
   generic
     type T is private;
-  function Get_Physical_Address(Value: not null access T) return Integer;
+  function Get_Physical_Address(Value: not null access T) return System.Storage_Elements.Integer_Address;
 
   generic
     type T is private;
     type R is (<>);
     type T_Array is array(R) of T;
-  function Map_Physical_Memory(Addr: Integer) return access T_Array;
+  function Map_Physical_Memory(Addr: System.Storage_Elements.Integer_Address) return access T_Array;
 
   type Pci_Bus is mod 2 ** 8;
   type Pci_Device is mod 2 ** 5;

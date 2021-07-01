@@ -74,7 +74,7 @@ package body Environment is
 
   SC_PAGESIZE: constant Interfaces.C.int := 30;
 
-  function Get_Physical_Address(Value: not null access T) return Integer is
+  function Get_Physical_Address(Value: not null access T) return System.Storage_Elements.Integer_Address is
     Page_Size: Integer_Address;
     Addr: Integer_Address;
     Page: Integer_Address;
@@ -117,11 +117,11 @@ package body Environment is
       OS_Abort;
     end if;
 
-    return Integer(PFN) * Integer(Page_Size) + Integer(Addr rem Page_Size);
+    return Integer_Address(PFN) * Integer_Address(Page_Size) + Integer_Address(Addr rem Page_Size);
   end;
 
 
-  function Map_Physical_Memory(Addr: Integer) return access T_Array is
+  function Map_Physical_Memory(Addr: System.Storage_Elements.Integer_Address) return access T_Array is
     Mem_FD: File_Descriptor;
     Mapped_Address: Address;
     package Convert_T is new System.Address_To_Access_Conversions(Object => T_Array);
