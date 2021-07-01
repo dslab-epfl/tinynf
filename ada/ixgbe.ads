@@ -30,5 +30,4 @@ package Ixgbe is
 
   type Dev_Buffer_Range is new Integer range 0 .. 128 * 1024 / 4 - 1;
   type Dev_Buffer is array(Dev_Buffer_Range) of aliased VolatileUInt32;
-  type Dev_Buffer_Access is access all Dev_Buffer;
 end Ixgbe;

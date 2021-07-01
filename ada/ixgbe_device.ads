@@ -13,7 +13,7 @@ package Ixgbe_Device is
 
 private
   type Dev is record
-    Buffer: Dev_Buffer;
+    Buffer: access Dev_Buffer;
     RX_Enabled: Boolean;
     TX_Enabled: Boolean;
   end record;
