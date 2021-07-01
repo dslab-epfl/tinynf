@@ -7,6 +7,7 @@ package Ixgbe_Device is
   type Dev is private;
 
   function Init_Device(Addr: in Pci_Address) return Dev;
+  procedure Set_Promiscuous(Device: in out Dev);
 
 private
   type Dev is record

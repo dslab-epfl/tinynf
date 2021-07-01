@@ -182,4 +182,19 @@ package body Ixgbe_Device is
 
     return (Buffer => Buffer, RX_Enabled => False, TX_Enabled => False);
   end;
+
+  procedure Set_Promiscuous(Device: in out Dev) is
+  begin
+    if Device.RX_Enabled then
+      Regs.Clear_Field(Device.Buffer, Regs.RXCTRL, Regs.RXCTRL_RXEN);
+    end if;
+
+    Regs.Set_Field(Device.Buffer, Regs.FCTRL, Regs.FCTRL_UPE);
+
+    Regs.Set_Field(Device.Buffer, Regs.FCTRL, Regs.FCTRL_MPE);
+
+    if Device.RX_Enabled then
+      Regs.Set_Field(Device.Buffer, Regs.RXCTRL, Regs.RXCTRL_RXEN);
+    end if;
+  end;
 end Ixgbe_Device;
