@@ -1,0 +1,14 @@
+# Always clean, just in case
+build:
+	@gnatclean tinynf.adb
+	@gnatmake -O3 tinynf.adb
+
+run:
+	@sudo ./tinynf $(TN_ARGS)
+
+print-nf-name:
+	@echo tinynf
+
+# The Ada driver doesn't try to have short timeouts (see ixgbe_device.adb)
+init:
+	@sleep 30

@@ -13,7 +13,7 @@ package Ixgbe_Agent is
 
   type Processor is not null access procedure(Data: in out Packet_Data;
                                               Length: in Packet_Length;
-                                              OutputLengths: not null access Packet_Outputs);
+                                              Output_Lengths: not null access Packet_Outputs);
 
   type Agent is private;
   type Output_Devs is array(Outputs_Range range <>) of not null access Ixgbe_Device.Dev;

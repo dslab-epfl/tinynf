@@ -177,7 +177,7 @@ package body Ixgbe_Device is
 
     Regs.Clear_Field(Buffer, Regs.RTTDCS, Regs.RTTDCS_ARBDIS);
 
-    return (Buffer => Buffer, RX_Enabled => False, TX_Enabled => False);
+    return (Buffer => Buffer.all'Unchecked_Access, RX_Enabled => False, TX_Enabled => False); -- no idea why this .all'unchecked is necessary, but it raises an access error otherwise
   end;
 
   procedure Set_Promiscuous(Device: in out Dev) is

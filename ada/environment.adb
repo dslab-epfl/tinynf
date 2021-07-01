@@ -99,9 +99,10 @@ package body Environment is
       OS_Abort;
     end if;
 
-    LSeek(Page_Map_FD, Long_Integer(Page) / 64, Seek_Cur);
+    LSeek(Page_Map_FD, Long_Integer(Page) * 8, Seek_Cur);
+
     Read_Count := Read(Page_Map_FD, Metadata'Address, Metadata'Size/8);
-    if Read_Count < Metadata'Size/8 then
+    if Read_Count /= Metadata'Size/8 then
       Text_IO.Put_Line("Could not read from pagemap");
       OS_Abort;
     end if;

@@ -43,13 +43,14 @@ package body Ixgbe_Agent is
       Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devices(N), Rings(N), Transmit_Heads(N).Value'Access);
     end loop;
 
-    return (Packets => Packets,
+    -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
+    return (Packets => Packets.all'Unchecked_Access,
             Receive_Ring => Rings(0),
             Transmit_Rings => Rings,
             Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(0)),
-            Transmit_Heads => Transmit_Heads,
-            Transmit_Tails => Transmit_Tails,
-            Outputs => Outputs,
+            Transmit_Heads => Transmit_Heads.all'Unchecked_Access,
+            Transmit_Tails => Transmit_Tails.all'Unchecked_Access,
+            Outputs => Outputs.all'Unchecked_Access,
             Process_Delimiter => 0);
   end;
 
