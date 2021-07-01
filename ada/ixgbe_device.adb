@@ -195,7 +195,7 @@ package body Ixgbe_Device is
     end if;
   end;
 
-  function Set_Input(Device: not null access Dev; Ring: not null access Descriptor_Ring) return not null access VolatileUInt32 is
+  function Set_Input(Device: not null access Dev; Ring: not null access Descriptor_Ring) return Register_Access is
     Queue_Index: constant Integer := 0;
     Ring_Phys_Addr: Interfaces.Unsigned_64;
     function Get_Ring_Addr is new Environment.Get_Physical_Address(T => Descriptor);
@@ -247,7 +247,7 @@ package body Ixgbe_Device is
     return Device.Buffer(Dev_Buffer_Range(Regs.RDT(Queue_Index) / 4))'Access;
   end;
 
-  function Add_Output(Device: not null access Dev; Ring: not null access Descriptor_Ring; Head: not null access VolatileUInt32) return not null access VolatileUInt32 is
+  function Add_Output(Device: not null access Dev; Ring: not null access Descriptor_Ring; Head: not null access VolatileUInt32) return Register_Access is
     Queue_Index: Integer := 0;
     Ring_Phys_Addr: Interfaces.Unsigned_64;
     Head_Phys_Addr: Interfaces.Unsigned_64;

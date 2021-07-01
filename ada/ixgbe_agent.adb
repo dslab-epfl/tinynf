@@ -10,42 +10,47 @@ package body Ixgbe_Agent is
 
   function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent is
     function Allocate_Packets is new Environment.Allocate(T => Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
-    function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
-    function Allocate_Outputs is new Environment.Allocate(T => Packet_Length, R => Outputs_Range, T_Array => Packet_Outputs);
-
-    Packets: Packet_Array;
+    Packets: not null access Packet_Array := Allocate_Packets;
+    function Get_Packet_Address is new Environment.Get_Physical_Address(T => Packet_Data);
 
     subtype DRA_Sized is Descriptor_Ring_Array(Output_Devices'Range);
-    Transmit_Rings: not null access DRA_Sized := new DRA_Sized'(others => Fake_Ring'Access);
+    Rings_Sized: not null access DRA_Sized := new DRA_Sized'(others => Fake_Ring'Access);
+    Rings: not null access Descriptor_Ring_Array := Rings_Sized;
+    function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
 
-    subtype THA_Size is Outputs_Range range Output_Devices'First .. Output_Devices'Last;
-    subtype THA_Sized is Transmit_Head_Array(THA_Size);
-    function Allocate_Heads is new Environment.Allocate(T => Transmit_Head, R => THA_Size, T_Array => THA_Sized);
---    Transmit_Heads: not null access THA_Sized := --new THA_Sized'(others => Fake_Head'Access);
-    Transmit_Heads: not null access THA_Sized := Allocate_Heads;
+    subtype OD_Range is Outputs_Range range Output_Devices'First .. Output_Devices'Last; -- why do we need this? somehow passing 'Range as R => generic param doesn't wrk
 
+    subtype THA_Sized is Transmit_Head_Array(OD_Range);
+    function Allocate_Heads is new Environment.Allocate(T => Transmit_Head, R => OD_Range, T_Array => THA_Sized);
+    Transmit_Heads_Sized: not null access THA_Sized := Allocate_Heads;
+    Transmit_Heads: not null access Transmit_Head_Array := Transmit_Heads_Sized;
 
+    subtype TTA_Sized is Transmit_Tail_Array(OD_Range);
+    function Allocate_Tails is new Environment.Allocate(T => Register_Access, R => OD_Range, T_Array => TTA_Sized);
+    Transmit_Tails_Sized: not null access TTA_Sized := Allocate_Tails;
+    Transmit_Tails: not null access Transmit_Tail_Array := Transmit_Tails_Sized;
+
+    function Allocate_Outputs is new Environment.Allocate(T => Packet_Length, R => Outputs_Range, T_Array => Packet_Outputs);
+    Outputs: not null access Packet_Outputs := Allocate_Outputs;
   begin
-    raise Program_Error;
-    return Create_Agent(Input_Device, Output_Devices);
---    return (Outputs => new PacketOutputs'()
---            ProcessDelimiter => 0);
---            _outputs = new Array256<ushort>(s => env.Allocate<ushort>(s).Span);
+    for Ring of Rings.all loop
+      for N in Delimiter_Range loop
+        Ring(N).Buffer := To_Little(VolatileUInt64(Get_Packet_Address(Packets(N)'Access)));
+      end loop;
+    end loop;
 
-  --          _packets = new Array256<PacketData>(s => env.Allocate<PacketData>(s).Span);
+    for N in OD_Range loop
+      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devices(N), Rings(N), Transmit_Heads(N).Value'Access);
+    end loop;
 
-    --        _transmitRings = new Array256Array<Descriptor>(outputDevices.Count, s => env.Allocate<Descriptor>(s).Span);
-      --      for (int r = 0; r < _transmitRings.Length; r++)
---                for (int n = 0; n < 256; n++)
-  --                  _transmitRings[r][(byte)n].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[(byte)n]));
-
-    --        _receiveRing = _transmitRings[0];
-      --      _receiveTail = new Ref<uint>(inputDevice.SetInput(env, _receiveRing.AsSpan()).Span);
-
-        --    _transmitHeads = env.Allocate<TransmitHead>((uint)outputDevices.Count).Span;
-          --  _transmitTails = new RefArray<uint>(outputDevices.Count);
-         --   for (byte n = 0; n < outputDevices.Count; n++)
---                _transmitTails[n] = outputDevices[n].AddOutput(env, _transmitRings[n].AsSpan(), ref _transmitHeads[n].Value).Span;
+    return (Packets => Packets,
+            Receive_Ring => Rings(0),
+            Transmit_Rings => Rings,
+            Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(0)),
+            Transmit_Heads => Transmit_Heads,
+            Transmit_Tails => Transmit_Tails,
+            Outputs => Outputs,
+            Process_Delimiter => 0);
   end;
 
   procedure Run(This: in out Agent;

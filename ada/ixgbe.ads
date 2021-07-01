@@ -9,10 +9,10 @@ package Ixgbe is
     with Volatile;
 
   -- little-endian only for now
-  function From_Little(Value: in VolatileUInt32) return VolatileUInt32 is (Value);
-  function From_Little(Value: in VolatileUInt64) return VolatileUInt64 is (Value);
-  function To_Little(Value: in VolatileUInt32) return VolatileUInt32 is (Value);
-  function To_Little(Value: in VolatileUInt64) return VolatileUInt64 is (Value);
+  function From_Little(Value: in VolatileUInt32) return VolatileUInt32 is (Value) with Inline_Always;
+  function From_Little(Value: in VolatileUInt64) return VolatileUInt64 is (Value) with Inline_Always;
+  function To_Little(Value: in VolatileUInt32) return VolatileUInt32 is (Value) with Inline_Always;
+  function To_Little(Value: in VolatileUInt64) return VolatileUInt64 is (Value) with Inline_Always;
 
   type Descriptor is record
     Buffer: VolatileUInt64;
@@ -21,9 +21,11 @@ package Ixgbe is
     with Pack;
 
   type Transmit_Head is record
-    Value: VolatileUInt32;
+    Value: aliased VolatileUInt32;
   end record;
-  for Transmit_Head'Alignment use 64; -- full cache line to avoid contention
+  for Transmit_Head'Size use 64; -- full cache line to avoid contention
+
+  type Register_Access is not null access all VolatileUInt32;
 
   type Delimiter_Range is mod Ixgbe_Constants.Ring_Size;
   type Descriptor_Ring is array(Delimiter_Range) of aliased Descriptor;

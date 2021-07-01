@@ -56,7 +56,7 @@ package body Environment is
     Allocator_Used_Bytes := Allocator_Used_Bytes + Align_Diff;
 
     declare
-      Result: access T_Array := Convert_T.To_Pointer(Allocator_Page);
+      Result: access T_Array := Convert_T.To_Pointer(Allocator_Page).all'Unchecked_Access;
       Result_Length: Storage_Offset := Storage_Offset(T_Array'Length * T'Size/8);
     begin
       Allocator_Page := Allocator_Page + Result_Length;
@@ -145,7 +145,7 @@ package body Environment is
 
     Close(Mem_FD);
 
-    return Convert_T.To_Pointer(Mapped_Address);
+    return Convert_T.To_Pointer(Mapped_Address).all'Unchecked_Access;
   end;
 
 
