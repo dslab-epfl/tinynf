@@ -199,16 +199,16 @@ package body Ixgbe_Device is
   end;
 
   function Set_Input(Device: not null access Dev; Ring: not null access Descriptor_Ring) return not null access VolatileUInt32 is
-    Queue_Index: constant := 0;
+    Queue_Index: constant Integer := 0;
     Ring_Phys_Addr: Interfaces.Unsigned_64;
     function Get_Ring_Addr is new Environment.Get_Physical_Address(T => Descriptor);
   begin
     if not Regs.Is_Field_Cleared(Device.Buffer, Regs.RXDCTL(Queue_Index), Regs.RXDCTL_ENABLE) then
-        Text_IO.Put_Line("Receive queue is already in use");
-        GNAT.OS_Lib.OS_Abort;
+      Text_IO.Put_Line("Receive queue is already in use");
+      GNAT.OS_Lib.OS_Abort;
     end if;
 
-    Ring_Phys_Addr := Interfaces.Unsigned_64(Get_Ring_Addr(Ring(123)'Access));
+    Ring_Phys_Addr := Interfaces.Unsigned_64(Get_Ring_Addr(Ring(0)'Access));
     Regs.Write(Device.Buffer, Regs.RDBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Ring_Phys_Addr, 32) rem 2 ** 32));
     Regs.Write(Device.Buffer, Regs.RDBAL(Queue_Index), Interfaces.Unsigned_32(Ring_Phys_Addr rem 2 ** 32));
 
@@ -221,32 +221,83 @@ package body Ixgbe_Device is
     Regs.Set_Field(Device.Buffer, Regs.RXDCTL(Queue_Index), Regs.RXDCTL_ENABLE);
     delay 1.0;
     if Regs.Is_Field_Cleared(Device.Buffer, Regs.RXDCTL(Queue_Index), Regs.RXDCTL_ENABLE) then
-        Text_IO.Put_Line("RXDCTL.ENABLE did not set, cannot enable queue");
-        GNAT.OS_Lib.OS_Abort;
+      Text_IO.Put_Line("RXDCTL.ENABLE did not set, cannot enable queue");
+      GNAT.OS_Lib.OS_Abort;
     end if;
 
     Regs.Write(Device.Buffer, Regs.RDT(Queue_Index), Ixgbe_Constants.Ring_Size - 1);
 
     if not Device.RX_Enabled then
-        Regs.Set_Field(Device.Buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_RX_DIS);
+      Regs.Set_Field(Device.Buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_RX_DIS);
 
-        delay 1.0;
-        if Regs.Is_Field_Cleared(Device.Buffer, Regs.SECRXSTAT, Regs.SECRXSTAT_SECRX_RDY) then
-            Text_IO.Put_Line("SECRXSTAT.SECRXRDY timed out, cannot start device");
-            GNAT.OS_Lib.OS_Abort;
-        end if;
+      delay 1.0;
+      if Regs.Is_Field_Cleared(Device.Buffer, Regs.SECRXSTAT, Regs.SECRXSTAT_SECRX_RDY) then
+        Text_IO.Put_Line("SECRXSTAT.SECRXRDY timed out, cannot start device");
+        GNAT.OS_Lib.OS_Abort;
+      end if;
 
-        Regs.Set_Field(Device.Buffer, Regs.RXCTRL, Regs.RXCTRL_RXEN);
+      Regs.Set_Field(Device.Buffer, Regs.RXCTRL, Regs.RXCTRL_RXEN);
 
-        Regs.Clear_Field(Device.Buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_RX_DIS);
+      Regs.Clear_Field(Device.Buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_RX_DIS);
 
-        Regs.Set_Field(Device.Buffer, Regs.CTRLEXT, Regs.CTRLEXT_NSDIS);
+      Regs.Set_Field(Device.Buffer, Regs.CTRLEXT, Regs.CTRLEXT_NSDIS);
 
-        Device.RX_Enabled := True;
+      Device.RX_Enabled := True;
     end if;
 
     Regs.Clear_Field(Device.Buffer, Regs.DCARXCTRL(Queue_Index), Regs.DCARXCTRL_UNKNOWN);
 
     return Device.Buffer(Dev_Buffer_Range(Regs.RDT(Queue_Index) / 4))'Access;
+  end;
+
+  function Add_Output(Device: not null access Dev; Ring: not null access Descriptor_Ring; Head: not null access VolatileUInt32) return not null access VolatileUInt32 is
+    Queue_Index: Integer := 0;
+    Ring_Phys_Addr: Interfaces.Unsigned_64;
+    Head_Phys_Addr: Interfaces.Unsigned_64;
+    function Get_Ring_Addr is new Environment.Get_Physical_Address(T => Descriptor);
+    function Get_Head_Addr is new Environment.Get_Physical_Address(T => VolatileUInt32);
+  begin
+    loop
+      if Queue_Index = Ixgbe_Limits.Transmit_Queues_Count then
+        Text_IO.Put_Line("No available transmit queues");
+        GNAT.OS_Lib.OS_Abort;
+      end if;
+      exit when Regs.Is_Field_Cleared(Device.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_ENABLE);
+      Queue_Index := Queue_Index + 1;
+    end loop;
+
+    Ring_Phys_Addr := Interfaces.Unsigned_64(Get_Ring_Addr(Ring(0)'Access));
+    Regs.Write(Device.Buffer, Regs.TDBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Ring_Phys_Addr, 32) rem 2 ** 32));
+    Regs.Write(Device.Buffer, Regs.TDBAL(Queue_Index), Interfaces.Unsigned_32(Ring_Phys_Addr rem 2 ** 32));
+
+    Regs.Write(Device.Buffer, Regs.TDLEN(Queue_Index), Ixgbe_Constants.Ring_Size * 16);
+
+    Regs.Write_Field(Device.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_PTHRESH, 60);
+    Regs.Write_Field(Device.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_HTHRESH, 4);
+
+    Head_Phys_Addr := Interfaces.Unsigned_64(Get_Head_Addr(Head));
+    if Head_Phys_Addr rem 16 /= 0 then
+      Text_IO.Put_Line("Transmit head's physical address is not aligned properly");
+      GNAT.OS_Lib.OS_Abort;
+    end if;
+
+    Regs.Write(Device.Buffer, Regs.TDWBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Head_Phys_Addr, 32) rem 2 ** 32));
+    Regs.Write(Device.Buffer, Regs.TDWBAL(Queue_Index), Interfaces.Unsigned_32(Head_Phys_Addr rem 2 ** 32) or 1);
+
+    Regs.Clear_Field(Device.Buffer, Regs.DCATXCTRL(Queue_Index), Regs.DCATXCTRL_TX_DESC_WB_RO_EN);
+
+    if not Device.TX_Enabled then
+      Regs.Set_Field(Device.Buffer, Regs.DMATXCTL, Regs.DMATXCTL_TE);
+      Device.TX_Enabled := True;
+    end if;
+
+    Regs.Set_Field(Device.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_ENABLE);
+    delay 1.0;
+    if Regs.Is_Field_Cleared(Device.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_ENABLE) then
+      Text_IO.Put_Line("TXDCTL.ENABLE did not set, cannot enable queue");
+      GNAT.OS_Lib.OS_Abort;
+    end if;
+
+    return Device.Buffer(Dev_Buffer_Range(Regs.TDT(Queue_Index) / 4))'Access;
   end;
 end Ixgbe_Device;

@@ -264,7 +264,6 @@ namespace TinyNF.Ixgbe
             uint queueIndex = 0;
             for (; queueIndex < DeviceLimits.TransmitQueuesCount; queueIndex++)
             {
-                // See later for details of TXDCTL.ENABLE
                 if (Regs.IsFieldCleared(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE))
                 {
                     break;
