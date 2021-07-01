@@ -1,3 +1,6 @@
+with System;
+with Ada.Unchecked_Conversion;
+
 package body Ixgbe_Agent is
   function Init_Agent return Agent is
   begin
@@ -17,16 +20,29 @@ package body Ixgbe_Agent is
     Min_Diff: VolatileUInt64;
     Head: VolatileUInt32;
     Diff: VolatileUInt64;
+
+    -- This seems to be necessary to not generate any checks when truncating the 16-bit length from the rest of the metadata...
+    type Meta_Read is record
+      Length: Packet_Length;
+      Unused: Integer;
+    end record;
+    for Meta_Read use record
+      Length at 0 range 0 .. 15;
+      Unused at 0 range 16 .. 63;
+    end record;
+    for Meta_Read'Bit_Order use System.Low_Order_First;
+    for Meta_Read'Size use 64;
+    function Meta_To_Read is new Ada.Unchecked_Conversion(Source => VolatileUInt64, Target => Meta_Read);
   begin
     N := 0;
     while N < Ixgbe_Constants.Flush_Period loop
       Receive_Metadata := From_Little(This.Receive_Ring(This.Process_Delimiter).Metadata);
       exit when (Receive_Metadata and 16#00_00_00_01_00_00_00_00#) = 0;
 
-      Length := Packet_Length(Receive_Metadata mod 2 ** 16);
+      Length := Meta_To_Read(Receive_Metadata).Length;
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
-      RS_Bit := (if (This.Process_Delimiter mod Ixgbe_Constants.Recycle_Period) = (Ixgbe_Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
+      RS_Bit := (if (This.Process_Delimiter rem Ixgbe_Constants.Recycle_Period) = (Ixgbe_Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
       -- I cannot find a way to get GNAT to not emit bounds checks when using a single index for both :/
       M := 0;
@@ -50,7 +66,7 @@ package body Ixgbe_Agent is
           end if;
         end loop;
 
-        This.Receive_Tail.all := To_Little((Earliest_Transmit_Head - 1) mod (VolatileUInt32(Delimiter_Range'Last) + 1));
+        This.Receive_Tail.all := To_Little((Earliest_Transmit_Head - 1) rem (VolatileUInt32(Delimiter_Range'Last) + 1));
       end if;
     end loop;
     if N /= 0 then
