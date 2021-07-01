@@ -3,7 +3,7 @@ with Interfaces;
 package Environment is
   generic
     type T is private;
-    type R is range <>;
+    type R is (<>);
     type T_Array is array(R) of T;
   function Allocate return T_Array;
 
@@ -13,7 +13,7 @@ package Environment is
 
   generic
     type T is private;
-    type R is range <>;
+    type R is (<>);
     type T_Array is array(R) of T;
   function Map_Physical_Memory(Addr: Integer) return T_Array;
 

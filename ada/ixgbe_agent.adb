@@ -1,12 +1,52 @@
 with System;
 with Ada.Unchecked_Conversion;
 
+with Environment;
+
 package body Ixgbe_Agent is
-  function Init_Agent return Agent is
+  -- default values for arrays of non-null accesses
+  Fake_Ring: aliased Descriptor_Ring;
+--  Fake_Head: aliased Transmit_Head;
+
+  function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent is
+    function Allocate_Packets is new Environment.Allocate(T => Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
+    function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
+    function Allocate_Outputs is new Environment.Allocate(T => Packet_Length, R => Outputs_Range, T_Array => Packet_Outputs);
+
+    Packets: Packet_Array;
+
+    subtype DRA_Sized is Descriptor_Ring_Array(Output_Devices'Range);
+    Transmit_Rings: not null access DRA_Sized := new DRA_Sized'(others => Fake_Ring'Access);
+
+    subtype THA_Size is Outputs_Range range Output_Devices'First .. Output_Devices'Last;
+    subtype THA_Sized is Transmit_Head_Array(THA_Size);
+    function Allocate_Heads is new Environment.Allocate(T => Transmit_Head, R => THA_Size, T_Array => THA_Sized);
+--    Transmit_Heads: not null access THA_Sized := --new THA_Sized'(others => Fake_Head'Access);
+    Transmit_Heads: not null access THA_Sized := Allocate_Heads;
+
+
   begin
     raise Program_Error;
-    return Init_Agent;
-  end Init_Agent;
+    return Create_Agent(Input_Device, Output_Devices);
+--    return (Outputs => new PacketOutputs'()
+--            ProcessDelimiter => 0);
+--            _outputs = new Array256<ushort>(s => env.Allocate<ushort>(s).Span);
+
+  --          _packets = new Array256<PacketData>(s => env.Allocate<PacketData>(s).Span);
+
+    --        _transmitRings = new Array256Array<Descriptor>(outputDevices.Count, s => env.Allocate<Descriptor>(s).Span);
+      --      for (int r = 0; r < _transmitRings.Length; r++)
+--                for (int n = 0; n < 256; n++)
+  --                  _transmitRings[r][(byte)n].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[(byte)n]));
+
+    --        _receiveRing = _transmitRings[0];
+      --      _receiveTail = new Ref<uint>(inputDevice.SetInput(env, _receiveRing.AsSpan()).Span);
+
+        --    _transmitHeads = env.Allocate<TransmitHead>((uint)outputDevices.Count).Span;
+          --  _transmitTails = new RefArray<uint>(outputDevices.Count);
+         --   for (byte n = 0; n < outputDevices.Count; n++)
+--                _transmitTails[n] = outputDevices[n].AddOutput(env, _transmitRings[n].AsSpan(), ref _transmitHeads[n].Value).Span;
+  end;
 
   procedure Run(This: in out Agent;
                 Proc: in Processor)

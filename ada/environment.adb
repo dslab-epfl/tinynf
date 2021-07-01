@@ -56,7 +56,7 @@ package body Environment is
     declare
       Result: T_Array;
       for Result'Address use Allocator_Page;
-      Result_Length: Storage_Offset := Storage_Offset(R'Last - R'First + 1) * T'Size/8;
+      Result_Length: Storage_Offset := Storage_Offset(T_Array'Length * T'Size/8);
     begin
       Allocator_Page := Allocator_Page + Result_Length;
       Allocator_Used_Bytes := Allocator_Used_bytes + Result_Length;
@@ -131,7 +131,7 @@ package body Environment is
     end if;
 
     Mapped_Address := Mmap(Null_Address,
-                           Interfaces.C.size_t((R'Last - R'First + 1) * T'Size/8),
+                           Interfaces.C.size_t(T_Array'Length * T'Size/8),
                            Interfaces.C.int(PROT_READ or PROT_WRITE),
                            Interfaces.C.int(MAP_SHARED),
                            Interfaces.C.int(Mem_FD),

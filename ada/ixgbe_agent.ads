@@ -1,6 +1,7 @@
 with System.Storage_Elements;
 with Ixgbe; use Ixgbe;
 with Ixgbe_Constants;
+with Ixgbe_Device;
 
 package Ixgbe_Agent is
   type Outputs_Range is mod 2 ** 8;
@@ -10,12 +11,13 @@ package Ixgbe_Agent is
   type Packet_Data is array(Packet_Buffer_Length) of System.Storage_Elements.Storage_Element;
   type Packet_Outputs is array(Outputs_Range) of Packet_Length;
 
-  type Processor is not null access procedure(Data: Packet_Data;
+  type Processor is not null access procedure(Data: in out Packet_Data;
                                               Length: in Packet_Length;
-                                              OutputLengths: not null access Packet_Outputs);
+                                              OutputLengths: in out Packet_Outputs);
 
   type Agent is private;
-  function Init_Agent return Agent;
+  type Output_Devs is array(Outputs_Range range <>) of not null access Ixgbe_Device.Dev;
+  function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent;
   procedure Run(This: in out Agent;
                 Proc: in Processor);
 
@@ -26,13 +28,13 @@ private
   type Transmit_Tail_Array is array(Outputs_Range range <>) of not null access VolatileUInt32;
 
   type Agent is record
-    Packets: not null access Packet_Array;
-    Receive_Ring: not null access Descriptor_Ring;
+    Packets: Packet_Array;
+    Receive_Ring: Descriptor_Ring;
     Transmit_Rings: not null access Descriptor_Ring_Array;
     Receive_Tail: not null access VolatileUInt32;
     Transmit_Heads: not null access Transmit_Head_Array;
     Transmit_Tails: not null access Transmit_Tail_Array;
-    Outputs: not null access Packet_Outputs;
+    Outputs: Packet_Outputs;
     Process_Delimiter: Delimiter_Range;
   end record;
 
