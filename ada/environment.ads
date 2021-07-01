@@ -5,7 +5,7 @@ package Environment is
     type T is private;
     type R is (<>);
     type T_Array is array(R) of T;
-  function Allocate return T_Array;
+  function Allocate return access T_Array;
 
   generic
     type T is private;
@@ -15,7 +15,7 @@ package Environment is
     type T is private;
     type R is (<>);
     type T_Array is array(R) of T;
-  function Map_Physical_Memory(Addr: Integer) return T_Array;
+  function Map_Physical_Memory(Addr: Integer) return access T_Array;
 
   type Pci_Bus is mod 2 ** 8;
   type Pci_Device is mod 2 ** 5;

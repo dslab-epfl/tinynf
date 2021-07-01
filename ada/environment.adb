@@ -5,6 +5,7 @@ with System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 with Interfaces.C;
+with Interfaces.C.Strings;
 with GNAT.OS_Lib; use GNAT.OS_Lib;
 with Text_IO;
 
@@ -39,8 +40,9 @@ package body Environment is
                                   Interfaces.C.long(0));
   Allocator_Used_Bytes: Storage_Offset := 0;
 
-  function Allocate return T_Array is
+  function Allocate return access T_Array is
     Align_Diff: Storage_Offset;
+    package Convert_T is new System.Address_To_Access_Conversions(Object => T_Array);
   begin
     if Allocator_Page = To_Address(-1) then -- MAP_FAILED
       Text_IO.Put_Line("Mmap of hugepage for allocator failed");
@@ -54,8 +56,7 @@ package body Environment is
     Allocator_Used_Bytes := Allocator_Used_Bytes + Align_Diff;
 
     declare
-      Result: T_Array;
-      for Result'Address use Allocator_Page;
+      Result: access T_Array := Convert_T.To_Pointer(Allocator_Page);
       Result_Length: Storage_Offset := Storage_Offset(T_Array'Length * T'Size/8);
     begin
       Allocator_Page := Allocator_Page + Result_Length;
@@ -74,7 +75,6 @@ package body Environment is
   SC_PAGESIZE: constant Interfaces.C.int := 30;
 
   function Get_Physical_Address(Value: not null access T) return Integer is
-    package T_Conversions is new System.Address_to_Access_Conversions(T);
     Page_Size: Integer_Address;
     Addr: Integer_Address;
     Page: Integer_Address;
@@ -82,6 +82,7 @@ package body Environment is
     Metadata: Interfaces.Unsigned_64;
     Read_Count: Integer;
     PFN: Interfaces.Unsigned_64;
+    package Convert_T is new System.Address_to_Access_Conversions(T);
   begin
     Page_Size := Integer_Address(Sysconf(SC_PAGESIZE));
     if Page_Size < 0 then
@@ -89,7 +90,7 @@ package body Environment is
       OS_Abort;
     end if;
 
-    Addr := To_Integer(T_Conversions.To_Address(T_Conversions.Object_Pointer(Value)));
+    Addr := To_Integer(Convert_T.To_Address(Convert_T.Object_Pointer(Value)));
     Page := Addr / Page_Size;
 
     Page_Map_FD := Open_Read("/proc/self/pagemap", Binary);
@@ -120,9 +121,10 @@ package body Environment is
   end;
 
 
-  function Map_Physical_Memory(Addr: Integer) return T_Array is
+  function Map_Physical_Memory(Addr: Integer) return access T_Array is
     Mem_FD: File_Descriptor;
     Mapped_Address: Address;
+    package Convert_T is new System.Address_To_Access_Conversions(Object => T_Array);
   begin
     Mem_FD := Open_Read_Write("/dev/mem", Binary);
     if Mem_FD < 0 then
@@ -143,12 +145,7 @@ package body Environment is
 
     Close(Mem_FD);
 
-    declare
-      Result: T_Array;
-      for Result'Address use Mapped_Address;
-    begin
-      return Result;
-    end;
+    return Convert_T.To_Pointer(Mapped_Address);
   end;
 
 
