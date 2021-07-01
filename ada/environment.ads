@@ -9,7 +9,7 @@ package Environment is
 
   generic
     type T is private;
-  function Get_Physical_Address(Value: access T) return Interfaces.Unsigned_64;
+  function Get_Physical_Address(Value: not null access T) return Integer;
 
   generic
     type T is private;

@@ -73,7 +73,7 @@ package body Environment is
 
   SC_PAGESIZE: constant Interfaces.C.int := 30;
 
-  function Get_Physical_Address(Value: access T) return Interfaces.Unsigned_64 is
+  function Get_Physical_Address(Value: not null access T) return Integer is
     package T_Conversions is new System.Address_to_Access_Conversions(T);
     Page_Size: Integer_Address;
     Addr: Integer_Address;
@@ -116,7 +116,7 @@ package body Environment is
       OS_Abort;
     end if;
 
-    return PFN * Interfaces.Unsigned_64(Page_Size) + Interfaces.Unsigned_64(Addr rem Page_Size);
+    return Integer(PFN) * Integer(Page_Size) + Integer(Addr rem Page_Size);
   end;
 
 

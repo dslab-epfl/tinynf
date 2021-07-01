@@ -23,7 +23,7 @@ package body Ixgbe_Device is
     end if;
 
     declare
-      Pci_Id: Interfaces.Unsigned_32; -- !!! fix
+      Pci_Id: Interfaces.Unsigned_32;
     begin
       Pci_Id := Environment.Pci_Read(Addr, Pci_Regs.ID);
       if Pci_Id /= 16#10FB8086# then
@@ -196,5 +196,57 @@ package body Ixgbe_Device is
     if Device.RX_Enabled then
       Regs.Set_Field(Device.Buffer, Regs.RXCTRL, Regs.RXCTRL_RXEN);
     end if;
+  end;
+
+  function Set_Input(Device: not null access Dev; Ring: not null access Descriptor_Ring) return not null access VolatileUInt32 is
+    Queue_Index: constant := 0;
+    Ring_Phys_Addr: Interfaces.Unsigned_64;
+    function Get_Ring_Addr is new Environment.Get_Physical_Address(T => Descriptor);
+  begin
+    if not Regs.Is_Field_Cleared(Device.Buffer, Regs.RXDCTL(Queue_Index), Regs.RXDCTL_ENABLE) then
+        Text_IO.Put_Line("Receive queue is already in use");
+        GNAT.OS_Lib.OS_Abort;
+    end if;
+
+    Ring_Phys_Addr := Interfaces.Unsigned_64(Get_Ring_Addr(Ring(123)'Access));
+    Regs.Write(Device.Buffer, Regs.RDBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Ring_Phys_Addr, 32) rem 2 ** 32));
+    Regs.Write(Device.Buffer, Regs.RDBAL(Queue_Index), Interfaces.Unsigned_32(Ring_Phys_Addr rem 2 ** 32));
+
+    Regs.Write(Device.Buffer, Regs.RDLEN(Queue_Index), Ixgbe_Constants.Ring_Size * 16);
+
+    Regs.Write_Field(Device.Buffer, Regs.SRRCTL(Queue_Index), Regs.SRRCTL_BSIZEPACKET, Ixgbe_Constants.Packet_Buffer_Size / 1024);
+
+    Regs.Set_Field(Device.Buffer, Regs.SRRCTL(Queue_Index), Regs.SRRCTL_DROP_EN);
+
+    Regs.Set_Field(Device.Buffer, Regs.RXDCTL(Queue_Index), Regs.RXDCTL_ENABLE);
+    delay 1.0;
+    if Regs.Is_Field_Cleared(Device.Buffer, Regs.RXDCTL(Queue_Index), Regs.RXDCTL_ENABLE) then
+        Text_IO.Put_Line("RXDCTL.ENABLE did not set, cannot enable queue");
+        GNAT.OS_Lib.OS_Abort;
+    end if;
+
+    Regs.Write(Device.Buffer, Regs.RDT(Queue_Index), Ixgbe_Constants.Ring_Size - 1);
+
+    if not Device.RX_Enabled then
+        Regs.Set_Field(Device.Buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_RX_DIS);
+
+        delay 1.0;
+        if Regs.Is_Field_Cleared(Device.Buffer, Regs.SECRXSTAT, Regs.SECRXSTAT_SECRX_RDY) then
+            Text_IO.Put_Line("SECRXSTAT.SECRXRDY timed out, cannot start device");
+            GNAT.OS_Lib.OS_Abort;
+        end if;
+
+        Regs.Set_Field(Device.Buffer, Regs.RXCTRL, Regs.RXCTRL_RXEN);
+
+        Regs.Clear_Field(Device.Buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_RX_DIS);
+
+        Regs.Set_Field(Device.Buffer, Regs.CTRLEXT, Regs.CTRLEXT_NSDIS);
+
+        Device.RX_Enabled := True;
+    end if;
+
+    Regs.Clear_Field(Device.Buffer, Regs.DCARXCTRL(Queue_Index), Regs.DCARXCTRL_UNKNOWN);
+
+    return Device.Buffer(Dev_Buffer_Range(Regs.RDT(Queue_Index) / 4))'Access;
   end;
 end Ixgbe_Device;

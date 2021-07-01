@@ -8,6 +8,7 @@ package Ixgbe_Device is
 
   function Init_Device(Addr: in Pci_Address) return Dev;
   procedure Set_Promiscuous(Device: in out Dev);
+  function Set_Input(Device: not null access Dev; Ring: not null access Descriptor_Ring) return not null access VolatileUInt32;
 
 private
   type Dev is record
