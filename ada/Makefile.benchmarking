@@ -1,7 +1,9 @@
+#CFLAGS := -O3
+
 # Always clean, just in case
 build:
 	@gnatclean tinynf.adb
-	@gnatmake -O3 tinynf.adb
+	@gnatmake $(CFLAGS) tinynf.adb
 
 run:
 	@sudo ./tinynf $(TN_ARGS)

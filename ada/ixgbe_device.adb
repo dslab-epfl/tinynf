@@ -54,8 +54,6 @@ package body Ixgbe_Device is
     Dev_Phys_Addr := System.Storage_Elements.Integer_Address(Shift_Left(Interfaces.Unsigned_64(Pci_Bar0_High), 32) or Interfaces.Unsigned_64(Pci_Bar0_Low and not 2#1111#));
     Buffer := Map_Buffer(Dev_Phys_Addr);
 
-    --  todo translate?  Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", Addr.Bus, Addr.Device, Addr.Function, devPhysAddr);
-
     for Queue in 0 .. Ixgbe_Limits.Receive_Queues_Count - 1 loop
       Regs.Clear_Field(Buffer, Regs.RXDCTL(Queue), Regs.RXDCTL_ENABLE);
       delay 0.05; -- we're going to do this 128 times so let's not always wait 1sec here...

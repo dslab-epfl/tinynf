@@ -24,6 +24,8 @@ begin
     Agent0: Agent := Create_Agent(Dev0'Access, Outs0);
     Agent1: Agent := Create_Agent(Dev1'Access, Outs1);
   begin
+    Set_Promiscuous(Dev0);
+    Set_Promiscuous(Dev1);
     Text_IO.Put_Line("Ada TinyNF starting...");
     loop
       Run(Agent0, NF.Processor'Access);

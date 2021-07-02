@@ -41,6 +41,8 @@ taskset -c $TESTER_CPUS sudo ./moongen/build/MoonGen bench-moongen.lua $CROSS_OP
   | grep -Fv --line-buffered 'EAL: VFIO support initialized' \
   | grep -Fv --line-buffered 'EAL: PCI device' \
   | grep -Fv --line-buffered 'EAL:   probe driver:' \
+  | grep -Fv --line-buffered 'EAL:   using IOMMU' \
+  | grep -Fv --line-buffered 'EAL: Ignore mapping IO port' \
   | grep  -v --line-buffered '^   Device' \
   | grep -Fv --line-buffered 'PMD: ixgbe_dev_link_status_print' \
   | grep -Fv --line-buffered '[INFO]'

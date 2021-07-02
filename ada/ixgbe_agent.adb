@@ -3,8 +3,6 @@ with Ada.Unchecked_Conversion;
 
 with Environment;
 
-with Text_IO;
-
 package body Ixgbe_Agent is
   -- default value for arrays of non-null accesses
   Fake_Ring: aliased Descriptor_Ring;
@@ -87,7 +85,6 @@ package body Ixgbe_Agent is
       Receive_Metadata := From_Little(This.Receive_Ring(This.Process_Delimiter).Metadata);
       exit when (Receive_Metadata and 16#00_00_00_01_00_00_00_00#) = 0;
 
---Text_IO.Put_Line("GOTCHA! " & Receive_Metadata'Image(Receive_Metadata));
       Length := Meta_To_Read(Receive_Metadata).Length;
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
@@ -117,6 +114,8 @@ package body Ixgbe_Agent is
 
         This.Receive_Tail.all := To_Little((Earliest_Transmit_Head - 1) rem (VolatileUInt32(Delimiter_Range'Last) + 1));
       end if;
+
+      N := N + 1;
     end loop;
     if N /= 0 then
       for T of This.Transmit_Tails.all loop
