@@ -59,9 +59,8 @@ package body Ixgbe_Agent is
   is
     N: Integer range 0 .. Ixgbe_Constants.Flush_Period;
     M: Outputs_Range;
-    Receive_Metadata: VolatileUInt64;
+    X: VolatileUInt64; -- Both "receive metadata" and "RS bit" to save stack space because GNAT is not very clever
     Length: Packet_Length;
-    RS_Bit: VolatileUInt64;
     Earliest_Transmit_Head: VolatileUInt32;
     Min_Diff: VolatileUInt64;
     Head: VolatileUInt32;
@@ -82,25 +81,27 @@ package body Ixgbe_Agent is
   begin
     N := 0;
     while N < Ixgbe_Constants.Flush_Period loop
-      Receive_Metadata := From_Little(This.Receive_Ring(This.Process_Delimiter).Metadata);
-      exit when (Receive_Metadata and 16#00_00_00_01_00_00_00_00#) = 0;
+      X := From_Little(This.Receive_Ring(This.Process_Delimiter).Metadata);
+      exit when (X and 16#00_00_00_01_00_00_00_00#) = 0;
 
-      Length := Meta_To_Read(Receive_Metadata).Length;
+      Length := Meta_To_Read(X).Length;
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
-      RS_Bit := (if (This.Process_Delimiter rem Ixgbe_Constants.Recycle_Period) = (Ixgbe_Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
+      -- Above this line, "X" is "receive metadata"; below, it is "RS Bit" --
+
+      X := (if (This.Process_Delimiter rem Ixgbe_Constants.Recycle_Period) = (Ixgbe_Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
       -- I cannot find a way to get GNAT to not emit bounds checks when using a single index for both :/
       M := 0;
       for R of This.Transmit_Rings.all loop
-        R(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(M)) or RS_Bit or 16#00_00_00_00_03_00_00_00#);
+        R(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(M)) or X or 16#00_00_00_00_03_00_00_00#);
         This.Outputs(M) := 0;
         M := M + 1;
       end loop;
 
       This.Process_Delimiter := This.Process_Delimiter + 1;
 
-      if RS_Bit /= 0 then
+      if X /= 0 then
         Earliest_Transmit_Head := VolatileUInt32(This.Process_Delimiter);
         Min_Diff := VolatileUint64'Last;
         for H of This.Transmit_Heads.all loop

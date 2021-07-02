@@ -96,6 +96,7 @@ def bench(path, name, extra_env):
     if result == 0:
       break
     else:
+      sys.exit(1) # TODO REMOVE
       time.sleep(60)
 
   remove(out_folder + '/latencies') # don't keep old latencies around
