@@ -40,7 +40,7 @@ package body Environment is
                                   Interfaces.C.long(0));
   Allocator_Used_Bytes: Storage_Offset := 0;
 
-  function Allocate return access T_Array is
+  function Allocate return not null access T_Array is
     Align_Diff: Storage_Offset;
     package Convert_T is new System.Address_To_Access_Conversions(Object => T_Array);
   begin
@@ -122,7 +122,7 @@ package body Environment is
   end;
 
 
-  function Map_Physical_Memory(Addr: System.Storage_Elements.Integer_Address) return access T_Array is
+  function Map_Physical_Memory(Addr: System.Storage_Elements.Integer_Address) return not null access T_Array is
     Mem_FD: File_Descriptor;
     Mapped_Address: Address;
     package Convert_T is new System.Address_To_Access_Conversions(Object => T_Array);

@@ -3,10 +3,11 @@ with Ada.Unchecked_Conversion;
 
 with Environment;
 
+with Text_IO;
+
 package body Ixgbe_Agent is
-  -- default values for arrays of non-null accesses
+  -- default value for arrays of non-null accesses
   Fake_Ring: aliased Descriptor_Ring;
---  Fake_Head: aliased Transmit_Head;
 
   function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent is
     function Allocate_Packets is new Environment.Allocate(T => Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
@@ -33,9 +34,10 @@ package body Ixgbe_Agent is
     function Allocate_Outputs is new Environment.Allocate(T => Packet_Length, R => Outputs_Range, T_Array => Packet_Outputs);
     Outputs: not null access Packet_Outputs := Allocate_Outputs;
   begin
-    for Ring of Rings.all loop
+    for R in Rings'Range loop
+      Rings(R) := Allocate_Ring.all'Unchecked_Access; -- why???
       for N in Delimiter_Range loop
-        Ring(N).Buffer := To_Little(VolatileUInt64(Get_Packet_Address(Packets(N)'Access)));
+        Rings(R)(N).Buffer := To_Little(VolatileUInt64(Get_Packet_Address(Packets(N)'Access)));
       end loop;
     end loop;
 
@@ -85,6 +87,7 @@ package body Ixgbe_Agent is
       Receive_Metadata := From_Little(This.Receive_Ring(This.Process_Delimiter).Metadata);
       exit when (Receive_Metadata and 16#00_00_00_01_00_00_00_00#) = 0;
 
+--Text_IO.Put_Line("GOTCHA! " & Receive_Metadata'Image(Receive_Metadata));
       Length := Meta_To_Read(Receive_Metadata).Length;
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
