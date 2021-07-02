@@ -1,3 +1,8 @@
+-- The GNAT doc says these are recommended and might improve perf:
+-- https://docs.adacore.com/gnat_ugn-docs/html/gnat_ugn/gnat_ugn/gnat_and_program_execution.html 6.3.1.2
+pragma Restrictions (No_Abort_Statements);
+pragma Restrictions (Max_Asynchronous_Select_Nesting => 0);
+
 with Ada.Command_Line;
 with Text_IO;
 with GNAT.OS_Lib;

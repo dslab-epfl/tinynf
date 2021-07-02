@@ -1,15 +1,21 @@
-CFLAGS := -O3
+APP := tinynf
+
+CFLAGS += -O3 -march=native
+# -gnatn turns on some inlining
+CFLAGS += -gnatn
+# remove unused stuff
+CFLAGS += -cargs -ffunction-sections -fdata-sections -largs -Wl,--gc-sections
 
 # Always clean, just in case
 build:
-	@gnatclean tinynf.adb
-	@gnatmake $(CFLAGS) tinynf.adb
+	@gnatclean $(APP)
+	@gnatmake $(APP) $(CFLAGS)
 
 run:
-	@sudo ./tinynf $(TN_ARGS)
+	@sudo ./$(APP) $(TN_ARGS)
 
 print-nf-name:
-	@echo tinynf
+	@echo $(APP)
 
 # The Ada driver doesn't try to have short timeouts (see ixgbe_device.adb)
 init:
