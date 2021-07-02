@@ -4,9 +4,9 @@ with Ixgbe_Constants;
 
 package Ixgbe is
   type VolatileUInt32 is mod 2 ** 32
-    with Volatile;
+    with Volatile, Size => 32;
   type VolatileUInt64 is mod 2 ** 64
-    with Volatile;
+    with Volatile, Size => 64;
 
   -- little-endian only for now
   function From_Little(Value: in VolatileUInt32) return VolatileUInt32 is (Value) with Inline_Always;
@@ -22,8 +22,8 @@ package Ixgbe is
 
   type Transmit_Head is record
     Value: aliased VolatileUInt32;
-  end record;
-  for Transmit_Head'Alignment use 64; -- full cache line to avoid contention
+  end record
+    with Pack, Alignment => 64; -- full cache line to avoid contention
 
   type Register_Access is not null access all VolatileUInt32;
 

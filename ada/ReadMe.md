@@ -1,3 +1,3 @@
-To get the annotated source of agent run, use `gnatclean ixgbe_agent.adb >/dev/null; gnatmake -g ixgbe_agent.adb -cargs -Wa,-adhln 2>/dev/null | sed '0,/procedure Run/d' | sed -E '/end Run;/,$d'` (you may want -O3 for optimizations as well)
+To get the annotated source of agent run, use `gnatclean tinynf.adb >/dev/null; gnatmake -g -O3 tinynf.adb -cargs -Wa,-adhln 2>/dev/null | sed '0,/procedure Run/d' | sed -E '/end Run;/,$d'`
 
-GNAT checks contain 'Check' in their name so you can grep that, e.g. `Range_Check`, `Overflow_Check`, `Access_Check`...
+GNAT checks contain 'Check' in their name so you can grep that, e.g. `Range_Check`, `Overflow_Check`, `Access_Check`... Some of them disappear with -O3 since the compiler spends more time proving they aren't needed.
