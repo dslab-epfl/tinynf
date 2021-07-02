@@ -5,7 +5,6 @@ with System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 with Interfaces.C;
-with Interfaces.C.Strings;
 with GNAT.OS_Lib; use GNAT.OS_Lib;
 with Text_IO;
 
@@ -118,7 +117,7 @@ package body Environment is
       OS_Abort;
     end if;
 
-    return Integer_Address(PFN) * Integer_Address(Page_Size) + Integer_Address(Addr rem Page_Size);
+    return Integer_Address(PFN) * Page_Size + (Addr rem Page_Size);
   end;
 
 
