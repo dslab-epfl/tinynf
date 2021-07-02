@@ -112,9 +112,8 @@ package body Ixgbe_Agent is
           end if;
         end loop;
 
-        This.Receive_Tail.all := To_Little((Earliest_Transmit_Head - 1) rem (VolatileUInt32(Delimiter_Range'Last) + 1));
+        This.Receive_Tail.all := To_Little((Earliest_Transmit_Head - 1) rem VolatileUInt32(Ixgbe_Constants.Ring_Size));
       end if;
-
       N := N + 1;
     end loop;
     if N /= 0 then
