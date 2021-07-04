@@ -13,7 +13,7 @@ package body Ixgbe_Agent is
     Packets: not null access Packet_Array := Allocate_Packets;
     function Get_Packet_Address is new Environment.Get_Physical_Address(T => Packet_Data);
 
-    subtype DRA_Sized is Descriptor_Ring_Array(0 .. Output_Devices'Length);
+    subtype DRA_Sized is Descriptor_Ring_Array(0 .. Output_Devices'Length - 1);
     Rings_Sized: DRA_Sized := (others => Fake_Ring'Access);
     Rings: Descriptor_Ring_Array := Rings_Sized;
     function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
@@ -25,7 +25,7 @@ package body Ixgbe_Agent is
     Transmit_Heads_Sized: not null access THA_Sized := Allocate_Heads;
     Transmit_Heads: not null access Transmit_Head_Array := Transmit_Heads_Sized;
 
-    subtype TTA_Sized is Transmit_Tail_Array(0 .. Output_Devices'Length);
+    subtype TTA_Sized is Transmit_Tail_Array(0 .. Output_Devices'Length - 1);
     Transmit_Tails_Sized: TTA_Sized := (others => Fake_Reg'Access);
     Transmit_Tails: Transmit_Tail_Array := Transmit_Tails_Sized;
 
@@ -44,7 +44,7 @@ package body Ixgbe_Agent is
     end loop;
 
     -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
-    return (N => Output_Devices'Length,
+    return (N => Output_Devices'Length - 1,
             Packets => Packets.all'Unchecked_Access,
             Receive_Ring => Rings(0),
             Transmit_Rings => Rings,
