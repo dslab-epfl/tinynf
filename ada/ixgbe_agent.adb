@@ -59,7 +59,6 @@ package body Ixgbe_Agent is
                 Proc: in Processor)
   is
     N: Integer range 0 .. Ixgbe_Constants.Flush_Period;
-    M: Outputs_Range;
     X: VolatileUInt64; -- Both "receive metadata" and "RS bit" to save stack space because GNAT is not very clever
     Length: Packet_Length;
     Earliest_Transmit_Head: VolatileUInt32;
@@ -92,12 +91,9 @@ package body Ixgbe_Agent is
 
       X := (if (This.Process_Delimiter rem Ixgbe_Constants.Recycle_Period) = (Ixgbe_Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
-      -- I cannot find a way to get GNAT to not emit bounds checks when using a single index for both :/
-      M := 0;
-      for R of This.Transmit_Rings loop
-        R(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(M)) or X or 16#00_00_00_00_03_00_00_00#);
+      for M in 0 .. This.N loop
+        This.Transmit_Rings(M)(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(M)) or X or 16#00_00_00_00_03_00_00_00#);
         This.Outputs(M) := 0;
-        M := M + 1;
       end loop;
 
       This.Process_Delimiter := This.Process_Delimiter + 1;
