@@ -6,15 +6,16 @@ with Environment;
 package body Ixgbe_Agent is
   -- default value for arrays of non-null accesses
   Fake_Ring: aliased Descriptor_Ring;
+  Fake_Reg: aliased VolatileUInt32;
 
   function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent is
     function Allocate_Packets is new Environment.Allocate(T => Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
     Packets: not null access Packet_Array := Allocate_Packets;
     function Get_Packet_Address is new Environment.Get_Physical_Address(T => Packet_Data);
 
-    subtype DRA_Sized is Descriptor_Ring_Array(Output_Devices'Range);
-    Rings_Sized: not null access DRA_Sized := new DRA_Sized'(others => Fake_Ring'Access);
-    Rings: not null access Descriptor_Ring_Array := Rings_Sized;
+    subtype DRA_Sized is Descriptor_Ring_Array(0 .. Output_Devices'Length);
+    Rings_Sized: DRA_Sized := (others => Fake_Ring'Access);
+    Rings: Descriptor_Ring_Array := Rings_Sized;
     function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
 
     subtype OD_Range is Outputs_Range range Output_Devices'First .. Output_Devices'Last; -- why do we need this? somehow passing 'Range as R => generic param doesn't wrk
@@ -24,10 +25,9 @@ package body Ixgbe_Agent is
     Transmit_Heads_Sized: not null access THA_Sized := Allocate_Heads;
     Transmit_Heads: not null access Transmit_Head_Array := Transmit_Heads_Sized;
 
-    subtype TTA_Sized is Transmit_Tail_Array(OD_Range);
-    function Allocate_Tails is new Environment.Allocate(T => Register_Access, R => OD_Range, T_Array => TTA_Sized);
-    Transmit_Tails_Sized: not null access TTA_Sized := Allocate_Tails;
-    Transmit_Tails: not null access Transmit_Tail_Array := Transmit_Tails_Sized;
+    subtype TTA_Sized is Transmit_Tail_Array(0 .. Output_Devices'Length);
+    Transmit_Tails_Sized: TTA_Sized := (others => Fake_Reg'Access);
+    Transmit_Tails: Transmit_Tail_Array := Transmit_Tails_Sized;
 
     function Allocate_Outputs is new Environment.Allocate(T => Packet_Length, R => Outputs_Range, T_Array => Packet_Outputs);
     Outputs: not null access Packet_Outputs := Allocate_Outputs;
@@ -44,12 +44,13 @@ package body Ixgbe_Agent is
     end loop;
 
     -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
-    return (Packets => Packets.all'Unchecked_Access,
+    return (N => Output_Devices'Length,
+            Packets => Packets.all'Unchecked_Access,
             Receive_Ring => Rings(0),
             Transmit_Rings => Rings,
             Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(0)),
             Transmit_Heads => Transmit_Heads.all'Unchecked_Access,
-            Transmit_Tails => Transmit_Tails.all'Unchecked_Access,
+            Transmit_Tails => Transmit_Tails,
             Outputs => Outputs.all'Unchecked_Access,
             Process_Delimiter => 0);
   end;
@@ -93,7 +94,7 @@ package body Ixgbe_Agent is
 
       -- I cannot find a way to get GNAT to not emit bounds checks when using a single index for both :/
       M := 0;
-      for R of This.Transmit_Rings.all loop
+      for R of This.Transmit_Rings loop
         R(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(M)) or X or 16#00_00_00_00_03_00_00_00#);
         This.Outputs(M) := 0;
         M := M + 1;
@@ -118,7 +119,7 @@ package body Ixgbe_Agent is
       N := N + 1;
     end loop;
     if N /= 0 then
-      for T of This.Transmit_Tails.all loop
+      for T of This.Transmit_Tails loop
         T.all := To_Little(VolatileUInt32(This.Process_Delimiter));
       end loop;
     end if;

@@ -15,27 +15,25 @@ package Ixgbe_Agent is
                                               Length: in Packet_Length;
                                               Output_Lengths: not null access Packet_Outputs);
 
-  type Agent is private;
-  type Output_Devs is array(Outputs_Range range <>) of not null access Ixgbe_Device.Dev;
-  function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent;
-  procedure Run(This: in out Agent;
-                Proc: in Processor);
-
-private
   type Packet_Array is array(Delimiter_Range) of aliased Packet_Data;
   type Descriptor_Ring_Array is array(Outputs_Range range <>) of not null access Descriptor_Ring;
   type Transmit_Head_Array is array(Outputs_Range range <>) of Transmit_Head;
   type Transmit_Tail_Array is array(Outputs_Range range <>) of Register_Access;
 
-  type Agent is record
+  type Agent(N: Outputs_Range) is record
     Packets: not null access Packet_Array;
     Receive_Ring: not null access Descriptor_Ring;
-    Transmit_Rings: not null access Descriptor_Ring_Array;
+    Transmit_Rings: Descriptor_Ring_Array(0 .. N);
     Receive_Tail: Register_Access;
     Transmit_Heads: not null access Transmit_Head_Array;
-    Transmit_Tails: not null access Transmit_Tail_Array;
+    Transmit_Tails: Transmit_Tail_Array(0 .. N);
     Outputs: not null access Packet_Outputs;
     Process_Delimiter: Delimiter_Range;
   end record;
+
+  type Output_Devs is array(Outputs_Range range <>) of not null access Ixgbe_Device.Dev;
+  function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent;
+  procedure Run(This: in out Agent;
+                Proc: in Processor);
 
 end Ixgbe_Agent;
