@@ -23,7 +23,10 @@ package Ixgbe is
   type Transmit_Head is record
     Value: aliased VolatileUInt32;
   end record
-    with Pack, Alignment => 64; -- full cache line to avoid contention
+    with Size => 64*8; -- full cache line to avoid contention
+  for Transmit_Head use record
+    Value at 0 range 0 .. 31;
+  end record;
 
   type Register_Access is not null access all VolatileUInt32;
 
