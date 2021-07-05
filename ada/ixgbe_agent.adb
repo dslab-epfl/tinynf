@@ -4,17 +4,17 @@ with Ada.Unchecked_Conversion;
 with Environment;
 
 package body Ixgbe_Agent is
-  -- default value for array items
-  Fake_Ring: Descriptor_Ring := (others => (0, 0));
+  -- default value for arrays of non-null accesses
+  Fake_Ring: aliased Descriptor_Ring;
   Fake_Reg: aliased VolatileUInt32;
 
   function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent is
     function Allocate_Packets is new Environment.Allocate(T => Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
-    Packets: Packet_Array := Allocate_Packets;
+    Packets: not null access Packet_Array := Allocate_Packets;
     function Get_Packet_Address is new Environment.Get_Physical_Address(T => Packet_Data);
 
     subtype DRA_Sized is Descriptor_Ring_Array(0 .. Output_Devices'Length - 1);
-    Rings_Sized: DRA_Sized := (others => Fake_Ring);
+    Rings_Sized: DRA_Sized := (others => Fake_Ring'Access);
     Rings: Descriptor_Ring_Array := Rings_Sized;
     function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
 
@@ -22,36 +22,36 @@ package body Ixgbe_Agent is
 
     subtype THA_Sized is Transmit_Head_Array(OD_Range);
     function Allocate_Heads is new Environment.Allocate(T => Transmit_Head, R => OD_Range, T_Array => THA_Sized);
-    Transmit_Heads_Sized: THA_Sized := Allocate_Heads;
-    Transmit_Heads: Transmit_Head_Array := Transmit_Heads_Sized;
+    Transmit_Heads_Sized: not null access THA_Sized := Allocate_Heads;
+    Transmit_Heads: not null access Transmit_Head_Array := Transmit_Heads_Sized;
 
     subtype TTA_Sized is Transmit_Tail_Array(0 .. Output_Devices'Length - 1);
     Transmit_Tails_Sized: TTA_Sized := (others => Fake_Reg'Access);
     Transmit_Tails: Transmit_Tail_Array := Transmit_Tails_Sized;
 
     function Allocate_Outputs is new Environment.Allocate(T => Packet_Length, R => Outputs_Range, T_Array => Packet_Outputs);
-    Outputs: Packet_Outputs := Allocate_Outputs;
+    Outputs: not null access Packet_Outputs := Allocate_Outputs;
   begin
     for R in Rings'Range loop
-      Rings(R) := Allocate_Ring;
+      Rings(R) := Allocate_Ring.all'Unchecked_Access; -- why???
       for N in Delimiter_Range loop
         Rings(R)(N).Buffer := To_Little(VolatileUInt64(Get_Packet_Address(Packets(N)'Access)));
       end loop;
     end loop;
 
     for N in OD_Range loop
-      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devices(N), Rings(N)'Access, Transmit_Heads(N).Value'Access);
+      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devices(N), Rings(N), Transmit_Heads(N).Value'Access);
     end loop;
 
     -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
     return (N => Output_Devices'Length - 1,
-            Packets => Packets,
+            Packets => Packets.all'Unchecked_Access,
             Receive_Ring => Rings(0),
             Transmit_Rings => Rings,
-            Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(0)'Access),
-            Transmit_Heads => Transmit_Heads,
+            Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(0)),
+            Transmit_Heads => Transmit_Heads.all'Unchecked_Access,
             Transmit_Tails => Transmit_Tails,
-            Outputs => Outputs,
+            Outputs => Outputs.all'Unchecked_Access,
             Process_Delimiter => 0);
   end;
 
@@ -101,7 +101,7 @@ package body Ixgbe_Agent is
       if X /= 0 then
         Earliest_Transmit_Head := VolatileUInt32(This.Process_Delimiter);
         Min_Diff := VolatileUint64'Last;
-        for H of This.Transmit_Heads loop
+        for H of This.Transmit_Heads.all loop
           Head := From_Little(H.Value);
           Diff := VolatileUInt64(Head) - VolatileUInt64(This.Process_Delimiter);
           if Diff <= Min_Diff then

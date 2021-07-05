@@ -6,7 +6,7 @@ package Environment is
     type T is private;
     type R is (<>);
     type T_Array is array(R) of T;
-  function Allocate return T_Array;
+  function Allocate return not null access T_Array;
 
   generic
     type T is private;

@@ -13,21 +13,21 @@ package Ixgbe_Agent is
 
   type Processor is not null access procedure(Data: in out Packet_Data;
                                               Length: in Packet_Length;
-                                              Output_Lengths: in out Packet_Outputs);
+                                              Output_Lengths: not null access Packet_Outputs);
 
   type Packet_Array is array(Delimiter_Range) of aliased Packet_Data;
-  type Descriptor_Ring_Array is array(Outputs_Range range <>) of aliased Descriptor_Ring;
+  type Descriptor_Ring_Array is array(Outputs_Range range <>) of not null access Descriptor_Ring;
   type Transmit_Head_Array is array(Outputs_Range range <>) of Transmit_Head;
   type Transmit_Tail_Array is array(Outputs_Range range <>) of Register_Access;
 
   type Agent(N: Outputs_Range) is record
-    Packets: Packet_Array;
-    Receive_Ring: Descriptor_Ring;
+    Packets: not null access Packet_Array;
+    Receive_Ring: not null access Descriptor_Ring;
     Transmit_Rings: Descriptor_Ring_Array(0 .. N);
     Receive_Tail: Register_Access;
-    Transmit_Heads: Transmit_Head_Array(0 .. N);
+    Transmit_Heads: not null access Transmit_Head_Array;
     Transmit_Tails: Transmit_Tail_Array(0 .. N);
-    Outputs: Packet_Outputs;
+    Outputs: not null access Packet_Outputs;
     Process_Delimiter: Delimiter_Range;
   end record;
 
