@@ -1,7 +1,7 @@
 package body NF is
   procedure Processor(Data: in out Packet_Data;
                       Length: in Packet_Length;
-                      Output_Lengths: not null access Packet_Outputs) is
+                      Output_Lengths: in out Packet_Outputs) is
   begin
     Data(0) := 0;
     Data(1) := 0;
