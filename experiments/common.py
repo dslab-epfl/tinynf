@@ -28,6 +28,8 @@ def get_pyplot_ax_fig(title=None, figsize=None):
   return (plt, ax, fig)
 
 def get_color_and_marker(nf):
+  if 'Ada' in nf:
+    return ('#990000', '1') # 1 = 'tri up'
   if 'Rust' in nf:
     return ('#70AD47', '.')
   if 'C#' in nf:
