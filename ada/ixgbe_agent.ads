@@ -20,12 +20,17 @@ package Ixgbe_Agent is
   type Transmit_Head_Array is array(Outputs_Range range <>) of Transmit_Head;
   type Transmit_Tail_Array is array(Outputs_Range range <>) of Register_Access;
 
+  -- Trick to have a "not null access Transmit_Head_Array(0 .. N)" inside Agent... can't be declared directly
+  type Transmit_Heads_Wrapper(N: Outputs_Range) is record
+    Value: Transmit_Head_Array(0 .. N);
+  end record;
+
   type Agent(N: Outputs_Range) is record
     Packets: not null access Packet_Array;
     Receive_Ring: not null access Descriptor_Ring;
     Transmit_Rings: Descriptor_Ring_Array(0 .. N);
     Receive_Tail: Register_Access;
-    Transmit_Heads: not null access Transmit_Head_Array;
+    Transmit_Heads: not null access Transmit_Heads_Wrapper;
     Transmit_Tails: Transmit_Tail_Array(0 .. N);
     Outputs: not null access Packet_Outputs;
     Process_Delimiter: Delimiter_Range;

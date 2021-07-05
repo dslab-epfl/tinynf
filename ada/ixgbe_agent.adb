@@ -18,12 +18,12 @@ package body Ixgbe_Agent is
     Rings: Descriptor_Ring_Array := Rings_Sized;
     function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
 
-    subtype OD_Range is Outputs_Range range Output_Devices'First .. Output_Devices'Last; -- why do we need this? somehow passing 'Range as R => generic param doesn't wrk
-
-    subtype THA_Sized is Transmit_Head_Array(OD_Range);
-    function Allocate_Heads is new Environment.Allocate(T => Transmit_Head, R => OD_Range, T_Array => THA_Sized);
-    Transmit_Heads_Sized: not null access THA_Sized := Allocate_Heads;
-    Transmit_Heads: not null access Transmit_Head_Array := Transmit_Heads_Sized;
+    subtype THA_Wrapper_Sized is Transmit_Heads_Wrapper(Output_Devices'Length - 1);
+    subtype THA_Wrapper_Range is Integer range 0 .. 0;
+    type THA_Wrapper_Array is array(THA_Wrapper_Range) of aliased THA_Wrapper_Sized;
+    function Allocate_THA_Wrapper is new Environment.Allocate(T => THA_Wrapper_Sized, R => THA_Wrapper_Range, T_Array => THA_Wrapper_Array);
+    THW_Array: not null access THA_Wrapper_Array := Allocate_THA_Wrapper;
+    THW: not null access THA_Wrapper_Sized := THW_Array(0)'Access;
 
     subtype TTA_Sized is Transmit_Tail_Array(0 .. Output_Devices'Length - 1);
     Transmit_Tails_Sized: TTA_Sized := (others => Fake_Reg'Access);
@@ -39,8 +39,8 @@ package body Ixgbe_Agent is
       end loop;
     end loop;
 
-    for N in OD_Range loop
-      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devices(N), Rings(N), Transmit_Heads(N).Value'Access);
+    for N in Transmit_Tails'Range loop
+      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devices(N), Rings(N), THW.Value(N).Value'Access);
     end loop;
 
     -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
@@ -49,7 +49,7 @@ package body Ixgbe_Agent is
             Receive_Ring => Rings(0),
             Transmit_Rings => Rings,
             Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(0)),
-            Transmit_Heads => Transmit_Heads.all'Unchecked_Access,
+            Transmit_Heads => THW,
             Transmit_Tails => Transmit_Tails,
             Outputs => Outputs.all'Unchecked_Access,
             Process_Delimiter => 0);
@@ -101,7 +101,7 @@ package body Ixgbe_Agent is
       if X /= 0 then
         Earliest_Transmit_Head := VolatileUInt32(This.Process_Delimiter);
         Min_Diff := VolatileUint64'Last;
-        for H of This.Transmit_Heads.all loop
+        for H of This.Transmit_Heads.Value loop
           Head := From_Little(H.Value);
           Diff := VolatileUInt64(Head) - VolatileUInt64(This.Process_Delimiter);
           if Diff <= Min_Diff then
