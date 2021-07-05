@@ -33,8 +33,8 @@ begin
     Set_Promiscuous(Dev1);
     Text_IO.Put_Line("Ada TinyNF starting...");
     loop
-      Run(Agent0, NF.Processor'Access);
-      Run(Agent1, NF.Processor'Access);
+      Run(Agent0);--, NF.Processor'Access);
+      Run(Agent1);--, NF.Processor'Access);
     end loop;
   end;
 end;

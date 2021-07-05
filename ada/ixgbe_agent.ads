@@ -11,9 +11,11 @@ package Ixgbe_Agent is
   type Packet_Data is array(Packet_Buffer_Length) of System.Storage_Elements.Storage_Element;
   type Packet_Outputs is array(Outputs_Range) of Packet_Length;
 
-  type Processor is not null access procedure(Data: in out Packet_Data;
-                                              Length: in Packet_Length;
-                                              Output_Lengths: not null access Packet_Outputs);
+-- Ideally we'd use this as an argument to "Run", but GNAT won't inline it
+-- which causes a perf loss for no good reason, so we directly call NF.Processor in the implementation instead...
+--  type Processor is not null access procedure(Data: in out Packet_Data;
+--                                              Length: in Packet_Length;
+--                                              Output_Lengths: not null access Packet_Outputs);
 
   type Packet_Array is array(Delimiter_Range) of aliased Packet_Data;
   type Descriptor_Ring_Array is array(Outputs_Range range <>) of not null access Descriptor_Ring;
@@ -33,7 +35,7 @@ package Ixgbe_Agent is
 
   type Output_Devs is array(Outputs_Range range <>) of not null access Ixgbe_Device.Dev;
   function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent;
-  procedure Run(This: in out Agent;
-                Proc: in Processor);
+  procedure Run(This: in out Agent);
+--                Proc: in Processor);
 
 end Ixgbe_Agent;

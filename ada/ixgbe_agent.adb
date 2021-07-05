@@ -2,6 +2,7 @@ with System;
 with Ada.Unchecked_Conversion;
 
 with Environment;
+with NF;
 
 package body Ixgbe_Agent is
   -- default value for arrays of non-null accesses
@@ -55,8 +56,8 @@ package body Ixgbe_Agent is
             Process_Delimiter => 0);
   end;
 
-  procedure Run(This: in out Agent;
-                Proc: in Processor)
+  procedure Run(This: in out Agent)
+--                Proc: in Processor)
   is
     N: Integer range 0 .. Ixgbe_Constants.Flush_Period;
     X: VolatileUInt64; -- Both "receive metadata" and "RS bit" to save stack space because GNAT is not very clever
@@ -85,7 +86,7 @@ package body Ixgbe_Agent is
       exit when (X and 16#00_00_00_01_00_00_00_00#) = 0;
 
       Length := Meta_To_Read(X).Length;
-      Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
+      NF.Processor(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
       -- Above this line, "X" is "receive metadata"; below, it is "RS Bit" --
 
