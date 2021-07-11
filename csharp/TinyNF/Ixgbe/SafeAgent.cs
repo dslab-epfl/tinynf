@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading;
 using TinyNF.Environment;
 
@@ -20,14 +19,14 @@ namespace TinyNF.Ixgbe
         private byte _processDelimiter;
 
 
-        public SafeAgent(IEnvironment env, Device inputDevice, IReadOnlyList<Device> outputDevices)
+        public SafeAgent(IEnvironment env, Device inputDevice, Device[] outputDevices)
         {
             _processDelimiter = 0;
-            _outputs = env.Allocate<ushort>((uint)outputDevices.Count).Span;
+            _outputs = env.Allocate<ushort>((uint)outputDevices.Length).Span;
 
             _packets = env.Allocate<PacketData>(256).Span;
 
-            _transmitRings = new Memory<Descriptor>[outputDevices.Count];
+            _transmitRings = new Memory<Descriptor>[outputDevices.Length];
             for (int n = 0; n < _transmitRings.Length; n++)
             {
                 _transmitRings[n] = env.Allocate<Descriptor>(256);
@@ -40,9 +39,9 @@ namespace TinyNF.Ixgbe
             _receiveRing = _transmitRings[0].Span;
             _receiveTail = inputDevice.SetInput(env, _receiveRing).Span;
 
-            _transmitHeads = env.Allocate<TransmitHead>((uint)outputDevices.Count).Span;
-            _transmitTails = new Memory<uint>[outputDevices.Count];
-            for (byte n = 0; n < outputDevices.Count; n++)
+            _transmitHeads = env.Allocate<TransmitHead>((uint)outputDevices.Length).Span;
+            _transmitTails = new Memory<uint>[outputDevices.Length];
+            for (byte n = 0; n < outputDevices.Length; n++)
             {
                 _transmitTails[n] = outputDevices[n].AddOutput(env, _transmitRings[n].Span, ref _transmitHeads[n].Value);
             }
