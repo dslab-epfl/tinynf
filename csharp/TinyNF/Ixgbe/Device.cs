@@ -20,11 +20,7 @@ namespace TinyNF.Ixgbe
                 }
                 environment.Sleep(span / 10);
             }
-            if (Regs.IsFieldCleared(_buffer, register, field) != cleared)
-            {
-                return false;
-            }
-            return true;
+            return Regs.IsFieldCleared(_buffer, register, field) == cleared;
         }
 
         public Device(IEnvironment env, PciAddress pciAddress)
