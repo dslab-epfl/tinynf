@@ -14,4 +14,7 @@ package Ixgbe_Device is
   procedure Set_Promiscuous(Device: in out Dev);
   function Set_Input(Device: not null access Dev; Ring: not null access Descriptor_Ring) return Register_Access;
   function Add_Output(Device: not null access Dev; Ring: not null access Descriptor_Ring; Head: not null access VolatileUInt32) return Register_Access;
+
+private
+  function After_Timeout(Timeout: Duration; Cleared: Boolean; Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32) return Boolean;
 end Ixgbe_Device;

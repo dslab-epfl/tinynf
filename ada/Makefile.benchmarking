@@ -16,7 +16,3 @@ run:
 
 print-nf-name:
 	@echo $(APP)
-
-# The Ada driver doesn't try to have short timeouts (see ixgbe_device.adb)
-init:
-	@sleep 30
