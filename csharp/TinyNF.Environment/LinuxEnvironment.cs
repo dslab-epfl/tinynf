@@ -1,7 +1,7 @@
 using System;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using CSUnsafe = System.Runtime.CompilerServices.Unsafe;
 
 // This class uses more OS interop than is necessary;
 // .NET can handle sleeps, file I/O and memory-mapped files just fine.
@@ -104,11 +104,11 @@ namespace TinyNF.Environment
         public unsafe Memory<T> Allocate<T>(uint count)
             where T : unmanaged
         {
-            var alignDiff = _usedBytes % (ulong)(CSUnsafe.SizeOf<T>() + 64 - (CSUnsafe.SizeOf<T>() % 64));
+            var alignDiff = _usedBytes % (ulong)(Unsafe.SizeOf<T>() + 64 - (Unsafe.SizeOf<T>() % 64));
             _allocatedPage = _allocatedPage.Slice((int)alignDiff);
             _usedBytes += alignDiff;
 
-            var fullSize = count * (uint)CSUnsafe.SizeOf<T>();
+            var fullSize = count * (uint)Unsafe.SizeOf<T>();
             var result = _allocatedPage.Slice(0, (int)fullSize);
             _allocatedPage = _allocatedPage.Slice((int)fullSize);
             _usedBytes += fullSize;
@@ -123,7 +123,7 @@ namespace TinyNF.Environment
             {
                 throw new Exception("Could not get the page size");
             }
-            nint addr = (nint)CSUnsafe.AsPointer(ref value);
+            nint addr = (nint)Unsafe.AsPointer(ref value);
             nint page = addr / (nint) pageSize;
             nint mapOffset = page * sizeof(ulong);
             // Cannot check for off_t roundtrip here since we don't know what it is
@@ -181,7 +181,7 @@ namespace TinyNF.Environment
 
             void* mapped = OSInterop.mmap(
                 0,
-                count * (uint) CSUnsafe.SizeOf<T>(),
+                count * (uint) Unsafe.SizeOf<T>(),
                 OSInterop.PROT_READ | OSInterop.PROT_WRITE,
                 OSInterop.MAP_SHARED,
                 memFd,
