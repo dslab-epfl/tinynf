@@ -1,10 +1,13 @@
-﻿using System;
+using System;
 using System.Buffers;
-using System.IO;
-using System.IO.MemoryMappedFiles;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
+using CSUnsafe = System.Runtime.CompilerServices.Unsafe;
+
+// This class uses more OS interop than is necessary;
+// .NET can handle sleeps, file I/O and memory-mapped files just fine.
+// But .NET doesn't support mmapping hugepages nor port-mapped I/O (to be fair, not exactly common scenarios).
+// We do everything through interop to minimize dependencies on the .NET framework itself,
+// which will help if we ever manage a "no .NET runtime" build.
 
 namespace TinyNF.Environment
 {
@@ -13,11 +16,13 @@ namespace TinyNF.Environment
     /// </summary>
     public sealed class LinuxEnvironment : IEnvironment
     {
-        private const int HugepageSize = 1024 * 1024 * 1024; // 1 GB hugepages
+        private const int HugepageLog = 30; // 1 GB hugepages
+        private const int HugepageSize = 1 << HugepageLog;
 
-        // Necessary because .NET has no explicit support for hugepages and MemoryMappedFile doesn't allow us to pass the hugepage flag
         private static unsafe class OSInterop
         {
+            public const int _SC_PAGESIZE = 30;
+
             public const int PROT_READ = 0x1;
             public const int PROT_WRITE = 0x2;
 
@@ -28,11 +33,41 @@ namespace TinyNF.Environment
             public const int MAP_HUGE_SHIFT = 26;
             public static readonly void* MAP_FAILED = (void*)-1;
 
+            public const int O_RDONLY = 0;
+            public const int O_RDWR = 0x2;
+            public const int O_SYNC = 0x101000;
+
+            public const int SEEK_SET = 0;
+
+            [StructLayout(LayoutKind.Sequential)]
+            public struct TimeSpec
+            {
+                public long Seconds;
+                public long Nanoseconds;
+            }
+
+            [DllImport("libc")]
+            public static extern long sysconf(int name);
+
             [DllImport("libc")]
             public static extern void* mmap(nuint addr, nuint length, int prot, int flags, int fd, nint offset);
+
+            [DllImport("libc")]
+            public static extern int open(string pathName, int flags);
+
+            [DllImport("libc")]
+            public static extern nint lseek(int fd, nint offset, int whence);
+
+            [DllImport("libc")]
+            public static extern nint read(int fd, void* buf, nuint count);
+
+            [DllImport("libc")]
+            public static extern int close(int fd);
+
+            [DllImport("libc")]
+            public static extern int nanosleep(in TimeSpec req, out TimeSpec rem);
         }
 
-        // Necessary because .NET has no port I/O intrinsics
         private static unsafe class PortInterop
         {
             public const ushort PCI_CONFIG_ADDR = 0xCF8;
@@ -54,7 +89,7 @@ namespace TinyNF.Environment
                 0,
                 HugepageSize,
                 OSInterop.PROT_READ | OSInterop.PROT_WRITE,
-                OSInterop.MAP_HUGETLB | ((int)Math.Log2(HugepageSize) << OSInterop.MAP_HUGE_SHIFT) | OSInterop.MAP_ANONYMOUS | OSInterop.MAP_SHARED | OSInterop.MAP_POPULATE,
+                OSInterop.MAP_HUGETLB | (HugepageLog << OSInterop.MAP_HUGE_SHIFT) | OSInterop.MAP_ANONYMOUS | OSInterop.MAP_SHARED | OSInterop.MAP_POPULATE,
                 -1,
                 0
             );
@@ -69,13 +104,13 @@ namespace TinyNF.Environment
         public unsafe Memory<T> Allocate<T>(uint count)
             where T : unmanaged
         {
-            var alignDiff = _usedBytes % (ulong)(Marshal.SizeOf<T>() + 64 - (Marshal.SizeOf<T>() % 64));
-            _allocatedPage = _allocatedPage[(int)alignDiff..];
+            var alignDiff = _usedBytes % (ulong)(CSUnsafe.SizeOf<T>() + 64 - (CSUnsafe.SizeOf<T>() % 64));
+            _allocatedPage = _allocatedPage.Slice((int)alignDiff);
             _usedBytes += alignDiff;
 
-            var fullSize = count * (uint)Marshal.SizeOf<T>();
+            var fullSize = count * (uint)CSUnsafe.SizeOf<T>();
             var result = _allocatedPage.Slice(0, (int)fullSize);
-            _allocatedPage = _allocatedPage[(int)fullSize..];
+            _allocatedPage = _allocatedPage.Slice((int)fullSize);
             _usedBytes += fullSize;
 
             return new CastMemoryManager<byte, T>(result).Memory;
@@ -83,19 +118,36 @@ namespace TinyNF.Environment
 
         public unsafe nuint GetPhysicalAddress<T>(ref T value)
         {
-            nuint pageSize = (nuint)System.Environment.SystemPageSize;
-            nuint addr = (nuint)Unsafe.AsPointer(ref value);
-            nuint page = addr / pageSize;
-            nuint mapOffset = page * sizeof(ulong);
+            long pageSize = OSInterop.sysconf(OSInterop._SC_PAGESIZE);
+            if (pageSize <= 0)
+            {
+                throw new Exception("Could not get the page size");
+            }
+            nint addr = (nint)CSUnsafe.AsPointer(ref value);
+            nint page = addr / (nint) pageSize;
+            nint mapOffset = page * sizeof(ulong);
             // Cannot check for off_t roundtrip here since we don't know what it is
 
-            using var pagemap = File.OpenRead("/proc/self/pagemap");
-            pagemap.Seek((long)mapOffset, SeekOrigin.Current);
+            int mapFd = OSInterop.open("/proc/self/pagemap", OSInterop.O_RDONLY);
+            if (mapFd < 0)
+            {
+                throw new Exception("Could not open the pagemap");
+            }
+
+            if (OSInterop.lseek(mapFd, (nint) mapOffset, OSInterop.SEEK_SET) == -1)
+            {
+                throw new Exception("Could not seek the pagemap");
+            }
 
             Span<byte> readBytes = stackalloc byte[sizeof(ulong)];
-            if (pagemap.Read(readBytes) != readBytes.Length)
+            fixed (byte* bs = readBytes)
             {
-                throw new Exception("Could not read enough bytes from the pagemap");
+                var readResult = OSInterop.read(mapFd, bs, sizeof(ulong));
+                OSInterop.close(mapFd);
+                if (readResult != readBytes.Length)
+                {
+                    throw new Exception("Could not read enough bytes from the pagemap");
+                }
             }
 
             ulong metadata = MemoryMarshal.Cast<byte, ulong>(readBytes)[0];
@@ -109,8 +161,8 @@ namespace TinyNF.Environment
                 throw new Exception("Page not mapped");
             }
 
-            nuint addrOffset = addr % pageSize;
-            return (nuint)(pfn * pageSize + addrOffset);
+            nint addrOffset = addr % (nint)pageSize;
+            return (nuint)pfn * (nuint)pageSize + (nuint)addrOffset;
         }
 
         public unsafe Memory<T> MapPhysicalMemory<T>(ulong addr, uint count)
@@ -118,15 +170,29 @@ namespace TinyNF.Environment
         {
             if (count > int.MaxValue)
             {
-                throw new ArgumentOutOfRangeException(nameof(count), "Cannot map this much memory");
+                throw new Exception("Cannot handle this much memory");
             }
 
-            byte* ptr = null;
-            // we'll never call ReleasePointer, but that's ok, the memory will be released when we exit
-            MemoryMappedFile.CreateFromFile("/dev/mem", FileMode.Open, null, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes)
-                            .CreateViewAccessor((long)addr, count * Marshal.SizeOf<T>())
-                            .SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
-            return new UnmanagedMemoryManager<T>((T*)ptr, (int)count).Memory;
+            int memFd = OSInterop.open("/dev/mem", OSInterop.O_SYNC | OSInterop.O_RDWR);
+            if (memFd == -1)
+            {
+                throw new Exception("Could not open /dev/mem");
+            }
+
+            void* mapped = OSInterop.mmap(
+                0,
+                count * (uint) CSUnsafe.SizeOf<T>(),
+                OSInterop.PROT_READ | OSInterop.PROT_WRITE,
+                OSInterop.MAP_SHARED,
+                memFd,
+                (nint) addr
+            );
+            if (mapped == OSInterop.MAP_FAILED)
+            {
+                throw new Exception("Phys-to-virt mmap failed");
+            }
+
+            return new UnmanagedMemoryManager<T>((T*) mapped, (int) count).Memory;
         }
 
         private static void PciTarget(PciAddress address, byte reg)
@@ -153,10 +219,19 @@ namespace TinyNF.Environment
             }
         }
 
-        public void Sleep(TimeSpan span)
+        public void Sleep(TimeSpan duration)
         {
-            // Very imprecise but that's fine, we'll just sleep too much
-            Thread.Sleep(span);
+            var nanos = duration.Ticks * 100;
+            var request = new OSInterop.TimeSpec { Seconds = (long) (nanos / 1_000_000_000), Nanoseconds = nanos % 1_000_000_000 };
+            for (int n = 0; n < 1000; n++) {
+                int ret = OSInterop.nanosleep(request, out var remain);
+                if (ret == 0) {
+                    return;
+                }
+
+                request = remain;
+            }
+            throw new Exception("Could not sleep");
         }
 
         // From Marc Gravell, see https://stackoverflow.com/a/52191681
@@ -170,7 +245,7 @@ namespace TinyNF.Environment
             {
                 if (length < 0)
                 {
-                    throw new ArgumentOutOfRangeException(nameof(length));
+                    throw new ArgumentException("Length cannot be negative");
                 }
                 _pointer = pointer;
                 _length = length;
@@ -180,11 +255,7 @@ namespace TinyNF.Environment
 
             public override MemoryHandle Pin(int elementIndex = 0)
             {
-                if (elementIndex < 0 || elementIndex >= _length)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(elementIndex));
-                }
-                return new MemoryHandle(_pointer + elementIndex);
+                throw new NotSupportedException();
             }
 
             public override void Unpin() { }
@@ -203,9 +274,14 @@ namespace TinyNF.Environment
 
             public override Span<TTo> GetSpan() => MemoryMarshal.Cast<TFrom, TTo>(_from.Span);
 
+            public override MemoryHandle Pin(int elementIndex = 0)
+            {
+                throw new NotSupportedException();
+            }
+
+            public override void Unpin() { }
+
             protected override void Dispose(bool disposing) { }
-            public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
-            public override void Unpin() => throw new NotSupportedException();
         }
     }
 }
