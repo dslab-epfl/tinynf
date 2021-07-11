@@ -19,6 +19,13 @@
     <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="6.0.0-*" />
   </ItemGroup>
 
+  <!-- Direct P/Invoke calls in AOT -->
+  <ItemGroup Condition="'$(UseAOT)' != ''">
+    <DirectPInvoke Include="libc" />
+    <DirectPInvoke Include="cwrapper" />
+    <NativeLibrary Include="../cwrapper/cwrapper.a" />
+  </ItemGroup>
+
   <!-- Disable everything possible in AOT, not really for speed (unlikely to matter) but to make code inspection easier; also, optimize for speed -->
   <PropertyGroup Condition="'$(UseAOT)' != ''">
     <DebuggerSupport>false</DebuggerSupport>

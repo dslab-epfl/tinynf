@@ -20,27 +20,16 @@ namespace TinyNF
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                return MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index];
+                return MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index];
             }
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set
             {
-                MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index] = value;
+                MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index] = value;
             }
         }
 
-        // Workaround for the compiler not coalescing byte writes (doesn't actually seem useful though?)
-        /*        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public T Read<T>(int index)
-                    where T : struct
-                {
-                    return MemoryMarshal.Read<T>(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index..]);
-                }
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public void Write<T>(int index, T value)
-                    where T : struct
-                {
-                    MemoryMarshal.Write(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1))[index..], ref value);
-                }*/
+        // The compiler doesn't currently coalesce byte writes, so one can use span casts to e.g. ulong or uint instead of byte
+        // as a workaround, but this doesn't seem to improve perf in practice, guess the CPU is smart
     }
 }
