@@ -9,22 +9,22 @@ namespace TinyNF.Ixgbe
         private bool _rxEnabled;
         private bool _txEnabled;
 
-        private static void IfAfterTimeout(IEnvironment environment, TimeSpan span, Func<bool> condition, Action action)
+        private bool AfterTimeout(IEnvironment environment, TimeSpan span, bool cleared, uint register, uint field)
         {
             environment.Sleep(TimeSpan.FromTicks(span.Ticks % 10));
             for (int n = 0; n < 10; n++)
             {
-                if (!condition())
+                if (Regs.IsFieldCleared(_buffer, register, field) != cleared)
                 {
-                    return;
+                    return false;
                 }
                 environment.Sleep(span / 10);
             }
-            if (!condition())
+            if (Regs.IsFieldCleared(_buffer, register, field) != cleared)
             {
-                return;
+                return false;
             }
-            action();
+            return true;
         }
 
         public Device(IEnvironment env, PciAddress pciAddress)
@@ -68,15 +68,15 @@ namespace TinyNF.Ixgbe
             for (byte queue = 0; queue < DeviceLimits.ReceiveQueuesCount; queue++)
             {
                 Regs.ClearField(_buffer, Regs.RXDCTL(queue), Regs.RXDCTL_.ENABLE);
-                IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => !Regs.IsFieldCleared(_buffer, Regs.RXDCTL(queue), Regs.RXDCTL_.ENABLE), () =>
+                if (AfterTimeout(env, TimeSpan.FromSeconds(1), cleared: false, Regs.RXDCTL(queue), Regs.RXDCTL_.ENABLE))
                 {
                     throw new Exception("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
-                });
+                }
                 env.Sleep(TimeSpan.FromMilliseconds(0.1));
             }
 
             Regs.SetField(_buffer, Regs.CTRL, Regs.CTRL_.MASTER_DISABLE);
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => !Regs.IsFieldCleared(_buffer, Regs.STATUS, Regs.STATUS_.PCIE_MASTER_ENABLE_STATUS), () =>
+            if (AfterTimeout(env, TimeSpan.FromSeconds(1), cleared: false, Regs.STATUS, Regs.STATUS_.PCIE_MASTER_ENABLE_STATUS))
             {
                 if (!PciRegs.IsFieldCleared(env, pciAddress, PciRegs.DEVICESTATUS, PciRegs.DEVICESTATUS_.TRANSACTIONPENDING))
                 {
@@ -94,7 +94,7 @@ namespace TinyNF.Ixgbe
 
                 Regs.SetField(_buffer, Regs.CTRL, Regs.CTRL_.RST);
                 env.Sleep(TimeSpan.FromMilliseconds(0.002));
-            });
+            }
 
             Regs.SetField(_buffer, Regs.CTRL, Regs.CTRL_.RST);
 
@@ -109,20 +109,20 @@ namespace TinyNF.Ixgbe
 
             Regs.WriteField(_buffer, Regs.FCRTH(0), Regs.FCRTH_.RTH, (512 * 1024 - 0x6000) / 32);
 
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.EEC, Regs.EEC_.AUTO_RD), () =>
+            if (AfterTimeout(env, TimeSpan.FromSeconds(1), cleared: true, Regs.EEC, Regs.EEC_.AUTO_RD))
             {
                 throw new Exception("EEPROM auto read timed out");
-            });
+            }
 
             if (Regs.IsFieldCleared(_buffer, Regs.EEC, Regs.EEC_.EE_PRES) || !Regs.IsFieldCleared(_buffer, Regs.FWSM, Regs.FWSM_.EXT_ERR_IND))
             {
                 throw new Exception("EEPROM not present or invalid");
             }
 
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.RDRXCTL, Regs.RDRXCTL_.DMAIDONE), () =>
+            if (AfterTimeout(env, TimeSpan.FromSeconds(1), cleared: true, Regs.RDRXCTL, Regs.RDRXCTL_.DMAIDONE))
             {
                 throw new Exception("DMA init timed out");
-            });
+            }
 
             for (uint n = 0; n < DeviceLimits.UnicastTableArraySize / 32; n++)
             {
@@ -229,10 +229,10 @@ namespace TinyNF.Ixgbe
             Regs.SetField(_buffer, Regs.SRRCTL(queueIndex), Regs.SRRCTL_.DROP_EN);
 
             Regs.SetField(_buffer, Regs.RXDCTL(queueIndex), Regs.RXDCTL_.ENABLE);
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.RXDCTL(queueIndex), Regs.RXDCTL_.ENABLE), () =>
+            if (AfterTimeout(env, TimeSpan.FromSeconds(1), cleared: true, Regs.RXDCTL(queueIndex), Regs.RXDCTL_.ENABLE))
             {
                 throw new Exception("RXDCTL.ENABLE did not set, cannot enable queue");
-            });
+            }
 
             Regs.Write(_buffer, Regs.RDT(queueIndex), DriverConstants.RingSize - 1u);
 
@@ -240,10 +240,10 @@ namespace TinyNF.Ixgbe
             {
                 Regs.SetField(_buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_.RX_DIS);
 
-                IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.SECRXSTAT, Regs.SECRXSTAT_.SECRX_RDY), () =>
+                if (AfterTimeout(env, TimeSpan.FromSeconds(1), cleared: true, Regs.SECRXSTAT, Regs.SECRXSTAT_.SECRX_RDY))
                 {
                     throw new Exception("SECRXSTAT.SECRXRDY timed out, cannot start device");
-                });
+                }
 
                 Regs.SetField(_buffer, Regs.RXCTRL, Regs.RXCTRL_.RXEN);
 
@@ -303,10 +303,10 @@ namespace TinyNF.Ixgbe
             }
 
             Regs.SetField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE);
-            IfAfterTimeout(env, TimeSpan.FromSeconds(1), () => Regs.IsFieldCleared(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE), () =>
+            if (AfterTimeout(env, TimeSpan.FromSeconds(1), cleared: true, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE))
             {
                 throw new Exception("TXDCTL.ENABLE did not set, cannot enable queue");
-            });
+            }
 
             return _buffer.Slice((int)Regs.TDT(queueIndex) / sizeof(uint), 1);
         }
