@@ -24,12 +24,12 @@ namespace TinyNF.Ixgbe
             _processDelimiter = 0;
             _outputs = env.Allocate<ushort>((uint)outputDevices.Length).Span;
 
-            _packets = env.Allocate<PacketData>(256).Span;
+            _packets = env.Allocate<PacketData>(DriverConstants.RingSize).Span;
 
             _transmitRings = new Memory<Descriptor>[outputDevices.Length];
             for (int n = 0; n < _transmitRings.Length; n++)
             {
-                _transmitRings[n] = env.Allocate<Descriptor>(256);
+                _transmitRings[n] = env.Allocate<Descriptor>(DriverConstants.RingSize);
                 for (int m = 0; m < _transmitRings[n].Length; m++)
                 {
                     _transmitRings[n].Span[m].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[m]));

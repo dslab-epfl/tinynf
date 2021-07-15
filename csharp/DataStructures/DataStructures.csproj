@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TinyNF.Environment\TinyNF.Environment.csproj" />
+    <ProjectReference Include="..\TinyNF.Unsafe\TinyNF.Unsafe.csproj" />
+  </ItemGroup>
+</Project>

@@ -27,7 +27,7 @@ namespace TinyNF.Ixgbe
             _transmitRings = new Array256Array<Descriptor>(outputDevices.Length, s => env.Allocate<Descriptor>(s).Span);
             for (int r = 0; r < _transmitRings.Length; r++)
             {
-                for (int n = 0; n < 256; n++)
+                for (int n = 0; n < _transmitRings[r].Length; n++)
                 {
                     _transmitRings[r][(byte)n].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[(byte)n]));
                 }

@@ -101,8 +101,8 @@ namespace TinyNF.Environment
             _usedBytes = 0;
         }
 
-        public unsafe Memory<T> Allocate<T>(uint count)
-            where T : unmanaged
+        public unsafe Memory<T> Allocate<T>(nuint count)
+            where T : struct
         {
             var alignDiff = _usedBytes % (ulong)(Unsafe.SizeOf<T>() + 64 - (Unsafe.SizeOf<T>() % 64));
             _allocatedPage = _allocatedPage.Slice((int)alignDiff);
@@ -116,6 +116,36 @@ namespace TinyNF.Environment
             return new CastMemoryManager<byte, T>(result).Memory;
         }
 
+        public unsafe Memory<T> MapPhysicalMemory<T>(ulong addr, uint count)
+            where T : unmanaged
+        {
+            if (count > int.MaxValue)
+            {
+                throw new Exception("Cannot handle this much memory");
+            }
+
+            int memFd = OSInterop.open("/dev/mem", OSInterop.O_SYNC | OSInterop.O_RDWR);
+            if (memFd == -1)
+            {
+                throw new Exception("Could not open /dev/mem");
+            }
+
+            void* mapped = OSInterop.mmap(
+                0,
+                count * (uint)Unsafe.SizeOf<T>(),
+                OSInterop.PROT_READ | OSInterop.PROT_WRITE,
+                OSInterop.MAP_SHARED,
+                memFd,
+                (nint)addr
+            );
+            if (mapped == OSInterop.MAP_FAILED)
+            {
+                throw new Exception("Phys-to-virt mmap failed");
+            }
+
+            return new UnmanagedMemoryManager<T>((T*)mapped, (int)count).Memory;
+        }
+
         public unsafe nuint GetPhysicalAddress<T>(ref T value)
         {
             long pageSize = OSInterop.sysconf(OSInterop._SC_PAGESIZE);
@@ -124,7 +154,7 @@ namespace TinyNF.Environment
                 throw new Exception("Could not get the page size");
             }
             nint addr = (nint)Unsafe.AsPointer(ref value);
-            nint page = addr / (nint) pageSize;
+            nint page = addr / (nint)pageSize;
             nint mapOffset = page * sizeof(ulong);
             // Cannot check for off_t roundtrip here since we don't know what it is
 
@@ -134,7 +164,7 @@ namespace TinyNF.Environment
                 throw new Exception("Could not open the pagemap");
             }
 
-            if (OSInterop.lseek(mapFd, (nint) mapOffset, OSInterop.SEEK_SET) == -1)
+            if (OSInterop.lseek(mapFd, (nint)mapOffset, OSInterop.SEEK_SET) == -1)
             {
                 throw new Exception("Could not seek the pagemap");
             }
@@ -165,36 +195,6 @@ namespace TinyNF.Environment
             return (nuint)pfn * (nuint)pageSize + (nuint)addrOffset;
         }
 
-        public unsafe Memory<T> MapPhysicalMemory<T>(ulong addr, uint count)
-            where T : unmanaged
-        {
-            if (count > int.MaxValue)
-            {
-                throw new Exception("Cannot handle this much memory");
-            }
-
-            int memFd = OSInterop.open("/dev/mem", OSInterop.O_SYNC | OSInterop.O_RDWR);
-            if (memFd == -1)
-            {
-                throw new Exception("Could not open /dev/mem");
-            }
-
-            void* mapped = OSInterop.mmap(
-                0,
-                count * (uint) Unsafe.SizeOf<T>(),
-                OSInterop.PROT_READ | OSInterop.PROT_WRITE,
-                OSInterop.MAP_SHARED,
-                memFd,
-                (nint) addr
-            );
-            if (mapped == OSInterop.MAP_FAILED)
-            {
-                throw new Exception("Phys-to-virt mmap failed");
-            }
-
-            return new UnmanagedMemoryManager<T>((T*) mapped, (int) count).Memory;
-        }
-
         private static void PciTarget(PciAddress address, byte reg)
         {
             uint regAddr = 0x80000000u | ((uint)address.Bus << 16) | ((uint)address.Device << 11) | ((uint)address.Function << 8) | reg;
@@ -222,10 +222,12 @@ namespace TinyNF.Environment
         public void Sleep(TimeSpan duration)
         {
             var nanos = duration.Ticks * 100;
-            var request = new OSInterop.TimeSpec { Seconds = (long) (nanos / 1_000_000_000), Nanoseconds = nanos % 1_000_000_000 };
-            for (int n = 0; n < 1000; n++) {
+            var request = new OSInterop.TimeSpec { Seconds = (long)(nanos / 1_000_000_000), Nanoseconds = nanos % 1_000_000_000 };
+            for (int n = 0; n < 1000; n++)
+            {
                 int ret = OSInterop.nanosleep(request, out var remain);
-                if (ret == 0) {
+                if (ret == 0)
+                {
                     return;
                 }
 
@@ -265,8 +267,8 @@ namespace TinyNF.Environment
 
         // From Marc Gravell, see  https://stackoverflow.com/a/54512940
         private sealed class CastMemoryManager<TFrom, TTo> : MemoryManager<TTo>
-            where TFrom : unmanaged
-            where TTo : unmanaged
+            where TFrom : struct
+            where TTo : struct
         {
             private readonly Memory<TFrom> _from;
 

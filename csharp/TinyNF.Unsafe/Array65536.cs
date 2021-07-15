@@ -2,36 +2,30 @@
 
 namespace TinyNF.Unsafe
 {
-    public delegate Span<T> Array256Allocator<T>(uint size);
+    public delegate Span<T> Array65536Allocator<T>(uint size);
 
     /// <summary>
-    /// A 256-element array that can only be indexed with a byte, guaranteeing a lack of bounds checks.
+    /// A 65536-element array that can only be indexed with a ushort, guaranteeing a lack of bounds checks.
     /// This struct is safe iff it is only constructed using the explicit constructor, not the default one.
     /// </summary>
-    public readonly unsafe struct Array256<T>
+    public readonly unsafe struct Array65536<T>
         where T : unmanaged
     {
         private readonly T* _values;
 
-        public Array256(Array256Allocator<T> allocator)
+        public Array65536(Array65536Allocator<T> allocator)
         {
-            var allocated = allocator(256);
-            if (allocated.Length < 256)
+            var allocated = allocator(65536);
+            if (allocated.Length < 65536)
             {
                 throw new Exception("Allocator did not fulfill its contract");
             }
             _values = (T*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref allocated.GetPinnableReference());
         }
 
-        // Safe only if the pointer points to a block of length >=256
-        internal Array256(T* values)
-        {
-            _values = values;
-        }
+        public int Length => 65536;
 
-        public int Length => 256;
-
-        public ref T this[byte n]
+        public ref T this[ushort n]
         {
             get
             {
@@ -42,11 +36,6 @@ namespace TinyNF.Unsafe
         public Span<T> AsSpan()
         {
             return new Span<T>(_values, Length);
-        }
-
-        internal T* AsPointer()
-        {
-            return _values;
         }
     }
 }
