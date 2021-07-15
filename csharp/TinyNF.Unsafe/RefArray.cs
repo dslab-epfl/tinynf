@@ -1,7 +1,4 @@
-﻿using System;
-using System.Runtime.InteropServices;
-
-namespace TinyNF.Unsafe
+﻿namespace TinyNF.Unsafe
 {
     /// <summary>
     /// Array of references to values.
@@ -23,20 +20,14 @@ namespace TinyNF.Unsafe
             _data = new T*[length];
         }
 
-        public Span<T> this[int index]
+        public readonly ref T Get(int index)
         {
-            get
-            {
-                return new Span<T>(_data[index], 1);
-            }
-            set
-            {
-                if (value.Length != 1)
-                {
-                    throw new ArgumentException("Bad span");
-                }
-                _data[index] = (T*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref value[0]);
-            }
+            return ref System.Runtime.CompilerServices.Unsafe.AsRef<T>(_data[index]);
+        }
+
+        public void Set(int index, ref T value)
+        {
+            _data[index] = (T*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref value);
         }
 
         public Enumerator GetEnumerator()
@@ -59,7 +50,7 @@ namespace TinyNF.Unsafe
             {
                 get
                 {
-                    return ref MemoryMarshal.GetReference(_array[_index]);
+                    return ref _array.Get(_index);
                 }
             }
 
