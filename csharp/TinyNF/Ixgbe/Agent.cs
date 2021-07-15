@@ -20,11 +20,11 @@ namespace TinyNF.Ixgbe
         public Agent(IEnvironment env, Device inputDevice, Device[] outputDevices)
         {
             _processDelimiter = 0;
-            _outputs = new Array256<ushort>(s => env.Allocate<ushort>(s).Span);
+            _outputs = new Array256<ushort>(env.Allocate<ushort>);
 
-            _packets = new Array256<PacketData>(s => env.Allocate<PacketData>(s).Span);
+            _packets = new Array256<PacketData>(env.Allocate<PacketData>);
 
-            _transmitRings = new Array256Array<Descriptor>(outputDevices.Length, s => env.Allocate<Descriptor>(s).Span);
+            _transmitRings = new Array256Array<Descriptor>(outputDevices.Length, env.Allocate<Descriptor>);
             for (int r = 0; r < _transmitRings.Length; r++)
             {
                 for (int n = 0; n < _transmitRings[r].Length; n++)

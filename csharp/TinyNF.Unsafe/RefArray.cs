@@ -6,10 +6,11 @@
     /// This struct is entirely safe, C# just cannot define it without unsafe yet.
     /// </summary>
     /// <remarks>
-    /// The reason this struct is safe is that the internal array cannot leak.
+    /// The reason this struct is safe is that the internal array is nullable and bounds-checked and cannot leak.
     /// That is, the struct effectively imposes 'ref struct' limitations on an array, which makes it safe to have an array of references.
     /// </remarks>
-    public readonly unsafe struct RefArray<T> where T : unmanaged
+    public readonly unsafe ref struct RefArray<T>
+        where T : unmanaged
     {
         private readonly T*[] _data;
 

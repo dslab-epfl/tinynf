@@ -10,7 +10,7 @@ namespace DataStructures
     // e.g. (ulong)(uint)x > (ulong)(uint)y does not imply (uint)x > (uint)y for x, y ints
     // and >/>=/==/.. don't always imply each other
     // See e.g. https://github.com/dotnet/runtime/issues/48115
-    public readonly struct Map<K>
+    public readonly ref struct Map<K>
         where K : unmanaged
     {
         private struct MapItem
@@ -28,8 +28,8 @@ namespace DataStructures
         public Map(IEnvironment env, int capacity)
         {
             _capacity = GetRealCapacity(capacity);
-            _keys = new Array65536<K>(s => env.Allocate<K>(s).Span);
-            _items = new Array65536<MapItem>(s => env.Allocate<MapItem>(s).Span);
+            _keys = new Array65536<K>(env.Allocate<K>);
+            _items = new Array65536<MapItem>(env.Allocate<MapItem>);
             if (_capacity > _keys.Length)
             {
                 throw new Exception("Capacity is too big");

@@ -5,7 +5,7 @@ using Time = System.UInt64;
 
 namespace DataStructures
 {
-    public struct IndexPool
+    public ref struct IndexPool
     {
         private readonly Array65536<Time> _timestamps;
         private readonly int _size;
@@ -14,7 +14,7 @@ namespace DataStructures
 
         public IndexPool(IEnvironment env, int size, Time expirationTime)
         {
-            _timestamps = new Array65536<Time>(s => env.Allocate<Time>(s).Span);
+            _timestamps = new Array65536<Time>(env.Allocate<Time>);
             if (size > _timestamps.Length)
             {
                 throw new Exception("Size is too big");

@@ -8,10 +8,10 @@
     <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 
-  <!-- Refer other projects so we can cleanly separate unsafe code. Environment is fundamentally unsafe; Unsafe is for stuff that could be safe with improvements to C# or the runtime  -->
   <ItemGroup>
     <ProjectReference Include="..\TinyNF.Environment\TinyNF.Environment.csproj" />
     <ProjectReference Include="..\TinyNF.Unsafe\TinyNF.Unsafe.csproj" />
+    <ProjectReference Include="..\DataStructures\DataStructures.csproj" />
   </ItemGroup>
 
   <!-- Use JIT by default (faster to compile, so faster to prototype) -->
