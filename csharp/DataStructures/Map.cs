@@ -13,21 +13,21 @@ namespace DataStructures
     public readonly ref struct Map<K>
         where K : unmanaged
     {
-        private static readonly K MissingKey;
-
         private struct MapItem
         {
-            public int Value;
+            public int Index; // 0..65535 pointing into _keys, or -1 for unused
             public int Chain;
-            public Hash KeyHash;
+            public Hash Hash;
         }
 
         private readonly int _capacity;
+        private readonly Array65536<K> _keys;
         private readonly Array65536<MapItem> _items;
 
         public Map(IEnvironment env, int capacity)
         {
             _capacity = GetRealCapacity(capacity);
+            _keys = new Array65536<K>(env.Allocate<K>);
             _items = new Array65536<MapItem>(env.Allocate<MapItem>);
             if (_capacity > _items.Length)
             {
@@ -35,17 +35,17 @@ namespace DataStructures
             }
         }
 
-        public readonly bool Get(in K key, ref int outValue)
+        public readonly bool Get(in K key, ref ushort outIndex)
         {
-            /*Hash keyHash = key.GetHashCode(); // TODO? os_memory_hash(key_ptr, map->key_size);
+            Hash keyHash = key.GetHashCode(); // TODO? os_memory_hash(key_ptr, map->key_size);
             for (int i = 0; i < _items.Length; i++)
             {
                 ushort index = Loop(keyHash, i, _items.Length);
-                if (_items[index].Busy && _items[index].KeyHash == keyHash)
+                if (_items[index].Index >= 0 && _items[index].Hash == keyHash)
                 {
-                    if (EqualityComparer<K>.Default.Equals(_keys[index], key))
+                    if (EqualityComparer<K>.Default.Equals(_keys[(ushort)_items[index].Index], key))
                     {
-                        outValue = _items[index].Value;
+                        outIndex = (ushort)_items[index].Index;
                         return true;
                     }
                 }
@@ -57,45 +57,39 @@ namespace DataStructures
                     }
                 }
             }
-            return false;*/
-            throw null!;
+            return false;
         }
 
-        public void Set(in K key, int value)
+        public void Set(in K key, ushort keyIndex)
         {
-            /*Hash keyHash = key.GetHashCode();// TODO? os_memory_hash(key_ptr, map->key_size);
+            Hash keyHash = key.GetHashCode();// TODO? os_memory_hash(key_ptr, map->key_size);
             for (int i = 0; i < _items.Length; i++)
             {
                 ushort index = Loop(keyHash, i, _items.Length);
-                if (!_items[index].Busy)
+                if (_items[index].Index < 0)
                 {
-                    _keys[index] = key;
-                    _items[index].KeyHash = keyHash;
-                    _items[index].Value = value;
+                    _keys[keyIndex] = key;
+                    _items[index].Index = keyIndex;
+                    _items[index].Hash = keyHash;
                     return;
                 }
                 _items[index].Chain++;
-            }*/
-            throw null!;
+            }
         }
 
-        public void Remove(in K key)
+        public void Remove(ushort keyIndex)
         {
-            /*Hash keyHash = key.GetHashCode(); // TODO? os_memory_hash(key_ptr, map->key_size);
+            Hash keyHash = _keys[keyIndex].GetHashCode(); // TODO? os_memory_hash(key_ptr, map->key_size);
             for (int i = 0; i < _items.Length; i++)
             {
                 ushort index = Loop(keyHash, i, _items.Length);
-                if (_items[index].Busy && _items[index].KeyHash == keyHash)
+                if (_items[index].Index == keyIndex)
                 {
-                    if (EqualityComparer<K>.Default.Equals(_keys[index], key))
-                    {
-                        _items[index].Busy = false;
-                        return;
-                    }
+                    _items[index].Index = -1;
+                    return;
                 }
                 _items[index].Chain--;
-            }*/
-            throw null!;
+            }
         }
 
         private static int GetRealCapacity(int capacity)

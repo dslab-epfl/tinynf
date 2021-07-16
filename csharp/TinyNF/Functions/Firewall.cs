@@ -93,30 +93,29 @@ namespace TinyNF.Functions
 
             public void LearnInternal(Time time, in Flow flow)
             {
-                int index = 0;
+                ushort index = 0;
                 bool wasUsed = false;
                 if (_flows.Get(in flow, ref index))
                 {
-                    _portAllocator.Refresh(time, (ushort)index);
+                    _portAllocator.Refresh(time, index);
                 }
                 else if (_portAllocator.Borrow(time, ref index, ref wasUsed))
                 {
                     if (wasUsed)
                     {
-                     //   _flows.Remove(in _flows[(ushort)index]);
+                        _flows.Remove(index);
                     }
 
-                   // _flows[(ushort)index] = flow;
                     _flows.Set(in flow, index);
                 }
             }
 
             public readonly bool HasExternal(Time time, in Flow flow)
             {
-                int index = 0;
-                if (_flows.Get(in flow, ref index) && _portAllocator.IsUsed(time, (ushort)index))
+                ushort index = 0;
+                if (_flows.Get(in flow, ref index) && _portAllocator.IsUsed(time, index))
                 {
-                    _portAllocator.Refresh(time, (ushort)index);
+                    _portAllocator.Refresh(time,index);
                     return true;
                 }
 

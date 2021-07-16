@@ -29,7 +29,7 @@ namespace DataStructures
             }
         }
 
-        public bool Borrow(Time time, ref int outIndex, ref bool outUsed)
+        public bool Borrow(Time time, ref ushort outIndex, ref bool outUsed)
         {
             for (ushort n = _lastBorrowedIndex; n < _size; n++)
             {
