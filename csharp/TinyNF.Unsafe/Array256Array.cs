@@ -4,7 +4,8 @@ namespace TinyNF.Unsafe
 {
     /// <summary>
     /// An array of <see cref="Array256{T}" />.
-    /// This struct is safe iff it is only constructed using the explicit constructor, not the default one.
+    /// This struct is safe iff:
+    /// - it is constructed using the explicit constructor, not the default one.
     /// </summary>
     public readonly ref struct Array256Array<T>
         where T : unmanaged
@@ -15,11 +16,7 @@ namespace TinyNF.Unsafe
 
         public Array256Array(int length, Func<nuint, Memory<T>> allocator)
         {
-            _values = new RefArray<T>(length);
-            for (int n = 0; n < length; n++)
-            {
-                this[n] = new Array256<T>(allocator);
-            }
+            _values = new RefArray<T>(length, n => ref new Array256<T>(allocator).AsRef());
         }
 
         public Array256<T> this[int n]

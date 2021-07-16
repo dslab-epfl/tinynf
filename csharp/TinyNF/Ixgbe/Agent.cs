@@ -7,6 +7,8 @@ namespace TinyNF.Ixgbe
 {
     public ref struct Agent
     {
+        private static uint _fakeTail; // default value when initiailizing TransmitTails
+
         private readonly Array256<PacketData> _packets;
         private readonly Array256<Descriptor> _receiveRing;
         private readonly Array256Array<Descriptor> _transmitRings;
@@ -37,7 +39,7 @@ namespace TinyNF.Ixgbe
             _receiveTail = new Ref<uint>(ref inputDevice.SetInput(env, _receiveRing.AsSpan()).Span[0]);
 
             _transmitHeads = env.Allocate<TransmitHead>((uint)outputDevices.Length).Span;
-            _transmitTails = new RefArray<uint>(outputDevices.Length);
+            _transmitTails = new RefArray<uint>(outputDevices.Length, n => ref _fakeTail);
             for (byte n = 0; n < outputDevices.Length; n++)
             {
                 _transmitTails.Set(n, ref outputDevices[n].AddOutput(env, _transmitRings[n].AsSpan(), ref _transmitHeads[n].Value).Span[0]);

@@ -103,10 +103,10 @@ namespace TinyNF.Functions
                 {
                     if (wasUsed)
                     {
-                        _flows.Remove(in _flows[(ushort)index]);
+                     //   _flows.Remove(in _flows[(ushort)index]);
                     }
 
-                    _flows[(ushort)index] = flow;
+                   // _flows[(ushort)index] = flow;
                     _flows.Set(in flow, index);
                 }
             }

@@ -2,23 +2,27 @@
 {
     /// <summary>
     /// Array of references to values.
-    /// Only optimized for reading; writing has bounds checks.
-    /// This struct is entirely safe, C# just cannot define it without unsafe yet.
+    /// Bounds-checked, but with an enumerator allowing the compiler to elide the checks.
+    /// This struct is safe iff:
+    /// - it is constructed using the explicit constructor, not the default one; and
+    /// - the references are all to pinned blocks of memory.
     /// </summary>
-    /// <remarks>
-    /// The reason this struct is safe is that the internal array is nullable and bounds-checked and cannot leak.
-    /// That is, the struct effectively imposes 'ref struct' limitations on an array, which makes it safe to have an array of references.
-    /// </remarks>
     public readonly unsafe ref struct RefArray<T>
         where T : unmanaged
     {
+        public delegate ref T Initializer(int n);
+
         private readonly T*[] _data;
 
         public int Length => _data.Length;
 
-        public RefArray(int length)
+        public RefArray(int length, Initializer initializer)
         {
             _data = new T*[length];
+            for (int n = 0; n < length; n++)
+            {
+                Set(n, ref initializer(n));
+            }
         }
 
         public readonly ref T Get(int index)

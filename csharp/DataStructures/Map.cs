@@ -13,40 +13,31 @@ namespace DataStructures
     public readonly ref struct Map<K>
         where K : unmanaged
     {
+        private static readonly K MissingKey;
+
         private struct MapItem
         {
-            public bool Busy;
             public int Value;
             public int Chain;
             public Hash KeyHash;
         }
 
         private readonly int _capacity;
-        private readonly Array65536<K> _keys;
         private readonly Array65536<MapItem> _items;
 
         public Map(IEnvironment env, int capacity)
         {
             _capacity = GetRealCapacity(capacity);
-            _keys = new Array65536<K>(env.Allocate<K>);
             _items = new Array65536<MapItem>(env.Allocate<MapItem>);
-            if (_capacity > _keys.Length)
+            if (_capacity > _items.Length)
             {
                 throw new Exception("Capacity is too big");
             }
         }
 
-        public readonly ref K this[ushort index]
-        {
-            get
-            {
-                return ref _keys[index];
-            }
-        }
-
         public readonly bool Get(in K key, ref int outValue)
         {
-            Hash keyHash = key.GetHashCode(); // TODO? os_memory_hash(key_ptr, map->key_size);
+            /*Hash keyHash = key.GetHashCode(); // TODO? os_memory_hash(key_ptr, map->key_size);
             for (int i = 0; i < _items.Length; i++)
             {
                 ushort index = Loop(keyHash, i, _items.Length);
@@ -66,12 +57,13 @@ namespace DataStructures
                     }
                 }
             }
-            return false;
+            return false;*/
+            throw null!;
         }
 
         public void Set(in K key, int value)
         {
-            Hash keyHash = key.GetHashCode();// TODO? os_memory_hash(key_ptr, map->key_size);
+            /*Hash keyHash = key.GetHashCode();// TODO? os_memory_hash(key_ptr, map->key_size);
             for (int i = 0; i < _items.Length; i++)
             {
                 ushort index = Loop(keyHash, i, _items.Length);
@@ -83,12 +75,13 @@ namespace DataStructures
                     return;
                 }
                 _items[index].Chain++;
-            }
+            }*/
+            throw null!;
         }
 
         public void Remove(in K key)
         {
-            Hash keyHash = key.GetHashCode(); // TODO? os_memory_hash(key_ptr, map->key_size);
+            /*Hash keyHash = key.GetHashCode(); // TODO? os_memory_hash(key_ptr, map->key_size);
             for (int i = 0; i < _items.Length; i++)
             {
                 ushort index = Loop(keyHash, i, _items.Length);
@@ -101,7 +94,8 @@ namespace DataStructures
                     }
                 }
                 _items[index].Chain--;
-            }
+            }*/
+            throw null!;
         }
 
         private static int GetRealCapacity(int capacity)

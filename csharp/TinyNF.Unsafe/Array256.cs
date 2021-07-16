@@ -5,7 +5,9 @@ namespace TinyNF.Unsafe
 {
     /// <summary>
     /// A 256-element array that can only be indexed with a byte, guaranteeing a lack of bounds checks.
-    /// This struct is safe iff it is only constructed using the explicit constructor, not the default one.
+    /// This struct is safe iff:
+    /// - it is constructed using the explicit constructor, not the default one; and
+    /// - the allocator returns a pinned block of memory.
     /// </summary>
     public readonly ref struct Array256<T>
         where T : unmanaged
@@ -34,7 +36,7 @@ namespace TinyNF.Unsafe
         {
             get
             {
-                return ref System.Runtime.CompilerServices.Unsafe.Add<T>(ref _value.Get(), n);
+                return ref System.Runtime.CompilerServices.Unsafe.Add(ref _value.Get(), n);
             }
         }
 
