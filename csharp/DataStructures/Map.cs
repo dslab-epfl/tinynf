@@ -36,15 +36,15 @@ namespace DataStructures
             }
         }
 
-        public readonly K this[ushort index]
+        public readonly ref K this[ushort index]
         {
             get
             {
-                return _keys[index];
+                return ref _keys[index];
             }
         }
 
-        public readonly bool Get(K key, ref int outValue)
+        public readonly bool Get(in K key, ref int outValue)
         {
             Hash keyHash = key.GetHashCode(); // TODO? os_memory_hash(key_ptr, map->key_size);
             for (int i = 0; i < _items.Length; i++)
@@ -69,7 +69,7 @@ namespace DataStructures
             return false;
         }
 
-        public void Set(K key, int value)
+        public void Set(in K key, int value)
         {
             Hash keyHash = key.GetHashCode();// TODO? os_memory_hash(key_ptr, map->key_size);
             for (int i = 0; i < _items.Length; i++)
@@ -86,7 +86,7 @@ namespace DataStructures
             }
         }
 
-        public void Remove(K key)
+        public void Remove(in K key)
         {
             Hash keyHash = key.GetHashCode(); // TODO? os_memory_hash(key_ptr, map->key_size);
             for (int i = 0; i < _items.Length; i++)
