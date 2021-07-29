@@ -989,39 +989,13 @@ bool tn_net_device_set_promiscuous(struct tn_net_device* const device)
 	return true;
 }
 
-// ----------------
-// Agent definition
-// ----------------
-
-struct tn_net_agent
-{
-	uint8_t* buffer;
-	volatile uint32_t* receive_tail_addr;
-	uint64_t processed_delimiter;
-	uint64_t outputs_count;
-	// transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
-	// (there is also a runtime check to make sure the array itself is aligned properly)
-	// plus, we want each head on its own cache line to avoid conflicts
-	// thus, using assumption CACHE, we multiply indices by 16
-	#define TRANSMIT_HEAD_MULTIPLIER 16
-	volatile uint32_t* transmit_heads;
-	volatile uint64_t** rings; // 0 == shared receive/transmit, rest are exclusive transmit
-	volatile uint32_t** transmit_tail_addrs;
-	uint16_t* outputs;
-};
-
-
 // ------------------------------------
 // Section 4.6.7 Receive Initialization
 // ------------------------------------
 
-static bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_net_device* const device)
-{
-	if (agent->receive_tail_addr != 0) {
-		TN_DEBUG("Agent receive was already set");
-		return false;
-	}
 
+static bool tn_net_device_add_input(struct tn_net_device* const device, volatile uint64_t* const ring, volatile uint32_t** const out_tail_addr)
+{
 	// The 82599 has more than one receive queue, but we only need queue 0
 	uint32_t queue_index = 0;
 
@@ -1033,7 +1007,7 @@ static bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_n
 
 	// "The following should be done per each receive queue:"
 	// "- Allocate a region of memory for the receive descriptor list."
-	// This is already done in agent initialization as agent->rings[0]
+	// This is already done for us as "ring"
 	// "- Receive buffers of appropriate size should be allocated and pointers to these buffers should be stored in the descriptor ring."
 	// This will be done when setting up the first transmit ring
 	// Note that only the first line (buffer address) needs to be configured, the second line is only for write-back except End Of Packet (bit 33)
@@ -1042,9 +1016,9 @@ static bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_n
 	// INTERPRETATION-TYPO: This is a typo, the second "RDBAL" should read "RDBAH".
 	// 	Section 8.2.3.8.1 Receive Descriptor Base Address Low (RDBAL[n]):
 	// 	"The receive descriptor base address must point to a 128 byte-aligned block of data."
-	// This alignment is guaranteed by the agent initialization
+	// This alignment is guaranteed by the ring initialization
 	uintptr_t ring_phys_addr;
-	if (!tn_mem_virt_to_phys((void*) agent->rings[0], &ring_phys_addr)) {
+	if (!tn_mem_virt_to_phys((void*) ring, &ring_phys_addr)) {
 		TN_DEBUG("Could not get phys addr of main ring");
 		return false;
 	}
@@ -1107,7 +1081,7 @@ static bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_n
 	// Section 8.2.3.11.1 Rx DCA Control Register (DCA_RXCTRL[n]): Bit 12 == "Default 1b; Reserved. Must be set to 0."
 	reg_clear_field(device->addr, REG_DCARXCTRL(queue_index), REG_DCARXCTRL_UNKNOWN);
 
-	agent->receive_tail_addr = (volatile uint32_t*) ((uint8_t*) device->addr + REG_RDT(queue_index));
+	*out_tail_addr = (volatile uint32_t*) ((uint8_t*) device->addr + REG_RDT(queue_index));
 	return true;
 }
 
@@ -1115,7 +1089,7 @@ static bool tn_net_agent_set_input(struct tn_net_agent* const agent, struct tn_n
 // Section 4.6.8 Transmit Initialization
 // -------------------------------------
 
-static bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_net_device* const device)
+static bool tn_net_device_add_output(struct tn_net_device* const device, volatile uint64_t* const ring, volatile uint32_t* const transmit_head, volatile uint32_t** const out_tail_addr)
 {
 	uint32_t queue_index = 0;
 	for (; queue_index < TRANSMIT_QUEUES_COUNT; queue_index++) {
@@ -1131,27 +1105,11 @@ static bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_
 
 	// "The following steps should be done once per transmit queue:"
 	// "- Allocate a region of memory for the transmit descriptor list."
-	// This is already done in agent initialization as agent->rings[*]
-	volatile uint64_t* ring = agent->rings[agent->outputs_count];
-	// Program all descriptors' buffer addresses now
-	for (uint64_t n = 0; n < IXGBE_RING_SIZE; n++) {
-		// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
-		// "Buffer Address (64)", 1st line offset 0
-		void* packet_addr = agent->buffer + n * PACKET_BUFFER_SIZE;
-		uintptr_t packet_phys_addr;
-		if (!tn_mem_virt_to_phys(packet_addr, &packet_phys_addr)) {
-			TN_DEBUG("Could not get a packet's physical address");
-			return false;
-		}
-
-		// INTERPRETATION-MISSING: The data sheet does not specify the endianness of descriptor buffer addresses..
-		// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
-		ring[n * 2u] = tn_cpu_to_le64(packet_phys_addr);
-	}
+	// This is already done as "ring"
 	// "- Program the descriptor base address with the address of the region (TDBAL, TDBAH)."
 	// 	Section 8.2.3.9.5 Transmit Descriptor Base Address Low (TDBAL[n]):
 	// 	"The Transmit Descriptor Base Address must point to a 128 byte-aligned block of data."
-	// This alignment is guaranteed by the agent initialization
+	// This alignment is guaranteed by the ring initialization
 	uintptr_t ring_phys_addr;
 	if (!tn_mem_virt_to_phys((void*) ring, &ring_phys_addr)) {
 		TN_DEBUG("Could not get a transmit ring's physical address");
@@ -1175,7 +1133,7 @@ static bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_
 	reg_write_field(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
 	uintptr_t head_phys_addr;
-	if (!tn_mem_virt_to_phys((void*) &(agent->transmit_heads[agent->outputs_count * TRANSMIT_HEAD_MULTIPLIER]), &head_phys_addr)) {
+	if (!tn_mem_virt_to_phys((void*) transmit_head, &head_phys_addr)) {
 		TN_DEBUG("Could not get the physical address of the transmit head");
 		return false;
 	}
@@ -1215,10 +1173,31 @@ static bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_
 	// "Note: The tail register of the queue (TDT) should not be bumped until the queue is enabled."
 	// Nothing to transmit yet, so leave TDT alone.
 
-	agent->transmit_tail_addrs[agent->outputs_count] = (volatile uint32_t*) ((uint8_t*) device->addr + REG_TDT(queue_index));
-	agent->outputs_count = agent->outputs_count + 1;
+	*out_tail_addr = (volatile uint32_t*) ((uint8_t*) device->addr + REG_TDT(queue_index));
 	return true;
 }
+
+// ----------------
+// Agent definition
+// ----------------
+
+struct tn_net_agent
+{
+	uint8_t* buffer;
+	volatile uint32_t* receive_tail_addr;
+	uint64_t processed_delimiter;
+	uint64_t outputs_count;
+	// transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
+	// (there is also a runtime check to make sure the array itself is aligned properly)
+	// plus, we want each head on its own cache line to avoid conflicts
+	// thus, using assumption CACHE, we multiply indices by 16
+	#define TRANSMIT_HEAD_MULTIPLIER 16
+	volatile uint32_t* transmit_heads;
+	volatile uint64_t** rings; // 0 == shared receive/transmit, rest are exclusive transmit
+	volatile uint32_t** transmit_tail_addrs;
+	uint16_t* outputs;
+};
+
 
 // --------------------
 // Agent initialization
@@ -1226,6 +1205,11 @@ static bool tn_net_agent_add_output(struct tn_net_agent* const agent, struct tn_
 
 bool tn_net_agent_init(struct tn_net_device* input_device, size_t outputs_count, struct tn_net_device** output_devices, struct tn_net_agent** out_agent)
 {
+	if (outputs_count < 1) {
+		TN_DEBUG("Too few outputs");
+		return false;
+	}
+
 	struct tn_net_agent* agent;
 	if (!tn_mem_allocate(sizeof(struct tn_net_agent), (void**) &agent)) {
 		TN_DEBUG("Could not allocate agent");
@@ -1234,86 +1218,62 @@ bool tn_net_agent_init(struct tn_net_device* input_device, size_t outputs_count,
 
 	if (!tn_mem_allocate(IXGBE_RING_SIZE * PACKET_BUFFER_SIZE, (void**) &(agent->buffer))) {
 		TN_DEBUG("Could not allocate buffer for agent");
-		tn_mem_free(agent);
 		return false;
 	}
 
 	if (!tn_mem_allocate(outputs_count * sizeof(uint32_t) * TRANSMIT_HEAD_MULTIPLIER, (void**) &(agent->transmit_heads))) {
 		TN_DEBUG("Could not allocate transmit heads for agent");
-		tn_mem_free(agent->buffer);
-		tn_mem_free(agent);
 		return false;
 	}
 
 	if (!tn_mem_allocate(outputs_count * sizeof(uint64_t*), (void**) &(agent->rings))) {
 		TN_DEBUG("Could not allocate rings for agent");
-		tn_mem_free(agent->buffer);
-		tn_mem_free((void*) agent->transmit_heads);
-		tn_mem_free(agent);
 		return false;
 	}
 
 	if (!tn_mem_allocate(outputs_count * sizeof(uint32_t*), (void**) &(agent->transmit_tail_addrs))) {
 		TN_DEBUG("Could not allocate transmit tail addrs for agent");
-		tn_mem_free(agent->buffer);
-		tn_mem_free((void*) agent->transmit_heads);
-		tn_mem_free(agent->rings);
-		tn_mem_free(agent);
 		return false;
 	}
 
 	if (!tn_mem_allocate(outputs_count * sizeof(uint16_t), (void**) &(agent->outputs))) {
 		TN_DEBUG("Could not allocate outputs for agent");
-		tn_mem_free(agent->buffer);
-		tn_mem_free((void*) agent->transmit_heads);
-		tn_mem_free(agent->rings);
-		tn_mem_free(agent->transmit_tail_addrs);
-		tn_mem_free(agent);
 		return false;
 	}
 
-	for (size_t n = 0; n < outputs_count; n++) {
-		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, (void**) &(agent->rings[n]))) { // 16 bytes per descriptor, i.e. 2x64bits
+	for (size_t r = 0; r < outputs_count; r++) {
+		if (!tn_mem_allocate(IXGBE_RING_SIZE * 16, (void**) &(agent->rings[r]))) { // 16 bytes per descriptor, i.e. 2x64bits
 			TN_DEBUG("Could not allocate ring");
-			for (size_t m = 0; m < n; m++) {
-				tn_mem_free((void*) agent->rings[m]);
+			return false;
+		}
+		// Program all descriptors' buffer addresses now
+		for (size_t n = 0; n < IXGBE_RING_SIZE; n++) {
+			// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
+			// "Buffer Address (64)", 1st line offset 0
+			void* packet_addr = agent->buffer + n * PACKET_BUFFER_SIZE;
+			uintptr_t packet_phys_addr;
+			if (!tn_mem_virt_to_phys(packet_addr, &packet_phys_addr)) {
+				TN_DEBUG("Could not get a packet's physical address");
+				return false;
 			}
-			tn_mem_free(agent->buffer);
-			tn_mem_free((void*) agent->transmit_heads);
-			tn_mem_free(agent->rings);
-			tn_mem_free(agent->transmit_tail_addrs);
-			tn_mem_free(agent);
+
+			// INTERPRETATION-MISSING: The data sheet does not specify the endianness of descriptor buffer addresses..
+			// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
+			agent->rings[r][n * 2u] = tn_cpu_to_le64(packet_phys_addr);
+		}
+		volatile uint32_t* transmit_head = &(agent->transmit_heads[r * TRANSMIT_HEAD_MULTIPLIER]);
+		if (!tn_net_device_add_output(output_devices[r], agent->rings[r], transmit_head, &(agent->transmit_tail_addrs[r]))) {
+			TN_DEBUG("Could not set input");
 			return false;
 		}
 	}
 
-	if (!tn_net_agent_set_input(agent, input_device)) {
+	if (!tn_net_device_add_input(input_device, agent->rings[0], &(agent->receive_tail_addr))) {
 		TN_DEBUG("Could not set input");
-		for (size_t m = 0; m < outputs_count; m++) {
-			tn_mem_free((void*) agent->rings[m]);
-		}
-		tn_mem_free(agent->buffer);
-		tn_mem_free((void*) agent->transmit_heads);
-		tn_mem_free(agent->rings);
-		tn_mem_free(agent->transmit_tail_addrs);
-		tn_mem_free(agent);
 		return false;
 	}
 
-	for (size_t n = 0; n < outputs_count; n++) {
-		if (!tn_net_agent_add_output(agent, output_devices[n])) {
-			TN_DEBUG("Could not set input");
-			for (size_t m = 0; m < outputs_count; m++) {
-				tn_mem_free((void*) agent->rings[m]);
-			}
-			tn_mem_free(agent->buffer);
-			tn_mem_free((void*) agent->transmit_heads);
-			tn_mem_free(agent->rings);
-			tn_mem_free(agent->transmit_tail_addrs);
-			tn_mem_free(agent);
-			return false;
-		}
-	}
+	agent->outputs_count = outputs_count;
 
 	*out_agent = agent;
 	return true;

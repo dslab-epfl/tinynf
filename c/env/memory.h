@@ -1,4 +1,4 @@
-// Memory allocation/deallocation, and conversion of physical/virtual addresses
+// Memory allocation, and conversion of physical/virtual addresses
 // https://en.wikipedia.org/wiki/Virtual_memory
 // https://en.wikipedia.org/wiki/Direct_memory_access
 
@@ -14,8 +14,7 @@
 // This allows the allocated memory's physical address to be given to a device for DMA.
 bool tn_mem_allocate(size_t size, void** out_addr);
 
-// Frees the given memory block.
-void tn_mem_free(void* addr);
+// No freeing, it's a research prototype anyway, and that makes it easier
 
 // Maps the region of physical address memory defined by (address, size) into virtual memory, or returns false.
 bool tn_mem_phys_to_virt(uint64_t addr, size_t size, void** out_virt_addr); // addr is uint64_t, not uintptr_t, because PCI BARs are 64-bit

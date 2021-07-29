@@ -100,12 +100,6 @@ bool tn_mem_allocate(size_t size, void** out_addr)
 	return true;
 }
 
-void tn_mem_free(void* const addr)
-{
-	// Nothing! Too lazy to implement this. If we're freeing stuff we've failed something anyway. #ResearchCode
-	(void) addr;
-}
-
 bool tn_mem_phys_to_virt(const uint64_t addr, const size_t size, void** out_virt_addr)
 {
 	if (addr != (uint64_t) (off_t) addr) {
