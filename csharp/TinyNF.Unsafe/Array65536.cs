@@ -13,6 +13,8 @@ namespace TinyNF.Unsafe
     {
         private readonly Ref<T> _value;
 
+        public readonly int Length => 65536;
+
         public Array65536(Func<nuint, Memory<T>> allocator)
         {
             var allocated = allocator(65536);
@@ -23,9 +25,7 @@ namespace TinyNF.Unsafe
             _value = new Ref<T>(ref allocated.Span[0]);
         }
 
-        public int Length => 65536;
-
-        public ref T this[ushort n]
+        public readonly ref T this[ushort n]
         {
             get
             {

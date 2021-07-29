@@ -19,7 +19,7 @@ namespace TinyNF.Unsafe
             _values = new RefArray<T>(length, n => ref new Array256<T>(allocator).AsRef());
         }
 
-        public Array256<T> this[int n]
+        public readonly Array256<T> this[int n]
         {
             get
             {

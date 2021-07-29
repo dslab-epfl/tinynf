@@ -14,7 +14,7 @@
 
         private readonly T*[] _data;
 
-        public int Length => _data.Length;
+        public readonly int Length => _data.Length;
 
         public RefArray(int length, Initializer initializer)
         {
@@ -30,12 +30,12 @@
             return ref System.Runtime.CompilerServices.Unsafe.AsRef<T>(_data[index]);
         }
 
-        public void Set(int index, ref T value)
+        public readonly void Set(int index, ref T value)
         {
             _data[index] = (T*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref value);
         }
 
-        public Enumerator GetEnumerator()
+        public readonly Enumerator GetEnumerator()
         {
             return new Enumerator(this);
         }
@@ -51,7 +51,7 @@
                 _index = -1;
             }
 
-            public ref T Current
+            public readonly ref T Current
             {
                 get
                 {

@@ -21,7 +21,7 @@
             _value = (T*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref value);
         }
 
-        public ref T Get()
+        public readonly ref T Get()
         {
             return ref System.Runtime.CompilerServices.Unsafe.AsRef<T>(_value);
         }
