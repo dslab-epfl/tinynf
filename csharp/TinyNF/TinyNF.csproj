@@ -16,7 +16,7 @@
 
   <!-- Use JIT by default (faster to compile, so faster to prototype) -->
   <ItemGroup Condition="'$(UseAOT)' != ''">
-    <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="6.0.0-*" />
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="7.0.0-*" />
   </ItemGroup>
 
   <!-- Direct P/Invoke calls in AOT -->
