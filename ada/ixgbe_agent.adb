@@ -2,7 +2,6 @@ with System;
 with Ada.Unchecked_Conversion;
 
 with Environment;
-with NF;
 
 package body Ixgbe_Agent is
   -- default value for arrays of non-null accesses
@@ -22,8 +21,8 @@ package body Ixgbe_Agent is
 
     Transmit_Tails: Transmit_Tail_Array := (others => Fake_Reg'Unchecked_Access);
 
-    function Allocate_Outputs is new Environment.Allocate(T => NetFunc.Packet_Length, R => Outputs_Range, T_Array => NetFunc.Packet_Outputs);
-    Outputs: not null access NetFunc.Packet_Outputs := Allocate_Outputs;
+    function Allocate_Outputs is new Environment.Allocate(T => Packet_Length, R => Outputs_Range, T_Array => Packet_Outputs);
+    Outputs: not null access Packet_Outputs := Allocate_Outputs;
   begin
     for R in Rings'Range loop
       Rings(R) := Allocate_Ring.all'Unchecked_Access; -- why???
@@ -47,12 +46,12 @@ package body Ixgbe_Agent is
             Process_Delimiter => 0);
   end;
 
-  procedure Run(This: in out Agent)
---                Proc: in Processor)
+  procedure Run(This: in out Agent;
+                Proc: in Processor)
   is
     N: Integer range 0 .. Ixgbe_Constants.Flush_Period;
     X: VolatileUInt64; -- Both "receive metadata" and "RS bit" to save stack space because GNAT is not very clever
-    Length: NetFunc.Packet_Length;
+    Length: Packet_Length;
     Earliest_Transmit_Head: VolatileUInt32;
     Min_Diff: VolatileUInt64;
     Head: VolatileUInt32;
@@ -60,7 +59,7 @@ package body Ixgbe_Agent is
 
     -- This seems to be necessary to not generate any checks when truncating the 16-bit length from the rest of the metadata...
     type Meta_Read is record
-      Length: NetFunc.Packet_Length;
+      Length: Packet_Length;
       Unused: Integer;
     end record;
     for Meta_Read use record
@@ -77,7 +76,7 @@ package body Ixgbe_Agent is
       exit when (X and 16#00_00_00_01_00_00_00_00#) = 0;
 
       Length := Meta_To_Read(X).Length;
-      NetFunc.Processor(This.Packets(This.Process_Delimiter), Length, This.Outputs);
+      Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
       -- Above this line, "X" is "receive metadata"; below, it is "RS Bit" --
 
