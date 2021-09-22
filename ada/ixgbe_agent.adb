@@ -50,7 +50,8 @@ package body Ixgbe_Agent is
                 Proc: in Processor)
   is
     N: Integer range 0 .. Ixgbe_Constants.Flush_Period;
-    X: VolatileUInt64; -- Both "receive metadata" and "RS bit" to save stack space because GNAT is not very clever
+    Receive_Metadata: VolatileUInt64;
+    RS_Bit: VolatileUInt64;
     Length: Packet_Length;
     Earliest_Transmit_Head: VolatileUInt32;
     Min_Diff: VolatileUInt64;
@@ -72,24 +73,22 @@ package body Ixgbe_Agent is
   begin
     N := 0;
     while N < Ixgbe_Constants.Flush_Period loop
-      X := From_Little(This.Receive_Ring(This.Process_Delimiter).Metadata);
-      exit when (X and 16#00_00_00_01_00_00_00_00#) = 0;
+      Receive_Metadata := From_Little(This.Receive_Ring(This.Process_Delimiter).Metadata);
+      exit when (Receive_Metadata and 16#00_00_00_01_00_00_00_00#) = 0;
 
-      Length := Meta_To_Read(X).Length;
+      Length := Meta_To_Read(Receive_Metadata).Length;
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
-      -- Above this line, "X" is "receive metadata"; below, it is "RS Bit" --
-
-      X := (if (This.Process_Delimiter rem Ixgbe_Constants.Recycle_Period) = (Ixgbe_Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
+      RS_Bit := (if (This.Process_Delimiter rem Ixgbe_Constants.Recycle_Period) = (Ixgbe_Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
       for M in Outputs_Range loop
-        This.Transmit_Rings(M)(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(M)) or X or 16#00_00_00_00_03_00_00_00#);
+        This.Transmit_Rings(M)(This.Process_Delimiter).Metadata := To_Little(VolatileUInt64(This.Outputs(M)) or RS_Bit or 16#00_00_00_00_03_00_00_00#);
         This.Outputs(M) := 0;
       end loop;
 
       This.Process_Delimiter := This.Process_Delimiter + 1;
 
-      if X /= 0 then
+      if RS_Bit /= 0 then
         Earliest_Transmit_Head := VolatileUInt32(This.Process_Delimiter);
         Min_Diff := VolatileUint64'Last;
         for H of This.Transmit_Heads.all loop
