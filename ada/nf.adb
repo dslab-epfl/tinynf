@@ -1,5 +1,5 @@
 package body NF is
-  procedure Processor(Data: in out Packet_Data;
+  procedure Processor(Data: in out Ixgbe_Constants.Packet_Data;
                       Length: in Packet_Length;
                       Output_Lengths: not null access Packet_Outputs) is
   begin
@@ -15,6 +15,6 @@ package body NF is
     Data(9) := 0;
     Data(10) := 0;
     Data(11) := 0;
-    Output_Lengths(0) := Length;
+    Output_Lengths(Outputs_Range'First) := Length;
   end;
 end NF;
