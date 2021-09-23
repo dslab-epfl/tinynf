@@ -22,7 +22,7 @@ begin
     GNAT.OS_Lib.OS_Abort;
   end if;
 
-  Text_IO.Put_Line("Ada TinyNF initializing, it'll take less than 30 seconds...");
+  Text_IO.Put_Line("Ada TinyNF initializing...");
 
   declare
     Dev0: aliased Dev := Init_Device(Pci_Parse.Parse_Address(Ada.Command_Line.Argument(1)));
