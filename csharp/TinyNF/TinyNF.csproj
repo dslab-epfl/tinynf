@@ -27,6 +27,7 @@
   </ItemGroup>
 
   <!-- Disable everything possible in AOT, not really for speed (unlikely to matter) but to make code inspection easier; also, optimize for speed -->
+  <!-- TODO: Trim (see NativeAOT breaking changes, we need TrimmerDefaultAction=link apparently -->
   <PropertyGroup Condition="'$(UseAOT)' != ''">
     <DebuggerSupport>false</DebuggerSupport>
     <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
