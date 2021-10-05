@@ -20,7 +20,7 @@ package body Ixgbe_Regs is
 
   procedure Write(Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32) is
   begin
-    Buffer(Dev_Buffer_Range(Reg / 4)) := To_Little(VolatileUInt32(Value));
+    Buffer(Dev_Buffer_Range(Reg / 4)) := To_Little(Value);
   end;
 
   procedure Write_Field(Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32) is

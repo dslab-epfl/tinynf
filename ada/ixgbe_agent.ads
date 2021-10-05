@@ -19,8 +19,7 @@ package Ixgbe_Agent is
 
   type Agent is record
     Packets: not null access Packet_Array;
-    Receive_Ring: not null access Descriptor_Ring;
-    Transmit_Rings: Descriptor_Ring_Array;
+    Rings: Descriptor_Ring_Array;
     Receive_Tail: Register_Access;
     Transmit_Heads: not null access Transmit_Head_Array;
     Transmit_Tails: Transmit_Tail_Array;

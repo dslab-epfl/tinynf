@@ -14,7 +14,7 @@ with NF;
 with Pci_Parse;
 
 procedure TinyNF is
-  type Outputs_Range is range 0 .. 0;
+  type Outputs_Range is range 0 .. 0 with Size => 64;
   package NetFunc is new NF(Outputs_Range);
 begin
   if Ada.Command_Line.Argument_Count /= 2 then

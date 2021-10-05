@@ -1,8 +1,9 @@
 APP := tinynf
 
-CFLAGS += -O3 -march=native
+CFLAGS += -O3 -g -march=native
 # -gnatn turns on some inlining
-CFLAGS += -gnatn
+#CFLAGS += -gnatn
+CFLAGS += -fno-inline
 # remove unused stuff
 CFLAGS += -cargs -ffunction-sections -fdata-sections -largs -Wl,--gc-sections
 

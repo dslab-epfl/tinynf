@@ -1,4 +1,4 @@
-with Interfaces;
+with Interfaces; use Interfaces;
 
 with Ixgbe_Constants;
 
@@ -8,11 +8,11 @@ package Ixgbe is
   type VolatileUInt64 is mod 2 ** 64
     with Volatile, Size => 64;
 
-  -- little-endian only for now
-  function From_Little(Value: in VolatileUInt32) return VolatileUInt32 is (Value) with Inline_Always;
-  function From_Little(Value: in VolatileUInt64) return VolatileUInt64 is (Value) with Inline_Always;
-  function To_Little(Value: in VolatileUInt32) return VolatileUInt32 is (Value) with Inline_Always;
-  function To_Little(Value: in VolatileUInt64) return VolatileUInt64 is (Value) with Inline_Always;
+  -- little-endian only for now (the volatile-to-normal convs are for convenience of use)
+  function From_Little(Value: in VolatileUInt32) return Interfaces.Unsigned_32 is (Interfaces.Unsigned_32(Value)) with Inline_Always;
+  function From_Little(Value: in VolatileUInt64) return Interfaces.Unsigned_64 is (Interfaces.Unsigned_64(Value)) with Inline_Always;
+  function To_Little(Value: in Interfaces.Unsigned_32) return VolatileUInt32 is (VolatileUInt32(Value)) with Inline_Always;
+  function To_Little(Value: in Interfaces.Unsigned_64) return VolatileUInt64 is (VolatileUInt64(Value)) with Inline_Always;
 
   type Descriptor is record
     Buffer: VolatileUInt64;
@@ -23,7 +23,8 @@ package Ixgbe is
   type Transmit_Head is record
     Value: aliased VolatileUInt32;
   end record
-    with Size => 64*8; -- full cache line to avoid contention
+    with Size => 64*8,
+         Alignment => 64; -- full cache line to avoid contention
   for Transmit_Head use record
     Value at 0 range 0 .. 31;
   end record;
