@@ -2,19 +2,8 @@
 #include "net/network.h"
 #include "util/log.h"
 #include "util/parse.h"
-#include "util/perf.h"
 
-// This NF does as little as possible, it's only intended for benchmarking/profiling the driver
 
-#ifdef TN_DEBUG_PERF
-static uint64_t received_packets = 0;
-static void tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, uint16_t* outputs)
-{
-	(void) packet;
-	received_packets++;
-	outputs[0] = packet_length;
-}
-#else
 static void tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, uint16_t* outputs)
 {
 	// DST MAC
@@ -34,7 +23,14 @@ static void tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, uint1
 
 	outputs[0] = packet_length;
 }
-#endif
+
+static void run(struct tn_net_agent** agents)
+{
+	while (true) {
+		tn_net_run(agents[0], &tinynf_packet_handler);
+		tn_net_run(agents[1], &tinynf_packet_handler);
+	}
+}
 
 int main(int argc, char** argv)
 {
@@ -66,19 +62,5 @@ int main(int argc, char** argv)
 
 	TN_INFO("TinyNF initialized successfully!");
 
-#ifndef TN_DEBUG_PERF
-	while (true) {
-		tn_net_run(agents[0], &tinynf_packet_handler);
-		tn_net_run(agents[1], &tinynf_packet_handler);
-	}
-#else
-	TN_PERF_PAPI_INIT();
-	while (true) {
-		received_packets = 0;
-		TN_PERF_PAPI_RESET();
-		tn_net_run(agents[0], &tinynf_packet_handler);
-		tn_net_run(agents[1], &tinynf_packet_handler);
-		TN_PERF_PAPI_RECORD(received_packets);
-	}
-#endif
+	run(agents);
 }
