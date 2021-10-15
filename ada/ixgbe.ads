@@ -1,3 +1,4 @@
+with System;
 with System.Storage_Elements;
 
 with Interfaces; use Interfaces;
@@ -32,14 +33,15 @@ package Ixgbe is
     Value: aliased VolatileUInt32;
   end record
     with Size => 64*8,
-         Alignment => 64; -- full cache line to avoid contention
+         Alignment => 64, -- full cache line to avoid contention
+         Bit_Order => System.Low_Order_First;
   for Transmit_Head use record
     Value at 0 range 0 .. 31;
   end record;
 
   type Register_Access is not null access all VolatileUInt32;
 
-  type Delimiter_Range is mod Ring_Size;
+  type Delimiter_Range is mod Ring_Size with Size => 60;
   type Descriptor_Ring is array(Delimiter_Range) of aliased Descriptor;
 
   type Dev_Buffer_Range is mod 128 * 1024 / 4;

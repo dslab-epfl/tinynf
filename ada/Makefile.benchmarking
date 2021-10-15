@@ -1,7 +1,7 @@
 APP := tinynf
 
 # add -gnatD for detailed debugging stuff... not sure it's actually better, though
-CFLAGS += -O3 -g -march=native
+CFLAGS += -O3 -march=native
 # Turn on overflow checks, required by the Ada spec, but GNAT doesn't do it by default (?!)
 CFLAGS += -gnato
 # -gnatn turns on some inlining

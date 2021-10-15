@@ -50,7 +50,7 @@ package body Environment is
 
     -- Note that Ada's 'Size is in bits!
 
-    Align_Diff := Allocator_Used_Bytes rem (T'Size/8 + 64 - (T'Size/8 rem 64));
+    Align_Diff := Allocator_Used_Bytes mod (T'Size/8 + 64 - (T'Size/8 mod 64));
     Allocator_Page := Allocator_Page + Align_Diff;
     Allocator_Used_Bytes := Allocator_Used_Bytes + Align_Diff;
 
@@ -117,7 +117,7 @@ package body Environment is
       OS_Abort;
     end if;
 
-    return Integer_Address(PFN) * Page_Size + (Addr rem Page_Size);
+    return Integer_Address(PFN) * Page_Size + (Addr mod Page_Size);
   end;
 
 

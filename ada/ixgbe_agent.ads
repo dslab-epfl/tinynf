@@ -4,7 +4,7 @@ with Ixgbe_Device;
 generic
   type Outputs_Range is (<>);
 package Ixgbe_Agent is
-  type Packet_Length is mod 2 ** 16;
+  type Packet_Length is mod 2 ** 16 with Size => 64;
   type Packet_Outputs is array(Outputs_Range) of Packet_Length;
 
   type Processor is not null access procedure(Data: in out Packet_Data;

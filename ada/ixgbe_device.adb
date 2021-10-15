@@ -206,8 +206,8 @@ package body Ixgbe_Device is
     end if;
 
     Ring_Phys_Addr := Interfaces.Unsigned_64(Get_Ring_Addr(Ring(0)'Access));
-    Regs.Write(Device.Buffer, Regs.RDBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Ring_Phys_Addr, 32) rem 2 ** 32));
-    Regs.Write(Device.Buffer, Regs.RDBAL(Queue_Index), Interfaces.Unsigned_32(Ring_Phys_Addr rem 2 ** 32));
+    Regs.Write(Device.Buffer, Regs.RDBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Ring_Phys_Addr, 32) mod 2 ** 32));
+    Regs.Write(Device.Buffer, Regs.RDBAL(Queue_Index), Interfaces.Unsigned_32(Ring_Phys_Addr mod 2 ** 32));
 
     Regs.Write(Device.Buffer, Regs.RDLEN(Queue_Index), Ring_Size * 16);
 
@@ -262,8 +262,8 @@ package body Ixgbe_Device is
     end loop;
 
     Ring_Phys_Addr := Interfaces.Unsigned_64(Get_Ring_Addr(Ring(0)'Access));
-    Regs.Write(Device.Buffer, Regs.TDBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Ring_Phys_Addr, 32) rem 2 ** 32));
-    Regs.Write(Device.Buffer, Regs.TDBAL(Queue_Index), Interfaces.Unsigned_32(Ring_Phys_Addr rem 2 ** 32));
+    Regs.Write(Device.Buffer, Regs.TDBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Ring_Phys_Addr, 32) mod 2 ** 32));
+    Regs.Write(Device.Buffer, Regs.TDBAL(Queue_Index), Interfaces.Unsigned_32(Ring_Phys_Addr mod 2 ** 32));
 
     Regs.Write(Device.Buffer, Regs.TDLEN(Queue_Index), Ring_Size * 16);
 
@@ -271,13 +271,13 @@ package body Ixgbe_Device is
     Regs.Write_Field(Device.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_HTHRESH, 4);
 
     Head_Phys_Addr := Interfaces.Unsigned_64(Get_Head_Addr(Head));
-    if Head_Phys_Addr rem 16 /= 0 then
+    if Head_Phys_Addr mod 16 /= 0 then
       Text_IO.Put_Line("Transmit head's physical address is not aligned properly");
       GNAT.OS_Lib.OS_Abort;
     end if;
 
-    Regs.Write(Device.Buffer, Regs.TDWBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Head_Phys_Addr, 32) rem 2 ** 32));
-    Regs.Write(Device.Buffer, Regs.TDWBAL(Queue_Index), Interfaces.Unsigned_32(Head_Phys_Addr rem 2 ** 32) or 1);
+    Regs.Write(Device.Buffer, Regs.TDWBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Head_Phys_Addr, 32) mod 2 ** 32));
+    Regs.Write(Device.Buffer, Regs.TDWBAL(Queue_Index), Interfaces.Unsigned_32(Head_Phys_Addr mod 2 ** 32) or 1);
 
     Regs.Clear_Field(Device.Buffer, Regs.DCATXCTRL(Queue_Index), Regs.DCATXCTRL_TX_DESC_WB_RO_EN);
 
