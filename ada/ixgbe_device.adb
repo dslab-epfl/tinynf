@@ -3,7 +3,6 @@ with System.Storage_Elements;
 with Text_IO;
 with GNAT.OS_Lib;
 
-with Ixgbe_Constants;
 with Ixgbe_Limits;
 with Ixgbe_Pci_Regs;
 with Ixgbe_Regs;
@@ -172,7 +171,7 @@ package body Ixgbe_Device is
       Regs.Clear(Buffer, Regs.TXPBSIZE(N));
     end loop;
 
-    Regs.Write_Field(Buffer, Regs.TXPBTHRESH(0), Regs.TXPBTHRESH_THRESH, 16#A0# - (Ixgbe_Constants.Packet_Buffer_Size / 1024));
+    Regs.Write_Field(Buffer, Regs.TXPBTHRESH(0), Regs.TXPBTHRESH_THRESH, 16#A0# - (Packet_Buffer_Size / 1024));
 
     Regs.Write_Field(Buffer, Regs.DTXMXSZRQ, Regs.DTXMXSZRQ_MAX_BYTES_NUM_REQ, 16#FFF#);
 
@@ -210,9 +209,9 @@ package body Ixgbe_Device is
     Regs.Write(Device.Buffer, Regs.RDBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Ring_Phys_Addr, 32) rem 2 ** 32));
     Regs.Write(Device.Buffer, Regs.RDBAL(Queue_Index), Interfaces.Unsigned_32(Ring_Phys_Addr rem 2 ** 32));
 
-    Regs.Write(Device.Buffer, Regs.RDLEN(Queue_Index), Ixgbe_Constants.Ring_Size * 16);
+    Regs.Write(Device.Buffer, Regs.RDLEN(Queue_Index), Ring_Size * 16);
 
-    Regs.Write_Field(Device.Buffer, Regs.SRRCTL(Queue_Index), Regs.SRRCTL_BSIZEPACKET, Ixgbe_Constants.Packet_Buffer_Size / 1024);
+    Regs.Write_Field(Device.Buffer, Regs.SRRCTL(Queue_Index), Regs.SRRCTL_BSIZEPACKET, Packet_Buffer_Size / 1024);
 
     Regs.Set_Field(Device.Buffer, Regs.SRRCTL(Queue_Index), Regs.SRRCTL_DROP_EN);
 
@@ -222,7 +221,7 @@ package body Ixgbe_Device is
       GNAT.OS_Lib.OS_Abort;
     end if;
 
-    Regs.Write(Device.Buffer, Regs.RDT(Queue_Index), Ixgbe_Constants.Ring_Size - 1);
+    Regs.Write(Device.Buffer, Regs.RDT(Queue_Index), Ring_Size - 1);
 
     if not Device.RX_Enabled then
       Regs.Set_Field(Device.Buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_RX_DIS);
@@ -266,7 +265,7 @@ package body Ixgbe_Device is
     Regs.Write(Device.Buffer, Regs.TDBAH(Queue_Index), Interfaces.Unsigned_32(Shift_Right(Ring_Phys_Addr, 32) rem 2 ** 32));
     Regs.Write(Device.Buffer, Regs.TDBAL(Queue_Index), Interfaces.Unsigned_32(Ring_Phys_Addr rem 2 ** 32));
 
-    Regs.Write(Device.Buffer, Regs.TDLEN(Queue_Index), Ixgbe_Constants.Ring_Size * 16);
+    Regs.Write(Device.Buffer, Regs.TDLEN(Queue_Index), Ring_Size * 16);
 
     Regs.Write_Field(Device.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_PTHRESH, 60);
     Regs.Write_Field(Device.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_HTHRESH, 4);

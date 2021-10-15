@@ -10,9 +10,9 @@ package body Ixgbe_Agent is
   Fake_Reg: aliased VolatileUInt32;
 
   function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent is
-    function Allocate_Packets is new Environment.Allocate(T => Ixgbe_Constants.Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
+    function Allocate_Packets is new Environment.Allocate(T => Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
     Packets: not null access Packet_Array := Allocate_Packets;
-    function Get_Packet_Address is new Environment.Get_Physical_Address(T => Ixgbe_Constants.Packet_Data);
+    function Get_Packet_Address is new Environment.Get_Physical_Address(T => Packet_Data);
 
     Rings: Descriptor_Ring_Array := (others => Fake_Ring'Access);
     function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
@@ -49,7 +49,7 @@ package body Ixgbe_Agent is
   procedure Run(This: in out Agent;
                 Proc: in Processor)
   is
-    N: Integer range 0 .. Ixgbe_Constants.Flush_Period;
+    N: Integer range 0 .. Flush_Period;
     Receive_Metadata: Interfaces.Unsigned_64;
     RS_Bit: Interfaces.Unsigned_64;
     Length: Packet_Length;
@@ -73,14 +73,14 @@ package body Ixgbe_Agent is
     function Meta_To_Read is new Ada.Unchecked_Conversion(Source => Interfaces.Unsigned_64, Target => Meta_Read);
   begin
     N := 0;
-    while N < Ixgbe_Constants.Flush_Period loop
+    while N < Flush_Period loop
       Receive_Metadata := From_Little(This.Rings(Outputs_Range'First)(This.Process_Delimiter).Metadata);
       exit when not Meta_To_Read(Receive_Metadata).DescriptorDone;
 
       Length := Meta_To_Read(Receive_Metadata).Length;
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
-      RS_Bit := (if (This.Process_Delimiter rem Ixgbe_Constants.Recycle_Period) = (Ixgbe_Constants.Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
+      RS_Bit := (if (This.Process_Delimiter rem Recycle_Period) = (Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
       for M in Outputs_Range loop
         This.Rings(M)(This.Process_Delimiter).Metadata := To_Little(Interfaces.Unsigned_64(This.Outputs(M)) or RS_Bit or 16#00_00_00_00_03_00_00_00#);
@@ -101,7 +101,7 @@ package body Ixgbe_Agent is
           end if;
         end loop;
 
-        This.Receive_Tail.all := To_Little((Earliest_Transmit_Head - 1) rem Ixgbe_Constants.Ring_Size);
+        This.Receive_Tail.all := To_Little((Earliest_Transmit_Head - 1) rem Ring_Size);
       end if;
       N := N + 1;
     end loop;

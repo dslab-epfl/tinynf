@@ -1,5 +1,4 @@
 with Ixgbe; use Ixgbe;
-with Ixgbe_Constants;
 with Ixgbe_Device;
 
 generic
@@ -8,11 +7,11 @@ package Ixgbe_Agent is
   type Packet_Length is mod 2 ** 16;
   type Packet_Outputs is array(Outputs_Range) of Packet_Length;
 
-  type Processor is not null access procedure(Data: in out Ixgbe_Constants.Packet_Data;
+  type Processor is not null access procedure(Data: in out Packet_Data;
                                               Length: in Packet_Length;
                                               Output_Lengths: not null access Packet_Outputs);
 
-  type Packet_Array is array(Delimiter_Range) of aliased Ixgbe_Constants.Packet_Data;
+  type Packet_Array is array(Delimiter_Range) of aliased Packet_Data;
   type Descriptor_Ring_Array is array(Outputs_Range) of not null access Descriptor_Ring;
   type Transmit_Head_Array is array(Outputs_Range) of Transmit_Head;
   type Transmit_Tail_Array is array(Outputs_Range) of Register_Access;

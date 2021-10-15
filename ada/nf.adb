@@ -1,5 +1,5 @@
 package body NF is
-  procedure Processor(Data: in out Ixgbe_Constants.Packet_Data;
+  procedure Processor(Data: in out Packet_Data;
                       Length: in Agent.Packet_Length;
                       Output_Lengths: not null access Agent.Packet_Outputs) is
   begin

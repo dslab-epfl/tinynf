@@ -1,6 +1,6 @@
-with Interfaces; use Interfaces;
+with System.Storage_Elements;
 
-with Ixgbe_Constants;
+with Interfaces; use Interfaces;
 
 package Ixgbe is
   type VolatileUInt32 is mod 2 ** 32
@@ -13,6 +13,14 @@ package Ixgbe is
   function From_Little(Value: in VolatileUInt64) return Interfaces.Unsigned_64 is (Interfaces.Unsigned_64(Value)) with Inline_Always;
   function To_Little(Value: in Interfaces.Unsigned_32) return VolatileUInt32 is (VolatileUInt32(Value)) with Inline_Always;
   function To_Little(Value: in Interfaces.Unsigned_64) return VolatileUInt64 is (VolatileUInt64(Value)) with Inline_Always;
+
+  Packet_Buffer_Size: constant := 2 ** 11;
+  Ring_Size: constant := 2 ** 8;
+  Flush_Period: constant := 8;
+  Recycle_Period: constant := 64;
+
+  type Packet_Buffer_Length is mod Packet_Buffer_Size;
+  type Packet_Data is array(Packet_Buffer_Length) of System.Storage_Elements.Storage_Element;
 
   type Descriptor is record
     Buffer: VolatileUInt64;
@@ -31,9 +39,9 @@ package Ixgbe is
 
   type Register_Access is not null access all VolatileUInt32;
 
-  type Delimiter_Range is mod Ixgbe_Constants.Ring_Size;
+  type Delimiter_Range is mod Ring_Size;
   type Descriptor_Ring is array(Delimiter_Range) of aliased Descriptor;
 
-  type Dev_Buffer_Range is new Integer range 0 .. 128 * 1024 / 4 - 1;
+  type Dev_Buffer_Range is mod 128 * 1024 / 4;
   type Dev_Buffer is array(Dev_Buffer_Range) of aliased VolatileUInt32;
 end Ixgbe;

@@ -8,7 +8,6 @@ with Text_IO;
 with GNAT.OS_Lib;
 
 with Ixgbe_Agent;
-with Ixgbe_Constants; use Ixgbe_Constants;
 with Ixgbe_Device; use Ixgbe_Device;
 with NF;
 with Pci_Parse;
