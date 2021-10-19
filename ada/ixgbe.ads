@@ -41,7 +41,7 @@ package Ixgbe is
 
   type Register_Access is not null access all VolatileUInt32;
 
-  type Delimiter_Range is mod Ring_Size with Size => 60;
+  type Delimiter_Range is mod Ring_Size;
   type Descriptor_Ring is array(Delimiter_Range) of aliased Descriptor;
 
   type Dev_Buffer_Range is mod 128 * 1024 / 4;
