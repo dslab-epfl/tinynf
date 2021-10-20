@@ -24,14 +24,6 @@ static void tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, uint1
 	outputs[0] = packet_length;
 }
 
-static void run(struct tn_net_agent** agents)
-{
-	while (true) {
-		tn_net_run(agents[0], &tinynf_packet_handler);
-		tn_net_run(agents[1], &tinynf_packet_handler);
-	}
-}
-
 int main(int argc, char** argv)
 {
 	struct tn_pci_address pci_addresses[2];
@@ -41,26 +33,38 @@ int main(int argc, char** argv)
 	}
 
 	struct tn_net_device* devices[2];
-	for (uint8_t n = 0; n < 2; n++) {
-		if (!tn_net_device_init(pci_addresses[n], &(devices[n]))) {
-			TN_INFO("Couldn't init device");
-			return 3 + 100*n;
-		}
-		if (!tn_net_device_set_promiscuous(devices[n])) {
-			TN_INFO("Couldn't make device promiscuous");
-			return 4 + 100*n;
-		}
+	if (!tn_net_device_init(pci_addresses[0], &(devices[0]))) {
+		TN_INFO("Could not init device 0");
+		return 2;
+	}
+	if (!tn_net_device_init(pci_addresses[1], &(devices[1]))) {
+		TN_INFO("Could not init device 0");
+		return 3;
+	}
+
+	if (!tn_net_device_set_promiscuous(devices[0])) {
+		TN_INFO("Could not make device 0 promiscuous");
+		return 4;
+	}
+	if (!tn_net_device_set_promiscuous(devices[1])) {
+		TN_INFO("Could not make device 1 promiscuous");
+		return 5;
 	}
 
 	struct tn_net_agent* agents[2];
-	for (uint8_t n = 0; n < 2; n++) {
-		if (!tn_net_agent_init(devices[n], 1, &devices[1 - n], &(agents[n]))) {
-			TN_INFO("Couldn't init agent");
-			return 2 + 100*n;
-		}
+	if (!tn_net_agent_init(devices[0], 1, &(devices[1]), &(agents[0]))) {
+		TN_INFO("Could not init agent 0");
+		return 6;
+	}
+	if (!tn_net_agent_init(devices[1], 1, &(devices[0]), &(agents[1]))) {
+		TN_INFO("Could not init agent 1");
+		return 6;
 	}
 
 	TN_INFO("TinyNF initialized successfully!");
 
-	run(agents);
+	while (true) {
+		tn_net_run(agents[0], &tinynf_packet_handler);
+		tn_net_run(agents[1], &tinynf_packet_handler);
+	}
 }
