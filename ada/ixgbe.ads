@@ -1,9 +1,10 @@
 with System;
-with System.Storage_Elements;
 
 with Interfaces; use Interfaces;
 
 package Ixgbe is
+  type VolatileUInt8 is mod 2 ** 8
+    with Volatile, Size => 8;
   type VolatileUInt32 is mod 2 ** 32
     with Volatile, Size => 32;
   type VolatileUInt64 is mod 2 ** 64
@@ -21,7 +22,7 @@ package Ixgbe is
   Recycle_Period: constant := 64;
 
   type Packet_Buffer_Length is mod Packet_Buffer_Size;
-  type Packet_Data is array(Packet_Buffer_Length) of System.Storage_Elements.Storage_Element;
+  type Packet_Data is array(Packet_Buffer_Length) of VolatileUInt8;
 
   type Descriptor is record
     Buffer: VolatileUInt64;

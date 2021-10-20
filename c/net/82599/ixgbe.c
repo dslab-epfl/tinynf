@@ -1183,10 +1183,12 @@ static bool tn_net_device_add_output(struct tn_net_device* const device, volatil
 
 struct tn_net_agent
 {
-	uint8_t* buffer;
+	volatile uint8_t* buffer;
 	volatile uint32_t* receive_tail_addr;
 	uint64_t processed_delimiter;
-	uint64_t outputs_count;
+#ifndef DANGEROUS
+	size_t outputs_count;
+#endif
 	// transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
 	// plus, we want each head on its own cache line to avoid conflicts
@@ -1250,7 +1252,7 @@ bool tn_net_agent_init(struct tn_net_device* input_device, size_t outputs_count,
 		for (size_t n = 0; n < IXGBE_RING_SIZE; n++) {
 			// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 			// "Buffer Address (64)", 1st line offset 0
-			void* packet_addr = agent->buffer + n * PACKET_BUFFER_SIZE;
+			void* packet_addr = (uint8_t*) agent->buffer + n * PACKET_BUFFER_SIZE;
 			uintptr_t packet_phys_addr;
 			if (!tn_mem_virt_to_phys(packet_addr, &packet_phys_addr)) {
 				TN_DEBUG("Could not get a packet's physical address");
@@ -1273,7 +1275,9 @@ bool tn_net_agent_init(struct tn_net_device* input_device, size_t outputs_count,
 		return false;
 	}
 
+#ifndef DANGEROUS
 	agent->outputs_count = outputs_count;
+#endif
 
 	*out_agent = agent;
 	return true;
@@ -1283,7 +1287,13 @@ bool tn_net_agent_init(struct tn_net_device* input_device, size_t outputs_count,
 // High-level API
 // --------------
 
-void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler)
+void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler
+#ifdef DANGEROUS
+, size_t outputs_count
+#else
+#define outputs_count agent->outputs_count
+#endif
+)
 {
 	uint64_t p;
 	for (p = 0; p < IXGBE_AGENT_FLUSH_PERIOD; p++) {
@@ -1292,12 +1302,12 @@ void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler)
 			break;
 		}
 
-		uint8_t* packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
+		volatile uint8_t* packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
 		uint16_t packet_length = receive_metadata & 0xFFFFu;
 		handler(packet, packet_length, agent->outputs);
 
 		uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1)) << (24+3);
-		for (uint64_t n = 0; n < agent->outputs_count; n++) {
+		for (uint64_t n = 0; n < outputs_count; n++) {
 			agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64(((uint64_t) agent->outputs[n]) | rs_bit | BITL(24+1) | BITL(24));
 			agent->outputs[n] = 0;
 		}
@@ -1307,7 +1317,7 @@ void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler)
 		if (rs_bit != 0) {
 			uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
 			uint64_t min_diff = (uint64_t) -1;
-			for (uint64_t n = 0; n < agent->outputs_count; n++) {
+			for (uint64_t n = 0; n < outputs_count; n++) {
 				uint32_t head = tn_le_to_cpu32(agent->transmit_heads[n * TRANSMIT_HEAD_MULTIPLIER]);
 				uint64_t diff = head - agent->processed_delimiter;
 				if (diff <= min_diff) {
@@ -1320,7 +1330,7 @@ void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler)
 		}
 	}
 	if (p != 0) {
-		for (uint64_t n = 0; n < agent->outputs_count; n++) {
+		for (uint64_t n = 0; n < outputs_count; n++) {
 			reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
 	}

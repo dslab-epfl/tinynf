@@ -4,7 +4,7 @@
 #include "util/parse.h"
 
 
-static void tinynf_packet_handler(uint8_t* packet, uint16_t packet_length, uint16_t* outputs)
+static void tinynf_packet_handler(volatile uint8_t* packet, uint16_t packet_length, uint16_t* outputs)
 {
 	// DST MAC
 	packet[0] = 0;
@@ -64,7 +64,12 @@ int main(int argc, char** argv)
 	TN_INFO("TinyNF initialized successfully!");
 
 	while (true) {
+#ifdef DANGEROUS
+		tn_net_run(agents[0], &tinynf_packet_handler, 1);
+		tn_net_run(agents[1], &tinynf_packet_handler, 1);
+#else
 		tn_net_run(agents[0], &tinynf_packet_handler);
 		tn_net_run(agents[1], &tinynf_packet_handler);
+#endif
 	}
 }

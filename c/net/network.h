@@ -30,6 +30,10 @@ bool tn_net_agent_init(struct tn_net_device* input_device, size_t outputs_count,
 // ---------------------
 
 // Returns the new length of the packet, and sets outputs[N] = whether the packet should be sent on queue N (queues are in the order they were added)
-typedef void tn_net_packet_handler(uint8_t* packet, uint16_t packet_length, uint16_t* outputs);
+typedef void tn_net_packet_handler(volatile uint8_t* packet, uint16_t packet_length, uint16_t* outputs);
 // Runs the agent using the given handlers
-void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler);
+void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler
+#ifdef DANGEROUS
+, size_t outputs_count
+#endif
+);

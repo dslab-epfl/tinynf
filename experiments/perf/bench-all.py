@@ -87,7 +87,7 @@ def bench(path, name, extra_env):
   env = dict(os.environ)
   env.update(extra_env)
   env.update(get_env(None, env))
-  env['TN_CFLAGS'] = " ".join(get_cflags(None, env))
+  env['TN_CFLAGS'] = env.get('TN_CFLAGS', '') + ' ' +  " ".join(get_cflags(None, env))
 
   benchflags = get_benchflags(None, env) + [str(get_layer(None, env))]
 
@@ -103,11 +103,12 @@ def bench(path, name, extra_env):
 
 
 cpu_low_power()
-bench('../c', 'C', {})
+#bench('../c', 'C', {})
+#bench('../c', 'C, dangerous', {'TN_CFLAGS': '-DDANGEROUS'})
 #bench('../csharp', 'C#, JIT', {'CSHARP_MODE': 'safe'})
 #bench('../csharp', 'C# extended, JIT', {'CSHARP_MODE': 'extended'})
 #bench('../csharp', 'C#, AOT', {'CSHARP_MODE': 'safe', 'CSHARP_AOT': 'y'})
 #bench('../csharp', 'C# extended, AOT', {'CSHARP_MODE': 'extended', 'CSHARP_AOT': 'y'})
 #bench('../rust', 'Rust', {})
-#bench('../ada', 'Ada', {})
+bench('../ada', 'Ada', {})
 cpu_full_power()
