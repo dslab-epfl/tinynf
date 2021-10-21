@@ -24,6 +24,23 @@ static void tinynf_packet_handler(volatile uint8_t* packet, uint16_t packet_leng
 	outputs[0] = packet_length;
 }
 
+// This noinline function is there so GCC realizes it can use all registers
+// (otherwise it keeps some regs unused, presumably because initialization
+//  makes it think they will be used later...)
+__attribute__((noinline))
+static void run(struct tn_net_agent agent0, struct tn_net_agent agent1)
+{
+	while (true) {
+#ifdef DANGEROUS
+		tn_net_run(&agent0, &tinynf_packet_handler, 1);
+		tn_net_run(&agent1, &tinynf_packet_handler, 1);
+#else
+		tn_net_run(&agent0, &tinynf_packet_handler);
+		tn_net_run(&agent1, &tinynf_packet_handler);
+#endif
+	}
+}
+
 int main(int argc, char** argv)
 {
 	struct tn_pci_address pci_addresses[2];
@@ -65,13 +82,5 @@ int main(int argc, char** argv)
 
 	TN_INFO("TinyNF initialized successfully!");
 
-	while (true) {
-#ifdef DANGEROUS
-		tn_net_run(&agent0, &tinynf_packet_handler, 1);
-		tn_net_run(&agent1, &tinynf_packet_handler, 1);
-#else
-		tn_net_run(&agent0, &tinynf_packet_handler);
-		tn_net_run(&agent1, &tinynf_packet_handler);
-#endif
-	}
+	run(agent0, agent1);
 }

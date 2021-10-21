@@ -1186,20 +1186,21 @@ static bool tn_net_device_add_output(struct tn_net_device* const device, volatil
 struct tn_net_agent
 {
 	volatile uint8_t* buffer;
+	volatile uint64_t** rings; // 0 == shared receive/transmit, rest are exclusive transmit
 	volatile uint32_t* receive_tail_addr;
-	uint64_t processed_delimiter;
-#ifndef DANGEROUS
-	size_t outputs_count;
-#endif
+	uint64_t _padding[5];
 	// transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
 	// plus, we want each head on its own cache line to avoid conflicts
 	// thus, using assumption CACHE, we multiply indices by 16
 	#define TRANSMIT_HEAD_MULTIPLIER 16
 	volatile uint32_t* transmit_heads;
-	volatile uint64_t** rings; // 0 == shared receive/transmit, rest are exclusive transmit
 	volatile uint32_t** transmit_tail_addrs;
 	uint16_t* outputs;
+	uint8_t processed_delimiter;
+#ifndef DANGEROUS
+	size_t outputs_count;
+#endif
 };
 
 
@@ -1295,7 +1296,7 @@ static void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handle
 #endif
 )
 {
-	uint64_t p;
+	size_t p;
 	for (p = 0; p < IXGBE_AGENT_FLUSH_PERIOD; p++) {
 		uint64_t receive_metadata = tn_le_to_cpu64(agent->rings[0][2u*agent->processed_delimiter + 1]);
 		if ((receive_metadata & BITL(32)) == 0) {
@@ -1306,7 +1307,7 @@ static void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handle
 		uint16_t packet_length = receive_metadata & 0xFFFFu;
 		handler(packet, packet_length, agent->outputs);
 
-		uint64_t rs_bit = (uint64_t) ((agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1)) << (24+3);
+		uint64_t rs_bit = (agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1) ? BITL(24+3) : 0;
 		for (uint64_t n = 0; n < outputs_count; n++) {
 			agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64(((uint64_t) agent->outputs[n]) | rs_bit | BITL(24+1) | BITL(24));
 			agent->outputs[n] = 0;
