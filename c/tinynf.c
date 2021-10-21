@@ -32,31 +32,33 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	struct tn_net_device* devices[2];
-	if (!tn_net_device_init(pci_addresses[0], &(devices[0]))) {
+	struct tn_net_device device0;
+	struct tn_net_device device1;
+	if (!tn_net_device_init(pci_addresses[0], &device0)) {
 		TN_INFO("Could not init device 0");
 		return 2;
 	}
-	if (!tn_net_device_init(pci_addresses[1], &(devices[1]))) {
+	if (!tn_net_device_init(pci_addresses[1], &device1)) {
 		TN_INFO("Could not init device 0");
 		return 3;
 	}
 
-	if (!tn_net_device_set_promiscuous(devices[0])) {
+	if (!tn_net_device_set_promiscuous(&device0)) {
 		TN_INFO("Could not make device 0 promiscuous");
 		return 4;
 	}
-	if (!tn_net_device_set_promiscuous(devices[1])) {
+	if (!tn_net_device_set_promiscuous(&device1)) {
 		TN_INFO("Could not make device 1 promiscuous");
 		return 5;
 	}
 
-	struct tn_net_agent* agents[2];
-	if (!tn_net_agent_init(devices[0], 1, &(devices[1]), &(agents[0]))) {
+	struct tn_net_agent agent0;
+	struct tn_net_agent agent1;
+	if (!tn_net_agent_init(&device0, 1, &device1, &agent0)) {
 		TN_INFO("Could not init agent 0");
 		return 6;
 	}
-	if (!tn_net_agent_init(devices[1], 1, &(devices[0]), &(agents[1]))) {
+	if (!tn_net_agent_init(&device1, 1, &device0, &agent1)) {
 		TN_INFO("Could not init agent 1");
 		return 6;
 	}
@@ -65,11 +67,11 @@ int main(int argc, char** argv)
 
 	while (true) {
 #ifdef DANGEROUS
-		tn_net_run(agents[0], &tinynf_packet_handler, 1);
-		tn_net_run(agents[1], &tinynf_packet_handler, 1);
+		tn_net_run(&agent0, &tinynf_packet_handler, 1);
+		tn_net_run(&agent1, &tinynf_packet_handler, 1);
 #else
-		tn_net_run(agents[0], &tinynf_packet_handler);
-		tn_net_run(agents[1], &tinynf_packet_handler);
+		tn_net_run(&agent0, &tinynf_packet_handler);
+		tn_net_run(&agent1, &tinynf_packet_handler);
 #endif
 	}
 }

@@ -8,9 +8,8 @@ include $(TN_DIR)/Makefile
 
 build: tn_default
 
-# Preserve LD_LIBRARY_PATH so that util/perf.h can find libPAPI
 run:
-	@sudo LD_LIBRARY_PATH="$$LD_LIBRARY_PATH" ./tinynf $(TN_ARGS)
+	@sudo ./tinynf $(TN_ARGS)
 
 print-nf-name:
 	@echo tinynf

@@ -6,7 +6,6 @@
 # Overrideable variables:
 # - TN_DEBUG, default 1, debug level (0 = no output, 1 = info, 2 = debug, 3 = verbose); if > 1, code will be compiled with debug symbols
 # - TN_ENV, default 'linux-x86', environment to use (folder in env/)
-# - TN_NET, default '82599', network driver to use (folder in net/)
 # - TN_APP, default 'tinynf', app name when compiled
 # - TN_CC, default undocumented, compiler to use
 # Appendable variables:
@@ -26,7 +25,6 @@ TN_DEBUG ?= 1
 TN_CC ?= gcc
 TN_APP ?= tinynf
 TN_ENV ?= $(TN_DIR)/env/linux-x86
-TN_NET ?= $(TN_DIR)/net/82599
 
 # Special behavior when TN_FILES is not set
 ifeq (,$(TN_FILES))
@@ -45,7 +43,7 @@ endif
 endif
 
 # Files
-TN_FILES += $(shell echo $(TN_ENV)/*.c $(TN_NET)/*.c)
+TN_FILES += $(shell echo $(TN_ENV)/*.c)
 
 # Compiler args
 TN_CFLAGS += -std=c11
