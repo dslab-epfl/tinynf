@@ -98,11 +98,11 @@ def bench(path, name, extra_env):
 
 cpu_low_power()
 #bench('../c', 'C', {})
-bench('../c', 'C, dangerous', {'TN_CFLAGS': '-DDANGEROUS'})
+#bench('../c', 'C, dangerous', {'TN_CFLAGS': '-DDANGEROUS'})
 #bench('../csharp', 'C#, JIT', {'CSHARP_MODE': 'safe'})
 #bench('../csharp', 'C# extended, JIT', {'CSHARP_MODE': 'extended'})
 #bench('../csharp', 'C#, AOT', {'CSHARP_MODE': 'safe', 'CSHARP_AOT': 'y'})
 #bench('../csharp', 'C# extended, AOT', {'CSHARP_MODE': 'extended', 'CSHARP_AOT': 'y'})
-#bench('../rust', 'Rust', {})
+bench('../rust', 'Rust', {})
 #bench('../ada', 'Ada', {})
 cpu_full_power()
