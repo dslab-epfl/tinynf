@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::convert::TryInto;
 use std::fs::OpenOptions;
 use std::io::{self, Read, Seek};
@@ -13,9 +14,9 @@ use crate::pci::PciAddress;
 
 // TODO might be worth splitting this file into a proper module
 
-pub trait Environment {
-    fn allocate<T, const COUNT: usize>(&mut self) -> &'static mut [T; COUNT];
-    fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T];
+pub trait Environment<'a> {
+    fn allocate<T, const COUNT: usize>(&self) -> &'a mut [T; COUNT];
+    fn allocate_slice<T>(&self, count: usize) -> &'a mut [T];
     fn map_physical_memory<T>(&self, addr: u64, count: usize) -> &'static mut [T]; // addr is u64, not usize, because PCI BARs are 64-bit
     fn get_physical_address<T>(&self, value: *mut T) -> usize; // mut to emphasize that gaining the phys addr might allow HW to write
 
@@ -61,12 +62,12 @@ fn pci_target(address: PciAddress, register: u8) {
 const HUGEPAGE_LOG: usize = 30; // 1 GB hugepages
 const HUGEPAGE_SIZE: usize = 1 << HUGEPAGE_LOG;
 
-// this is a terrible idea but I don't feel like making map_physical_memory &mut self right now, too much pain for no gain in a research prototype
+// this is terrible and should be fixed but oh well
 static mut MAPS: Vec<memmap::MmapMut> = Vec::new();
 
 pub struct LinuxEnvironment {
-    allocated_page: *mut u8,
-    used_bytes: usize,
+    allocated_page: RefCell<*mut u8>,
+    used_bytes: RefCell<usize>
 }
 
 impl LinuxEnvironment {
@@ -85,39 +86,41 @@ impl LinuxEnvironment {
             }
 
             LinuxEnvironment {
-                allocated_page: page as *mut u8,
-                used_bytes: 0,
+                allocated_page: RefCell::new(page as *mut u8),
+                used_bytes: RefCell::new(0),
             }
         }
     }
 }
 
-impl Environment for LinuxEnvironment {
-    fn allocate<T, const COUNT: usize>(&mut self) -> &'static mut [T; COUNT] {
+impl<'a> Environment<'a> for LinuxEnvironment {
+    fn allocate<T, const COUNT: usize>(&self) -> &'a mut [T; COUNT] {
         self.allocate_slice(COUNT).try_into().unwrap()
     }
 
-    fn allocate_slice<T>(&mut self, count: usize) -> &'static mut [T] {
-        let align_diff = self.used_bytes % (size_of::<T>() + 64 - (size_of::<T>() % 64));
-        if align_diff + self.used_bytes >= HUGEPAGE_SIZE {
+    fn allocate_slice<T>(&self, count: usize) -> &'a mut [T] {
+        let mut allocated_page = self.allocated_page.borrow_mut();
+        let mut used_bytes = self.used_bytes.borrow_mut();
+        let align_diff = *used_bytes % (size_of::<T>() + 64 - (size_of::<T>() % 64));
+        if align_diff + *used_bytes >= HUGEPAGE_SIZE {
             panic!("Not enough space for alignment");
         }
 
         unsafe {
-            self.allocated_page = self.allocated_page.add(align_diff);
+            *allocated_page = (*allocated_page).add(align_diff);
         }
-        self.used_bytes += align_diff;
+        *used_bytes += align_diff;
 
         let full_size = count * size_of::<T>();
-        if full_size + self.used_bytes >= HUGEPAGE_SIZE {
+        if full_size + *used_bytes >= HUGEPAGE_SIZE {
             panic!("Not enough space for allocation");
         }
 
-        let result = self.allocated_page;
+        let result = *allocated_page;
         unsafe {
-            self.allocated_page = self.allocated_page.add(full_size);
+            *allocated_page = (*allocated_page).add(full_size);
         }
-        self.used_bytes += full_size;
+        *used_bytes += full_size;
 
         unsafe { slice::from_raw_parts_mut(result as *mut T, count) }
     }

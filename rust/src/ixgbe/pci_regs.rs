@@ -3,17 +3,17 @@
 use crate::env::Environment;
 use crate::pci::PciAddress;
 
-pub fn read_field(env: &impl Environment, addr: PciAddress, reg: u8, field: u32) -> u32 {
+pub fn read_field<'a>(env: &impl Environment<'a>, addr: PciAddress, reg: u8, field: u32) -> u32 {
     let value = env.pci_read(addr, reg);
     let shift = field.trailing_zeros();
     (value & field) >> shift
 }
 
-pub fn is_field_cleared(env: &impl Environment, addr: PciAddress, reg: u8, field: u32) -> bool {
+pub fn is_field_cleared<'a>(env: &impl Environment<'a>, addr: PciAddress, reg: u8, field: u32) -> bool {
     read_field(env, addr, reg, field) == 0
 }
 
-pub fn set_field(env: &impl Environment, addr: PciAddress, reg: u8, field: u32) {
+pub fn set_field<'a>(env: &impl Environment<'a>, addr: PciAddress, reg: u8, field: u32) {
     let old_value = env.pci_read(addr, reg);
     let new_value = old_value | field;
     env.pci_write(addr, reg, new_value);

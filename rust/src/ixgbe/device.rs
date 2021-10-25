@@ -15,7 +15,7 @@ pub struct Device<'a> {
     buffer: &'a mut [u32],
 }
 
-fn after_timeout(env: &impl Environment, duration: Duration, cleared: bool, buffer: &mut [u32], reg: usize, field: u32) -> bool {
+fn after_timeout<'a>(env: &impl Environment<'a>, duration: Duration, cleared: bool, buffer: &mut [u32], reg: usize, field: u32) -> bool {
     env.sleep(Duration::from_nanos((duration.as_nanos() % 10).try_into().unwrap())); // will panic if 'duration' is too big
     for _i in 0..10 {
         if regs::is_field_cleared(buffer, reg, field) != cleared {
@@ -27,7 +27,7 @@ fn after_timeout(env: &impl Environment, duration: Duration, cleared: bool, buff
 }
 
 impl<'a> Device<'a> {
-    pub fn init<'b>(env: &'a impl Environment, pci_address: PciAddress) -> Device<'b> {
+    pub fn init(env: &impl Environment<'a>, pci_address: PciAddress) -> Device<'a> {
         if size_of::<usize>() > 8 {
             panic!("Pointers must fit in a u64");
         }
@@ -205,8 +205,8 @@ pub struct DeviceInput<'a> {
     buffer: &'a mut [u32],
 }
 
-impl DeviceInput<'_> {
-    pub fn associate<'a>(&'a mut self, env: &impl Environment, ring: &mut [Descriptor]) -> &'a mut u32 {
+impl<'a> DeviceInput<'a> {
+    pub fn associate<'b>(&'a mut self, env: &impl Environment<'b>, ring: &mut [Descriptor]) -> &'a mut u32 {
         if !regs::is_field_cleared(self.buffer, regs::RXDCTL, regs::RXDCTL_::ENABLE) {
             panic!("Receive queue is already in use");
         }
@@ -239,8 +239,8 @@ pub struct DeviceOutput<'a> {
     buffer: &'a mut [u32],
 }
 
-impl DeviceOutput<'_> {
-    pub fn associate<'a>(&'a mut self, env: &impl Environment, ring: &mut [Descriptor], transmit_head: &mut u32) -> &'a mut u32 {
+impl<'a> DeviceOutput<'a> {
+    pub fn associate<'b>(&'a mut self, env: &impl Environment<'b>, ring: &mut [Descriptor], transmit_head: &mut u32) -> &'a mut u32 {
         if !regs::is_field_cleared(self.buffer, regs::TXDCTL, regs::TXDCTL_::ENABLE) {
             panic!("Transmit queue is not available");
         }

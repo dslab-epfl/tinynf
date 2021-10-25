@@ -28,7 +28,7 @@ fn parse_pci_address(s: &str) -> PciAddress {
     }
 }
 
-fn proc(data: &mut [u8; ixgbe::PACKET_SIZE], length: u16, output_lengths: &mut [u16; ixgbe::MAX_OUTPUTS]) {
+fn proc(data: &mut [u8; ixgbe::PACKET_SIZE], length: u16, output_lengths: &mut [u16; 1]) {
     data[0] = 0;
     data[1] = 0;
     data[2] = 0;
@@ -44,7 +44,7 @@ fn proc(data: &mut [u8; ixgbe::PACKET_SIZE], length: u16, output_lengths: &mut [
     output_lengths[0] = length;
 }
 
-fn run(agent0: &mut Agent<'_>, agent1: &mut Agent<'_>) {
+fn run(agent0: &mut Agent<'_, '_, 1>, agent1: &mut Agent<'_, '_, 1>) {
     loop {
         agent0.run(proc);
         agent1.run(proc);
@@ -57,7 +57,7 @@ fn main() {
         panic!("Expected 2 args (+ implicit exe name)");
     }
 
-    let mut env = LinuxEnvironment::new();
+    let env = LinuxEnvironment::new();
 
     let pci0 = parse_pci_address(&args[1][..]);
     let mut dev0 = Device::init(&env, pci0);
@@ -69,11 +69,11 @@ fn main() {
     dev1.set_promiscuous();
     let (mut dev1in, mut dev1out) = dev1.into_inout();
 
-    let mut agent0outs = [&mut dev1out];
-    let mut agent0 = Agent::create(&mut env, &mut dev0in, &mut agent0outs);
+    let agent0outs = [&mut dev1out];
+    let mut agent0 = Agent::create(&env, &mut dev0in, agent0outs);
 
-    let mut agent1outs = [&mut dev0out];
-    let mut agent1 = Agent::create(&mut env, &mut dev1in, &mut agent1outs);
+    let agent1outs = [&mut dev0out];
+    let mut agent1 = Agent::create(&env, &mut dev1in, agent1outs);
 
     println!("All good, running...");
 
