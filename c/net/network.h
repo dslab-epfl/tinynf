@@ -502,7 +502,7 @@ struct tn_net_device
 // Section 4.6.3 Initialization Sequence
 // -------------------------------------
 
-bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_device* out_device)
+static bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_device* out_device)
 {
 	// The NIC supports 64-bit addresses, so pointers can't be larger
 	static_assert(UINTPTR_MAX <= UINT64_MAX, "uintptr_t must fit in an uint64_t");
@@ -966,7 +966,7 @@ bool tn_net_device_init(const struct tn_pci_address pci_address, struct tn_net_d
 // Section 7.1.1.1 L2 Filtering
 // ----------------------------
 
-bool tn_net_device_set_promiscuous(struct tn_net_device* const device)
+static bool tn_net_device_set_promiscuous(struct tn_net_device* const device)
 {
 	// "A packet passes successfully through L2 Ethernet MAC address filtering if any of the following conditions are met:"
 	// 	Section 8.2.3.7.1 Filter Control Register:
@@ -1188,7 +1188,8 @@ struct tn_net_agent
 	volatile uint8_t* buffer;
 	volatile uint64_t** rings; // 0 == shared receive/transmit, rest are exclusive transmit
 	volatile uint32_t* receive_tail_addr;
-	uint64_t _padding[5];
+	uint8_t processed_delimiter;
+	uint8_t _padding[7];
 	// transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
 	// (there is also a runtime check to make sure the array itself is aligned properly)
 	// plus, we want each head on its own cache line to avoid conflicts
@@ -1197,7 +1198,6 @@ struct tn_net_agent
 	volatile uint32_t* transmit_heads;
 	volatile uint32_t** transmit_tail_addrs;
 	uint16_t* outputs;
-	uint8_t processed_delimiter;
 #ifndef DANGEROUS
 	size_t outputs_count;
 #endif
@@ -1208,7 +1208,7 @@ struct tn_net_agent
 // Agent initialization
 // --------------------
 
-bool tn_net_agent_init(struct tn_net_device* input_device, size_t outputs_count, struct tn_net_device* output_devices, struct tn_net_agent* out_agent)
+static bool tn_net_agent_init(struct tn_net_device* input_device, size_t outputs_count, struct tn_net_device* output_devices, struct tn_net_agent* out_agent)
 {
 	if (outputs_count < 1) {
 		TN_DEBUG("Too few outputs");
@@ -1290,9 +1290,9 @@ typedef void tn_net_packet_handler(volatile uint8_t* packet, uint16_t packet_len
 __attribute__((always_inline)) inline
 static void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handler
 #ifdef DANGEROUS
-, size_t outputs_count
+, size_t outs_count
 #else
-#define outputs_count agent->outputs_count
+#define outs_count agent->outputs_count
 #endif
 )
 {
@@ -1308,7 +1308,7 @@ static void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handle
 		handler(packet, packet_length, agent->outputs);
 
 		uint64_t rs_bit = (agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1) ? BITL(24+3) : 0;
-		for (uint64_t n = 0; n < outputs_count; n++) {
+		for (uint64_t n = 0; n < outs_count; n++) {
 			agent->rings[n][2u*agent->processed_delimiter + 1] = tn_cpu_to_le64(((uint64_t) agent->outputs[n]) | rs_bit | BITL(24+1) | BITL(24));
 			agent->outputs[n] = 0;
 		}
@@ -1318,7 +1318,7 @@ static void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handle
 		if (rs_bit != 0) {
 			uint32_t earliest_transmit_head = (uint32_t) agent->processed_delimiter;
 			uint64_t min_diff = (uint64_t) -1;
-			for (uint64_t n = 0; n < outputs_count; n++) {
+			for (uint64_t n = 0; n < outs_count; n++) {
 				uint32_t head = tn_le_to_cpu32(agent->transmit_heads[n * TRANSMIT_HEAD_MULTIPLIER]);
 				uint64_t diff = head - agent->processed_delimiter;
 				if (diff <= min_diff) {
@@ -1331,7 +1331,7 @@ static void tn_net_run(struct tn_net_agent* agent, tn_net_packet_handler* handle
 		}
 	}
 	if (p != 0) {
-		for (uint64_t n = 0; n < outputs_count; n++) {
+		for (uint64_t n = 0; n < outs_count; n++) {
 			reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
 	}

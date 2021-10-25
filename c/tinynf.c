@@ -1,3 +1,5 @@
+#include <stdnoreturn.h>
+
 #include "env/pci.h"
 #include "net/network.h"
 #include "util/log.h"
@@ -28,7 +30,7 @@ static void tinynf_packet_handler(volatile uint8_t* packet, uint16_t packet_leng
 // (otherwise it keeps some regs unused, presumably because initialization
 //  makes it think they will be used later...)
 __attribute__((noinline))
-static void run(struct tn_net_agent agent0, struct tn_net_agent agent1)
+noreturn static void run(struct tn_net_agent agent0, struct tn_net_agent agent1)
 {
 	while (true) {
 #ifdef DANGEROUS
