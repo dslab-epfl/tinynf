@@ -22,7 +22,7 @@
 
 struct ixgbe_agent
 {
-	uint8_t* buffer;
+	struct ixgbe_packet_data* buffer;
 	volatile struct ixgbe_descriptor** rings; // 0 == shared receive/transmit, rest are exclusive transmit
 	uint32_t* receive_tail_addr;
 	uint8_t processed_delimiter;
@@ -43,47 +43,19 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 		return false;
 	}
 
-	if (!tn_mem_allocate(IXGBE_RING_SIZE * PACKET_BUFFER_SIZE, (void**) &(out_agent->buffer))) {
-		TN_DEBUG("Could not allocate buffer for agent");
-		return false;
-	}
-
-	if (!tn_mem_allocate(outputs_count * sizeof(struct ixgbe_transmit_head), (void**) &(out_agent->transmit_heads))) {
-		TN_DEBUG("Could not allocate transmit heads for agent");
-		return false;
-	}
-
-	if (!tn_mem_allocate(outputs_count * sizeof(struct ixgbe_descriptor*), (void**) &(out_agent->rings))) {
-		TN_DEBUG("Could not allocate rings for agent");
-		return false;
-	}
-
-	if (!tn_mem_allocate(outputs_count * sizeof(uint32_t*), (void**) &(out_agent->transmit_tail_addrs))) {
-		TN_DEBUG("Could not allocate transmit tail addrs for agent");
-		return false;
-	}
-
-	if (!tn_mem_allocate(outputs_count * sizeof(uint16_t), (void**) &(out_agent->outputs))) {
-		TN_DEBUG("Could not allocate outputs for agent");
-		return false;
-	}
+	out_agent->buffer = tn_mem_allocate(IXGBE_RING_SIZE * sizeof(struct ixgbe_packet_data));
+	out_agent->transmit_heads = tn_mem_allocate(outputs_count * sizeof(struct ixgbe_transmit_head));
+	out_agent->rings = tn_mem_allocate(outputs_count * sizeof(struct ixgbe_descriptor*));
+	out_agent->transmit_tail_addrs = tn_mem_allocate(outputs_count * sizeof(uint32_t*));
+	out_agent->outputs = tn_mem_allocate(outputs_count * sizeof(uint16_t));
 
 	for (size_t r = 0; r < outputs_count; r++) {
-		if (!tn_mem_allocate(IXGBE_RING_SIZE * sizeof(struct ixgbe_descriptor), (void**) &(out_agent->rings[r]))) { // 16 bytes per descriptor, i.e. 2x64bits
-			TN_DEBUG("Could not allocate ring");
-			return false;
-		}
+		out_agent->rings[r] = tn_mem_allocate(IXGBE_RING_SIZE * sizeof(struct ixgbe_descriptor));
 		// Program all descriptors' buffer addresses now
 		for (size_t n = 0; n < IXGBE_RING_SIZE; n++) {
 			// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 			// "Buffer Address (64)", 1st line offset 0
-			void* packet_addr = out_agent->buffer + n * PACKET_BUFFER_SIZE;
-			uintptr_t packet_phys_addr;
-			if (!tn_mem_virt_to_phys(packet_addr, &packet_phys_addr)) {
-				TN_DEBUG("Could not get a packet's physical address");
-				return false;
-			}
-
+			uintptr_t packet_phys_addr = tn_mem_virt_to_phys((void*) &(out_agent->buffer[n]));
 			// INTERPRETATION-MISSING: The data sheet does not specify the endianness of descriptor buffer addresses..
 			// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
 			out_agent->rings[r][n].addr = tn_cpu_to_le64(packet_phys_addr);
@@ -130,7 +102,7 @@ static void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler
 			break;
 		}
 
-		uint8_t* packet = agent->buffer + (PACKET_BUFFER_SIZE * agent->processed_delimiter);
+		volatile uint8_t* packet = (volatile uint8_t*) &(agent->buffer[agent->processed_delimiter].data);
 		uint16_t packet_length = receive_metadata & 0xFFFFu;
 		handler(packet, packet_length, agent->outputs);
 

@@ -11,6 +11,13 @@
 #include "regs.h"
 
 
+// Section 7.2.3.3 Transmit Descriptor Ring:
+// "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
+// Also, 8.2.3.9.7 Transmit Descriptor Length: "Validated Lengths up to 128K (8K descriptors)."
+// We additionally want it to be a power of 2, for fast modulo operations
+#define IXGBE_RING_SIZE 256u
+
+
 struct ixgbe_device
 {
 	uint32_t* addr;
@@ -23,6 +30,14 @@ struct ixgbe_descriptor
 	uint64_t addr;
 	uint64_t metadata;
 };
+
+// Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
+// Section 7.2.3.2.2 Legacy Transmit Descriptor Format: "The maximum length associated with a single descriptor is 15.5 KB"
+// Ethernet maximum transfer unit is 1518 bytes, so let's use 2048 as a nice round number
+struct ixgbe_packet_data
+{
+	volatile uint8_t data[2048];
+} __attribute__((packed));
 
 // transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
 // (there is also a runtime check to make sure the array itself is aligned properly)
@@ -62,17 +77,6 @@ struct ixgbe_transmit_head
 // 	"Unicast Table Array (PFUTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address"
 #define UNICAST_TABLE_ARRAY_SIZE (4u * 1024u)
 
-
-// Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
-// Section 7.2.3.2.2 Legacy Transmit Descriptor Format: "The maximum length associated with a single descriptor is 15.5 KB"
-// Ethernet maximum transfer unit is 1518 bytes, so let's use 2048 as a nice round number
-#define PACKET_BUFFER_SIZE 2048u
-
-// Section 7.2.3.3 Transmit Descriptor Ring:
-// "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
-// Also, 8.2.3.9.7 Transmit Descriptor Length: "Validated Lengths up to 128K (8K descriptors)."
-// We additionally want it to be a power of 2, for fast modulo operations
-#define IXGBE_RING_SIZE 256u
 
 
 // Like if(...) but polls with a timeout, and executes the body only if the condition is still true after the timeout
@@ -147,9 +151,7 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	uint64_t dev_phys_addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
 	// Section 8.1 Address Regions: "Region Size" of "Internal registers memories and Flash (memory BAR)" is "128 KB + Flash_Size"
 	// Thus we can ask for 128KB, since we don't know the flash size (and don't need it thus no need to actually check it)
-	if (!tn_mem_phys_to_virt(dev_phys_addr, 128 * 1024, (void*) &(out_device->addr))) {
-		return false;
-	}
+	out_device->addr = tn_mem_phys_to_virt(dev_phys_addr, 128 * 1024);
 
 	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to %p", pci_address.bus, pci_address.device, pci_address.function, out_device->addr);
 
@@ -536,7 +538,7 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	// INTERPRETATION-TYPO: Typo in the spec, this refers to TXPBTHRESH, not TXPBSIZE.
 	// Thus we need to set TXPBTHRESH[0] but not TXPBTHRESH[1-7].
 	// Note that TXPBTHRESH is in kilobytes, so we should convert the packet buffer size accordingly
-	reg_write_field(out_device->addr, REG_TXPBTHRESH(0), REG_TXPBTHRESH_THRESH, 0xA0u - (PACKET_BUFFER_SIZE / 1024u));
+	reg_write_field(out_device->addr, REG_TXPBTHRESH(0), REG_TXPBTHRESH_THRESH, 0xA0u - (sizeof(struct ixgbe_packet_data) / 1024u));
 	//		"- MTQC"
 	//			"- Clear both RT_Ena and VT_Ena bits in the MTQC register."
 	//			"- Set MTQC.NUM_TC_OR_Q to 00b."
@@ -613,11 +615,7 @@ static inline bool ixgbe_device_add_input(struct ixgbe_device* device, struct ix
 	// 	Section 8.2.3.8.1 Receive Descriptor Base Address Low (RDBAL[n]):
 	// 	"The receive descriptor base address must point to a 128 byte-aligned block of data."
 	// This alignment is guaranteed by the ring initialization
-	uintptr_t ring_phys_addr;
-	if (!tn_mem_virt_to_phys((void*) ring, &ring_phys_addr)) {
-		TN_DEBUG("Could not get phys addr of main ring");
-		return false;
-	}
+	uintptr_t ring_phys_addr = tn_mem_virt_to_phys((void*) ring);
 	reg_write(device->addr, REG_RDBAH(queue_index), (uint32_t) (ring_phys_addr >> 32));
 	reg_write(device->addr, REG_RDBAL(queue_index), (uint32_t) ring_phys_addr);
 	// "- Set the length register to the size of the descriptor ring (register RDLEN)."
@@ -627,7 +625,7 @@ static inline bool ixgbe_device_add_input(struct ixgbe_device* device, struct ix
 	// "- Program SRRCTL associated with this queue according to the size of the buffers and the required header control."
 	//	Section 8.2.3.8.7 Split Receive Control Registers (SRRCTL[n]):
 	//		"BSIZEPACKET, Receive Buffer Size for Packet Buffer. The value is in 1 KB resolution. Value can be from 1 KB to 16 KB."
-	reg_write_field(device->addr, REG_SRRCTL(queue_index), REG_SRRCTL_BSIZEPACKET, PACKET_BUFFER_SIZE / 1024u);
+	reg_write_field(device->addr, REG_SRRCTL(queue_index), REG_SRRCTL_BSIZEPACKET, sizeof(struct ixgbe_packet_data) / 1024u);
 	//		"DESCTYPE, Define the descriptor type in Rx: Init Val 000b [...] 000b = Legacy."
 	//		"Drop_En, Drop Enabled. If set to 1b, packets received to the queue when no descriptors are available to store them are dropped."
 	// Enable this because of assumption DROP
@@ -705,11 +703,7 @@ static inline bool ixgbe_device_add_output(struct ixgbe_device* device, struct i
 	// 	Section 8.2.3.9.5 Transmit Descriptor Base Address Low (TDBAL[n]):
 	// 	"The Transmit Descriptor Base Address must point to a 128 byte-aligned block of data."
 	// This alignment is guaranteed by the ring initialization
-	uintptr_t ring_phys_addr;
-	if (!tn_mem_virt_to_phys((void*) ring, &ring_phys_addr)) {
-		TN_DEBUG("Could not get a transmit ring's physical address");
-		return false;
-	}
+	uintptr_t ring_phys_addr = tn_mem_virt_to_phys((void*) ring);
 	reg_write(device->addr, REG_TDBAH(queue_index), (uint32_t) (ring_phys_addr >> 32));
 	reg_write(device->addr, REG_TDBAL(queue_index), (uint32_t) ring_phys_addr);
 	// "- Set the length register to the size of the descriptor ring (TDLEN)."
@@ -726,11 +720,7 @@ static inline bool ixgbe_device_add_output(struct ixgbe_device* device, struct i
 	reg_write_field(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_PTHRESH, 60);
 	reg_write_field(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_HTHRESH, 4);
 	// "- If needed, set TDWBAL/TWDBAH to enable head write back."
-	uintptr_t head_phys_addr;
-	if (!tn_mem_virt_to_phys((void*) &(transmit_head->value), &head_phys_addr)) {
-		TN_DEBUG("Could not get the physical address of the transmit head");
-		return false;
-	}
+	uintptr_t head_phys_addr = tn_mem_virt_to_phys((void*) &(transmit_head->value));
 	//	Section 7.2.3.5.2 Tx Head Pointer Write Back:
 	//	"The low register's LSB hold the control bits.
 	// 	 * The Head_WB_EN bit enables activation of tail write back. In this case, no descriptor write back is executed.
