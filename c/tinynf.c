@@ -1,7 +1,8 @@
 #include <stdnoreturn.h>
 
 #include "env/pci.h"
-#include "net/network.h"
+#include "ixgbe/agent.h"
+#include "ixgbe/device.h"
 #include "util/log.h"
 #include "util/parse.h"
 
@@ -30,15 +31,15 @@ static void tinynf_packet_handler(volatile uint8_t* packet, uint16_t packet_leng
 // (otherwise it keeps some regs unused, presumably because initialization
 //  makes it think they will be used later...)
 __attribute__((noinline))
-noreturn static void run(struct tn_net_agent agent0, struct tn_net_agent agent1)
+noreturn static void run(struct ixgbe_agent agent0, struct ixgbe_agent agent1)
 {
 	while (true) {
 #ifdef DANGEROUS
-		tn_net_run(&agent0, &tinynf_packet_handler, 1);
-		tn_net_run(&agent1, &tinynf_packet_handler, 1);
+		ixgbe_run(&agent0, &tinynf_packet_handler, 1);
+		ixgbe_run(&agent1, &tinynf_packet_handler, 1);
 #else
-		tn_net_run(&agent0, &tinynf_packet_handler);
-		tn_net_run(&agent1, &tinynf_packet_handler);
+		ixgbe_run(&agent0, &tinynf_packet_handler);
+		ixgbe_run(&agent1, &tinynf_packet_handler);
 #endif
 	}
 }
@@ -51,33 +52,33 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	struct tn_net_device device0;
-	struct tn_net_device device1;
-	if (!tn_net_device_init(pci_addresses[0], &device0)) {
+	struct ixgbe_device device0;
+	struct ixgbe_device device1;
+	if (!ixgbe_device_init(pci_addresses[0], &device0)) {
 		TN_INFO("Could not init device 0");
 		return 2;
 	}
-	if (!tn_net_device_init(pci_addresses[1], &device1)) {
+	if (!ixgbe_device_init(pci_addresses[1], &device1)) {
 		TN_INFO("Could not init device 0");
 		return 3;
 	}
 
-	if (!tn_net_device_set_promiscuous(&device0)) {
+	if (!ixgbe_device_set_promiscuous(&device0)) {
 		TN_INFO("Could not make device 0 promiscuous");
 		return 4;
 	}
-	if (!tn_net_device_set_promiscuous(&device1)) {
+	if (!ixgbe_device_set_promiscuous(&device1)) {
 		TN_INFO("Could not make device 1 promiscuous");
 		return 5;
 	}
 
-	struct tn_net_agent agent0;
-	struct tn_net_agent agent1;
-	if (!tn_net_agent_init(&device0, 1, &device1, &agent0)) {
+	struct ixgbe_agent agent0;
+	struct ixgbe_agent agent1;
+	if (!ixgbe_agent_init(&device0, 1, &device1, &agent0)) {
 		TN_INFO("Could not init agent 0");
 		return 6;
 	}
-	if (!tn_net_agent_init(&device1, 1, &device0, &agent1)) {
+	if (!ixgbe_agent_init(&device1, 1, &device0, &agent1)) {
 		TN_INFO("Could not init agent 1");
 		return 6;
 	}

@@ -14,7 +14,7 @@
 // This allows the allocated memory's physical address to be given to a device for DMA.
 bool tn_mem_allocate(size_t size, void** out_addr);
 
-// No freeing, it's a research prototype anyway, and that makes it easier
+// No freeing, it's a research prototype anyway, and that makes life easier
 
 // Maps the region of physical address memory defined by (address, size) into virtual memory, or returns false.
 bool tn_mem_phys_to_virt(uint64_t addr, size_t size, void** out_virt_addr); // addr is uint64_t, not uintptr_t, because PCI BARs are 64-bit
