@@ -126,12 +126,12 @@ static void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler
 				}
 			}
 
-			reg_write_raw(agent->receive_tail_addr, (earliest_transmit_head - 1) & (IXGBE_RING_SIZE - 1));
+			reg_write_raw(agent->receive_tail_addr, earliest_transmit_head & (IXGBE_RING_SIZE - 1));
 		}
 	}
 	if (p != 0) {
 		for (uint64_t n = 0; n < outs_count; n++) {
-			reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
+			reg_write_raw(agent->transmit_tail_addrs[n], agent->processed_delimiter);
 		}
 	}
 }

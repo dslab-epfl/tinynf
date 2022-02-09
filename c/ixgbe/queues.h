@@ -10,14 +10,31 @@
 
 struct ixgbe_queue_rx {
 	struct ixgbe_descriptor* ring;
-	struct ixgbe_buffer** buffers;
+	struct ixgbe_buffer** buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
 	uint32_t* receive_tail_addr;
 	uint8_t next;
 };
 
-static inline struct ixgbe_rx_queue* ixgbe_queue_rx_init(struct ixgbe_device* device, uint8_t queue_index, struct ixgbe_buffer_pool* pool) {
-	// TODO
+static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe_buffer_pool* pool, struct ixgbe_queue_rx* out_queue) {
+	out_queue->ring = tn_mem_allocate(sizeof(struct ixgbe_descriptor) * IXGBE_RING_SIZE);
+	out_queue->buffers = tn_mem_allocate(sizeof(struct ixgbe_buffer*) * IXGBE_RING_SIZE);
+	out_queue->pool = pool;
+	out_queue->next = 0;
+	for (size_t n = 0; n < IXGBE_RING_SIZE; n++) {
+		// not cleaned up if we fail later #ResearchCode
+		out_queue->buffers[n] = ixgbe_buffer_pool_take(out_queue->pool);
+		if (out_queue->buffers[n] == NULL) {
+			return false;
+		}
+		out_queue->ring[n].addr = out_queue->buffers[n]->phys_addr;
+		out_queue->ring[n].metadata = 0;
+	}
+	if (!ixgbe_device_add_input(device, out_queue->ring, &(out_queue->receive_tail_addr))) {
+		return false;
+	}
+	reg_write_raw(out_queue->receive_tail_addr, IXGBE_RING_SIZE - 1);
+	return true;
 }
 
 static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct ixgbe_buffer** buffers, uint8_t buffers_count) {
@@ -45,7 +62,7 @@ static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct 
 	}
 
 	if (returned_count > 0) {
-		reg_write_raw(queue->receive_tail_addr, (uint8_t) (queue->next - 1));
+		reg_write_raw(queue->receive_tail_addr, queue->next);
 	}
 	return returned_count;
 }
