@@ -1,6 +1,7 @@
 #pragma once
 
-// TODO: The "unsafe" version should be controlled by #include-ing this with a predefined macro, instead of a global compile switch that makes code look weird
+// Optionally define IXGBE_AGENT_OUTPUTS_COUNT to a number to hardcode this number instead of using a size stored in the struct
+// which is equivalent to constant generics... but obviously less easy to use
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -30,7 +31,7 @@ struct ixgbe_agent
 	struct ixgbe_transmit_head* transmit_heads;
 	uint32_t** transmit_tail_addrs;
 	uint16_t* outputs;
-#ifndef DANGEROUS
+#ifndef IXGBE_AGENT_OUTPUTS_COUNT
 	size_t outputs_count;
 #endif
 };
@@ -38,6 +39,16 @@ struct ixgbe_agent
 
 static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t outputs_count, struct ixgbe_device* output_devices, struct ixgbe_agent* out_agent)
 {
+#ifdef IXGBE_AGENT_OUTPUTS_COUNT
+	// just so we don't have to change the signature
+	if (outputs_count != IXGBE_AGENT_OUTPUTS_COUNT) {
+		TN_DEBUG("Wrong number of outputs");
+		return false;
+	}
+#else
+	out_agent->outputs_count = outputs_count;
+#endif
+
 	if (outputs_count < 1) {
 		TN_DEBUG("Too few outputs");
 		return false;
@@ -73,10 +84,6 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 
 	out_agent->processed_delimiter = 0;
 
-#ifndef DANGEROUS
-	out_agent->outputs_count = outputs_count;
-#endif
-
 	return true;
 }
 
@@ -86,15 +93,15 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 
 typedef void ixgbe_packet_handler(volatile uint8_t* packet, uint16_t packet_length, uint16_t* outputs);
 
-__attribute__((always_inline)) inline
-static void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler
-#ifdef DANGEROUS
-, size_t outs_count
+__attribute__((always_inline))
+static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler)
+{
+#ifdef IXGBE_AGENT_OUTPUTS_COUNT
+#define outs_count IXGBE_AGENT_OUTPUTS_COUNT
 #else
 #define outs_count agent->outputs_count
 #endif
-)
-{
+
 	size_t p;
 	for (p = 0; p < IXGBE_AGENT_FLUSH_PERIOD; p++) {
 		uint64_t receive_metadata = tn_le_to_cpu64(agent->rings[0][agent->processed_delimiter].metadata);

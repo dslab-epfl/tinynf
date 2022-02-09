@@ -8,7 +8,8 @@
 #include "device.h"
 
 
-struct ixgbe_queue_rx {
+struct ixgbe_queue_rx
+{
 	struct ixgbe_descriptor* ring;
 	struct ixgbe_buffer** buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
@@ -16,7 +17,8 @@ struct ixgbe_queue_rx {
 	uint8_t next;
 };
 
-static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe_buffer_pool* pool, struct ixgbe_queue_rx* out_queue) {
+static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe_buffer_pool* pool, struct ixgbe_queue_rx* out_queue)
+{
 	out_queue->ring = tn_mem_allocate(sizeof(struct ixgbe_descriptor) * IXGBE_RING_SIZE);
 	out_queue->buffers = tn_mem_allocate(sizeof(struct ixgbe_buffer*) * IXGBE_RING_SIZE);
 	out_queue->pool = pool;
@@ -37,7 +39,8 @@ static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe
 	return true;
 }
 
-static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct ixgbe_buffer** buffers, uint8_t buffers_count) {
+static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct ixgbe_buffer** buffers, uint8_t buffers_count)
+{
 	uint8_t rx_count = 0;
 	while (rx_count < buffers_count) {
 		uint64_t metadata = tn_le_to_cpu64(queue->ring[queue->next].metadata);
@@ -69,7 +72,8 @@ static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct 
 
 #define IXGBE_QUEUE_TX_RECYCLE_PERIOD 32
 
-struct ixgbe_queue_tx {
+struct ixgbe_queue_tx
+{
 	struct ixgbe_descriptor* ring;
 	struct ixgbe_buffer** buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
@@ -79,7 +83,8 @@ struct ixgbe_queue_tx {
 	uint8_t next;
 };
 
-static inline bool ixgbe_queue_tx_init(struct ixgbe_device* device, struct ixgbe_buffer_pool* pool, struct ixgbe_queue_tx* out_queue) {
+static inline bool ixgbe_queue_tx_init(struct ixgbe_device* device, struct ixgbe_buffer_pool* pool, struct ixgbe_queue_tx* out_queue)
+{
 	out_queue->ring = tn_mem_allocate(sizeof(struct ixgbe_descriptor) * IXGBE_RING_SIZE);
 	out_queue->buffers = tn_mem_allocate(sizeof(struct ixgbe_buffer*) * IXGBE_RING_SIZE);
 	out_queue->pool = pool;
@@ -89,7 +94,8 @@ static inline bool ixgbe_queue_tx_init(struct ixgbe_device* device, struct ixgbe
 	return ixgbe_device_add_output(device, out_queue->ring, out_queue->transmit_head_addr, &(out_queue->transmit_tail_addr));
 }
 
-static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct ixgbe_buffer** buffers, uint8_t buffers_count) {
+static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct ixgbe_buffer** buffers, uint8_t buffers_count)
+{
 	// 2* period so we are much more likely to recycle something since the last "batch" before an RS bit was likely not fully sent yet
 	if (queue->recycled_head - queue->next >= 2 * IXGBE_QUEUE_TX_RECYCLE_PERIOD) {
 		uint32_t actual_transmit_head = queue->transmit_head_addr->value;

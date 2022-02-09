@@ -25,10 +25,8 @@ TN_DEBUG ?= 1
 TN_CC ?= gcc
 TN_APP ?= tinynf
 TN_ENV ?= $(TN_DIR)/env/linux-x86
+TN_MODE ?= 0
 
-# Special behavior when TN_FILES is not set
-ifeq (,$(TN_FILES))
-TN_FILES := $(TN_DIR)/tinynf.c
 ifneq (,$(findstring clang,$(TN_CC)))
 # Ignore cast warnings, we know what we're doing
 # Also ignore unused CLI args, this triggers due to -rdynamic in debug mode
@@ -40,9 +38,9 @@ TN_CFLAGS += -Wall -Wextra -Wshadow -Wstrict-aliasing -Wunused-macros -pedantic
 # (this is an optimization copied from Vigor)
 TN_CFLAGS += -fno-if-conversion -fno-if-conversion2
 endif
-endif
 
 # Files
+TN_FILES := $(TN_DIR)/tinynf.c
 TN_FILES += $(shell echo $(TN_ENV)/*.c)
 
 # Compiler args
@@ -50,6 +48,7 @@ TN_CFLAGS += -std=c11
 TN_CFLAGS += -march=native
 TN_CFLAGS += -I $(TN_DIR)
 TN_CFLAGS += -DLOG_LEVEL=$(TN_DEBUG)
+TN_CFLAGS += -DTN_MODE=$(TN_MODE)
 
 # Debug mode if level > 1 (i.e. not just 'info')
 ifeq ($(shell test $(TN_DEBUG) -gt 1; echo $$?),0)
@@ -63,10 +62,8 @@ ifeq ($(TN_DIR)/env/linux-x86,$(TN_ENV))
 TN_CFLAGS += -D_DEFAULT_SOURCE # for MAP_* constants and the syscall function
 endif
 
-ifndef TN_NO_DEFAULT_TARGET
 .PHONY: tn_default
 tn_default:
 	@$(TN_CC) $(TN_CFLAGS) $(TN_FILES) -c
 	@$(TN_CC) $(subst .c,.o,$(notdir $(TN_FILES))) $(TN_CFLAGS) -o $(TN_APP)
 	@rm -f $(subst .c,.o,$(notdir $(TN_FILES)))
-endif
