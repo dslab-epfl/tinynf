@@ -73,25 +73,31 @@ struct ixgbe_queue_tx {
 	struct ixgbe_descriptor* ring;
 	struct ixgbe_buffer** buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
-	uint32_t* transmit_head_addr;
+	struct ixgbe_transmit_head* transmit_head_addr;
 	uint32_t* transmit_tail_addr;
-	uint8_t transmit_head; // where we last saw it, to avoid expensive HW reads
+	uint8_t recycled_head; // where we last saw the transmit head
 	uint8_t next;
 };
 
 static inline bool ixgbe_queue_tx_init(struct ixgbe_device* device, struct ixgbe_buffer_pool* pool, struct ixgbe_queue_tx* out_queue) {
-	// TODO
+	out_queue->ring = tn_mem_allocate(sizeof(struct ixgbe_descriptor) * IXGBE_RING_SIZE);
+	out_queue->buffers = tn_mem_allocate(sizeof(struct ixgbe_buffer*) * IXGBE_RING_SIZE);
+	out_queue->pool = pool;
+	out_queue->transmit_head_addr = tn_mem_allocate(sizeof(struct ixgbe_transmit_head));
+	out_queue->recycled_head = 0;
+	out_queue->next = 0;
+	return ixgbe_device_add_output(device, out_queue->ring, out_queue->transmit_head_addr, &(out_queue->transmit_tail_addr));
 }
 
 static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct ixgbe_buffer** buffers, uint8_t buffers_count) {
 	// 2* period so we are much more likely to recycle something since the last "batch" before an RS bit was likely not fully sent yet
-	if (queue->transmit_head - queue->next >= 2 * IXGBE_QUEUE_TX_RECYCLE_PERIOD) {
-		uint32_t actual_transmit_head = reg_read_raw(queue->transmit_head_addr);
-		while (queue->transmit_head < actual_transmit_head) {
-			if (!ixgbe_buffer_pool_give(queue->pool, queue->buffers[queue->transmit_head])) {
+	if (queue->recycled_head - queue->next >= 2 * IXGBE_QUEUE_TX_RECYCLE_PERIOD) {
+		uint32_t actual_transmit_head = queue->transmit_head_addr->value;
+		while (queue->recycled_head < actual_transmit_head) {
+			if (!ixgbe_buffer_pool_give(queue->pool, queue->buffers[queue->recycled_head])) {
 				break;
 			}
-			queue->transmit_head++;
+			queue->recycled_head++;
 		}
 	}
 
@@ -99,7 +105,7 @@ static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct 
 	while (tx_count < buffers_count) {
 		// don't overwrite buffers not yet transmitted
 		// -1 is necessary since they will be equal when all buffers are transmitted (e.g. at the start when no buffers need transmission)
-		if (queue->next == queue->transmit_head - 1) {
+		if (queue->next == queue->recycled_head - 1) {
 			break;
 		}
 
