@@ -6,6 +6,8 @@
 #include "util/log.h"
 #include "util/parse.h"
 
+#include "ixgbe/queues.h"
+
 
 static void tinynf_packet_handler(volatile uint8_t* packet, uint16_t packet_length, uint16_t* outputs)
 {

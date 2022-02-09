@@ -27,8 +27,8 @@ struct ixgbe_device
 
 struct ixgbe_descriptor
 {
-	uint64_t addr;
-	uint64_t metadata;
+	volatile uint64_t addr;
+	volatile uint64_t metadata;
 };
 
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
@@ -44,7 +44,7 @@ struct ixgbe_packet_data
 // plus, we want each head on its own cache line to avoid conflicts (assumption CACHE -> 64 bytes)
 struct ixgbe_transmit_head
 {
-	uint32_t value;
+	volatile uint32_t value;
 	uint8_t _padding[60];
 } __attribute__((packed));
 
@@ -76,6 +76,12 @@ struct ixgbe_transmit_head
 // Section 7.10.3.10 Switch Control:
 // 	"Unicast Table Array (PFUTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address"
 #define UNICAST_TABLE_ARRAY_SIZE (4u * 1024u)
+
+
+// Length in RX descriptor metadata
+#define IXGBE_RX_METADATA_LENGTH(meta) ((meta) & 0xFFFFu)
+// "Descriptor Done" bit in the RX descriptor metadata
+#define IXGBE_RX_METADATA_DD BITL(32)
 
 
 

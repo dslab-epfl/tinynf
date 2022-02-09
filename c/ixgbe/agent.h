@@ -23,11 +23,11 @@
 struct ixgbe_agent
 {
 	struct ixgbe_packet_data* buffer;
-	volatile struct ixgbe_descriptor** rings; // 0 == shared receive/transmit, rest are exclusive transmit
+	struct ixgbe_descriptor** rings; // 0 == shared receive/transmit, rest are exclusive transmit
 	uint32_t* receive_tail_addr;
 	uint8_t processed_delimiter;
 	uint8_t _padding[7]; // for alignment of transmit_heads
-	volatile struct ixgbe_transmit_head* transmit_heads;
+	struct ixgbe_transmit_head* transmit_heads;
 	uint32_t** transmit_tail_addrs;
 	uint16_t* outputs;
 #ifndef DANGEROUS
@@ -98,12 +98,12 @@ static void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler
 	size_t p;
 	for (p = 0; p < IXGBE_AGENT_FLUSH_PERIOD; p++) {
 		uint64_t receive_metadata = tn_le_to_cpu64(agent->rings[0][agent->processed_delimiter].metadata);
-		if ((receive_metadata & BITL(32)) == 0) {
+		if ((receive_metadata & IXGBE_RX_METADATA_DD) == 0) {
 			break;
 		}
 
 		volatile uint8_t* packet = (volatile uint8_t*) &(agent->buffer[agent->processed_delimiter].data);
-		uint16_t packet_length = receive_metadata & 0xFFFFu;
+		uint16_t packet_length = IXGBE_RX_METADATA_LENGTH(receive_metadata);
 		handler(packet, packet_length, agent->outputs);
 
 		uint64_t rs_bit = (agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1) ? BITL(24+3) : 0;
