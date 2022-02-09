@@ -106,9 +106,9 @@ static void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler
 		uint16_t packet_length = IXGBE_RX_METADATA_LENGTH(receive_metadata);
 		handler(packet, packet_length, agent->outputs);
 
-		uint64_t rs_bit = (agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1) ? BITL(24+3) : 0;
+		uint64_t rs_bit = (agent->processed_delimiter & (IXGBE_AGENT_RECYCLE_PERIOD - 1)) == (IXGBE_AGENT_RECYCLE_PERIOD - 1) ? IXGBE_TX_METADATA_RS : 0;
 		for (uint64_t n = 0; n < outs_count; n++) {
-			agent->rings[n][agent->processed_delimiter].metadata = tn_cpu_to_le64(((uint64_t) agent->outputs[n]) | rs_bit | BITL(24+1) | BITL(24));
+			agent->rings[n][agent->processed_delimiter].metadata = tn_cpu_to_le64(IXGBE_TX_METADATA_LENGTH(agent->outputs[n]) | rs_bit | IXGBE_TX_METADATA_IFCS | IXGBE_TX_METADATA_EOP);
 			agent->outputs[n] = 0;
 		}
 

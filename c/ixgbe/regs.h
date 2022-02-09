@@ -181,11 +181,17 @@
 #define REG_TXPBTHRESH_THRESH BITS(0,9)
 
 
-// Get the value of register 'reg' on NIC at address 'addr'
-static uint32_t reg_read(uint32_t* addr, uint32_t reg)
+// Gets the value of the given register address 'reg_addr'; this is the sum of a NIC address and a register offset
+static inline uint32_t reg_read_raw(uint32_t* reg_addr)
 {
-	uint32_t val_le = *((volatile uint32_t*)(addr + reg));
-	uint32_t result = tn_le_to_cpu32(val_le);
+	uint32_t val_le = *((volatile uint32_t*)reg_addr);
+	return tn_le_to_cpu32(val_le);
+}
+
+// Get the value of register 'reg' on NIC at address 'addr'
+static inline uint32_t reg_read(uint32_t* addr, uint32_t reg)
+{
+	uint32_t result = reg_read_raw(addr + reg);
 	TN_VERBOSE("read (addr %p): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
 	return result;
 }

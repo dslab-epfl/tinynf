@@ -83,6 +83,12 @@ struct ixgbe_transmit_head
 // "Descriptor Done" bit in the RX descriptor metadata
 #define IXGBE_RX_METADATA_DD BITL(32)
 
+// Length in TX descriptor metadata
+#define IXGBE_TX_METADATA_LENGTH(length) ((uint64_t) (length))
+// "End of Packet", "Insert FCS", "RS" bits in TX descriptor metadata
+#define IXGBE_TX_METADATA_EOP BITL(24)
+#define IXGBE_TX_METADATA_IFCS BITL(24+1)
+#define IXGBE_TX_METADATA_RS BITL(24+3)
 
 
 // Like if(...) but polls with a timeout, and executes the body only if the condition is still true after the timeout
