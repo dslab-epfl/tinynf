@@ -100,7 +100,7 @@ static inline bool ixgbe_queue_tx_init(struct ixgbe_device* device, struct ixgbe
 static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct ixgbe_buffer** buffers, uint8_t buffers_count)
 {
 	// 2* period so we are much more likely to recycle something since the last "batch" before an RS bit was likely not fully sent yet
-	if (queue->next - queue->recycled_head >= 2 * IXGBE_QUEUE_TX_RECYCLE_PERIOD) {
+	if ((uint8_t) (queue->next - queue->recycled_head) >= 2 * IXGBE_QUEUE_TX_RECYCLE_PERIOD) {
 		uint32_t actual_transmit_head = queue->transmit_head_addr->value;
 		// !=, not <, since it's really "< modulo ring size"
 		while (queue->recycled_head != actual_transmit_head) {

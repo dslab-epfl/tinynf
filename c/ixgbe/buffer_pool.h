@@ -26,7 +26,7 @@ struct ixgbe_buffer_pool
 };
 
 
-static inline struct ixgbe_buffer_pool* ixgbe_buffer_pool_allocate(size_t size)
+static inline struct ixgbe_buffer_pool* ixgbe_buffer_pool_allocate(uint16_t size)
 {
 	struct ixgbe_buffer_pool* pool = tn_mem_allocate(sizeof(struct ixgbe_buffer_pool));
 	pool->buffers = tn_mem_allocate(sizeof(struct ixgbe_buffer) * size);
