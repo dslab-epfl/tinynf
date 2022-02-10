@@ -22,6 +22,7 @@ struct ixgbe_buffer_pool
 {
 	struct ixgbe_buffer** buffers;
 	uint16_t index;
+	uint16_t size;
 };
 
 
@@ -30,6 +31,7 @@ static inline struct ixgbe_buffer_pool* ixgbe_buffer_pool_allocate(size_t size)
 	struct ixgbe_buffer_pool* pool = tn_mem_allocate(sizeof(struct ixgbe_buffer_pool));
 	pool->buffers = tn_mem_allocate(sizeof(struct ixgbe_buffer) * size);
 	pool->index = 0;
+	pool->size = size;
 
 	struct ixgbe_packet_data* data = tn_mem_allocate(sizeof(struct ixgbe_packet_data) * size);
 	for (size_t n = 0; n < size; n++) {
@@ -44,7 +46,7 @@ static inline struct ixgbe_buffer_pool* ixgbe_buffer_pool_allocate(size_t size)
 
 static inline struct ixgbe_buffer* ixgbe_buffer_pool_take(struct ixgbe_buffer_pool* pool)
 {
-	if (pool->index == UINT16_MAX) {
+	if (pool->index == pool->size) {
 		return NULL;
 	}
 

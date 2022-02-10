@@ -1,5 +1,7 @@
 #pragma once
 
+// TODO: use modulo everywhere instead of &-1, check asm, compiler should be smart (and then remove the "restriction for fast modulo" comment, more of a suggestion for perf)
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -60,17 +62,18 @@ static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct 
 		queue->ring[queue->next].addr = tn_cpu_to_le64(new_buffer->phys_addr);
 		queue->ring[queue->next].metadata = tn_cpu_to_le64(0);
 
-		queue->next++;
+		queue->next = (queue->next + 1) & (IXGBE_RING_SIZE - 1);
 		rx_count++;
 	}
 	if (rx_count > 0) {
-		reg_write_raw(queue->receive_tail_addr, queue->next);
+		// -1 because queue->next might be RDH at this point, and RDT==RDH means all packets are software-owned so no further RX which we must avoid
+		reg_write_raw(queue->receive_tail_addr, (queue->next - 1) & (IXGBE_RING_SIZE - 1));
 	}
 	return rx_count;
 }
 
 
-#define IXGBE_QUEUE_TX_RECYCLE_PERIOD 32
+#define IXGBE_QUEUE_TX_RECYCLE_PERIOD 32u
 
 struct ixgbe_queue_tx
 {
@@ -97,13 +100,14 @@ static inline bool ixgbe_queue_tx_init(struct ixgbe_device* device, struct ixgbe
 static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct ixgbe_buffer** buffers, uint8_t buffers_count)
 {
 	// 2* period so we are much more likely to recycle something since the last "batch" before an RS bit was likely not fully sent yet
-	if (queue->recycled_head - queue->next >= 2 * IXGBE_QUEUE_TX_RECYCLE_PERIOD) {
+	if (queue->next - queue->recycled_head >= 2 * IXGBE_QUEUE_TX_RECYCLE_PERIOD) {
 		uint32_t actual_transmit_head = queue->transmit_head_addr->value;
-		while (queue->recycled_head < actual_transmit_head) {
+		// !=, not <, since it's really "< modulo ring size"
+		while (queue->recycled_head != actual_transmit_head) {
 			if (!ixgbe_buffer_pool_give(queue->pool, queue->buffers[queue->recycled_head])) {
 				break;
 			}
-			queue->recycled_head++;
+			queue->recycled_head = (queue->recycled_head + 1) & (IXGBE_RING_SIZE - 1);
 		}
 	}
 
@@ -121,7 +125,7 @@ static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct 
 
 		queue->buffers[queue->next] = buffers[tx_count];
 
-		queue->next++;
+		queue->next = (queue->next + 1) & (IXGBE_RING_SIZE - 1);
 		tx_count++;
 	}
 	if (tx_count > 0) {

@@ -110,8 +110,8 @@ int main(int argc, char** argv)
 
 #elif TN_MODE == 2
 
-#define TINYNF_QUEUE_BATCH 32
-#define TINYNF_QUEUE_POOLSIZE 65536
+#define TINYNF_QUEUE_BATCH 32u
+#define TINYNF_QUEUE_POOLSIZE 65535u
 
 // I haven't tested if this noinline is also necessary but since it is for the agent case let's just do it
 __attribute__((noinline))
