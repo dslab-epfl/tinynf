@@ -1,7 +1,5 @@
 #pragma once
 
-// TODO: use modulo everywhere instead of &-1, check asm, compiler should be smart (and then remove the "restriction for fast modulo" comment, more of a suggestion for perf)
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -62,12 +60,12 @@ static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct 
 		queue->ring[queue->next].addr = tn_cpu_to_le64(new_buffer->phys_addr);
 		queue->ring[queue->next].metadata = tn_cpu_to_le64(0);
 
-		queue->next = (queue->next + 1) & (IXGBE_RING_SIZE - 1);
+		queue->next = (queue->next + 1u) % IXGBE_RING_SIZE;
 		rx_count++;
 	}
 	if (rx_count > 0) {
 		// -1 because queue->next might be RDH at this point, and RDT==RDH means all packets are software-owned so no further RX which we must avoid
-		reg_write_raw(queue->receive_tail_addr, (queue->next - 1) & (IXGBE_RING_SIZE - 1));
+		reg_write_raw(queue->receive_tail_addr, (queue->next - 1u) % IXGBE_RING_SIZE);
 	}
 	return rx_count;
 }
@@ -107,7 +105,7 @@ static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct 
 			if (!ixgbe_buffer_pool_give(queue->pool, queue->buffers[queue->recycled_head])) {
 				break;
 			}
-			queue->recycled_head = (queue->recycled_head + 1) & (IXGBE_RING_SIZE - 1);
+			queue->recycled_head = (queue->recycled_head + 1u) % IXGBE_RING_SIZE;
 		}
 	}
 
@@ -119,13 +117,13 @@ static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct 
 			break;
 		}
 
-		uint64_t rs_bit = (queue->next & (IXGBE_QUEUE_TX_RECYCLE_PERIOD - 1)) == (IXGBE_QUEUE_TX_RECYCLE_PERIOD - 1) ? IXGBE_TX_METADATA_RS : 0;
+		uint64_t rs_bit = (queue->next % IXGBE_QUEUE_TX_RECYCLE_PERIOD) == (IXGBE_QUEUE_TX_RECYCLE_PERIOD - 1) ? IXGBE_TX_METADATA_RS : 0;
 		queue->ring[queue->next].addr = tn_cpu_to_le64(buffers[tx_count]->phys_addr);
 		queue->ring[queue->next].metadata = tn_cpu_to_le64(IXGBE_TX_METADATA_LENGTH(buffers[tx_count]->length) | rs_bit | IXGBE_TX_METADATA_IFCS | IXGBE_TX_METADATA_EOP);
 
 		queue->buffers[queue->next] = buffers[tx_count];
 
-		queue->next = (queue->next + 1) & (IXGBE_RING_SIZE - 1);
+		queue->next = (queue->next + 1u) % IXGBE_RING_SIZE;
 		tx_count++;
 	}
 	if (tx_count > 0) {
