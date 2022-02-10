@@ -56,7 +56,7 @@
 #define REG_FCTRL_UPE BIT(9)
 
 // Section 8.2.3.7.19 Five tuple Queue Filter
-#define REG_FTQF(n) (0x0E600u + 4u*(n))
+#define REG_FTQF(n) (0x0E600u / 4u + (n))
 #define REG_FTQF_QUEUE_ENABLE BIT(31)
 
 // Section 8.2.3.4.10 Firmware Semaphore Register
@@ -192,7 +192,7 @@ static inline uint32_t reg_read_raw(uint32_t* reg_addr)
 static inline uint32_t reg_read(uint32_t* addr, uint32_t reg)
 {
 	uint32_t result = reg_read_raw(addr + reg);
-	TN_VERBOSE("read (addr %p): 0x%08" PRIx32 " -> 0x%08" PRIx32, addr, reg, result);
+	TN_VERBOSE("read (addr %p): 0x%08" PRIx32 " -> 0x%08" PRIx32, (void*) addr, reg, result);
 	return result;
 }
 // Get the value of field 'field' of register 'reg' on NIC at address 'addr'
@@ -213,7 +213,7 @@ static inline void reg_write_raw(uint32_t* reg_addr, uint32_t value)
 static inline void reg_write(uint32_t* addr, uint32_t reg, uint32_t value)
 {
 	reg_write_raw(addr + reg, value);
-	TN_VERBOSE("write (addr %p): 0x%08" PRIx32 " := 0x%08" PRIx32, addr, reg, value);
+	TN_VERBOSE("write (addr %p): 0x%08" PRIx32 " := 0x%08" PRIx32, (void*) addr, reg, value);
 }
 // Write 'value' to the field 'field' of register 'reg' on NIC at address 'addr'
 static inline void reg_write_field(uint32_t* addr, uint32_t reg, uint32_t field, uint32_t field_value)

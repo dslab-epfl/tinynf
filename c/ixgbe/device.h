@@ -165,7 +165,7 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	// Thus we can ask for 128KB, since we don't know the flash size (and don't need it thus no need to actually check it)
 	out_device->addr = tn_mem_phys_to_virt(dev_phys_addr, 128 * 1024);
 
-	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to %p", pci_address.bus, pci_address.device, pci_address.function, out_device->addr);
+	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to %p", pci_address.bus, pci_address.device, pci_address.function, (void*) out_device->addr);
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
