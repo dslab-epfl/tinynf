@@ -93,7 +93,6 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 
 typedef void ixgbe_packet_handler(volatile uint8_t* restrict packet, uint16_t packet_length, uint16_t* restrict outputs);
 
-__attribute__((always_inline))
 static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler)
 {
 #ifdef IXGBE_AGENT_OUTPUTS_COUNT

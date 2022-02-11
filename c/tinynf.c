@@ -1,3 +1,8 @@
+#if TN_MODE == 1
+// needs to be defined before including ixgbe/agent.h
+#define IXGBE_AGENT_OUTPUTS_COUNT 1
+#endif
+
 #include <stdnoreturn.h>
 
 #include "env/pci.h"
@@ -43,7 +48,7 @@ static int init(int argc, char** argv, struct ixgbe_device* out_device0, struct 
 	return 0;
 }
 
-static inline void packet_handler(volatile uint8_t* data)
+static inline void packet_handler(volatile uint8_t* restrict data)
 {
 	// DST MAC
 	data[0] = 0;
@@ -62,7 +67,8 @@ static inline void packet_handler(volatile uint8_t* data)
 }
 
 #if TN_MODE == 0 || TN_MODE == 1
-static void agent_packet_handler(volatile uint8_t* packet, uint16_t packet_length, uint16_t* outputs)
+
+static void agent_packet_handler(volatile uint8_t* restrict packet, uint16_t packet_length, uint16_t* restrict outputs)
 {
 	packet_handler(packet);
 	// Output on opposite device
@@ -73,11 +79,11 @@ static void agent_packet_handler(volatile uint8_t* packet, uint16_t packet_lengt
 // (otherwise it keeps some regs unused, presumably because initialization
 //  makes it think they will be used later...)
 __attribute__((noinline))
-noreturn static void run(struct ixgbe_agent agent0, struct ixgbe_agent agent1)
+noreturn static void run(struct ixgbe_agent* restrict agent0, struct ixgbe_agent* restrict agent1)
 {
 	while (true) {
-		ixgbe_run(&agent0, &agent_packet_handler);
-		ixgbe_run(&agent1, &agent_packet_handler);
+		ixgbe_run(agent0, &agent_packet_handler);
+		ixgbe_run(agent1, &agent_packet_handler);
 	}
 }
 
@@ -105,7 +111,7 @@ int main(int argc, char** argv)
 	TN_INFO("TinyNF (agent with hardcoded count) initialized successfully!");
 #endif
 
-	run(agent0, agent1);
+	run(&agent0, &agent1);
 }
 
 #elif TN_MODE == 2
@@ -115,9 +121,9 @@ int main(int argc, char** argv)
 
 // I haven't tested if this noinline is also necessary but since it is for the agent case let's just do it
 __attribute__((noinline))
-noreturn static void run(struct ixgbe_queue_rx* rx0, struct ixgbe_queue_rx* rx1, struct ixgbe_queue_tx* tx0, struct ixgbe_queue_tx* tx1)
+noreturn static void run(struct ixgbe_queue_rx* restrict rx0, struct ixgbe_queue_rx* restrict rx1, struct ixgbe_queue_tx* restrict tx0, struct ixgbe_queue_tx* restrict tx1)
 {
-	struct ixgbe_buffer* buffers[TINYNF_QUEUE_BATCH];
+	struct ixgbe_buffer* restrict buffers[TINYNF_QUEUE_BATCH];
 	uint8_t nb_rx, nb_tx;
 	while (true) {
 		nb_rx = ixgbe_queue_rx_batch(rx0, buffers, TINYNF_QUEUE_BATCH);
