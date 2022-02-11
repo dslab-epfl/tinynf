@@ -24,12 +24,12 @@
 struct ixgbe_agent
 {
 	struct ixgbe_packet_data* buffer;
-	struct ixgbe_descriptor** rings; // 0 == shared receive/transmit, rest are exclusive transmit
-	uint32_t* receive_tail_addr;
+	struct ixgbe_descriptor* restrict* rings; // 0 == shared receive/transmit, rest are exclusive transmit
+	uint32_t* restrict receive_tail_addr;
 	uint8_t processed_delimiter;
 	uint8_t _padding[7]; // for alignment of transmit_heads
 	struct ixgbe_transmit_head* transmit_heads;
-	uint32_t** transmit_tail_addrs;
+	uint32_t* restrict* transmit_tail_addrs;
 	uint16_t* outputs;
 #ifndef IXGBE_AGENT_OUTPUTS_COUNT
 	size_t outputs_count;
@@ -91,7 +91,7 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 // High-level API
 // --------------
 
-typedef void ixgbe_packet_handler(volatile uint8_t* packet, uint16_t packet_length, uint16_t* outputs);
+typedef void ixgbe_packet_handler(volatile uint8_t* restrict packet, uint16_t packet_length, uint16_t* restrict outputs);
 
 __attribute__((always_inline))
 static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler)
@@ -109,7 +109,7 @@ static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* ha
 			break;
 		}
 
-		volatile uint8_t* packet = (volatile uint8_t*) &(agent->buffer[agent->processed_delimiter].data);
+		volatile uint8_t* restrict packet = (volatile uint8_t* restrict) &(agent->buffer[agent->processed_delimiter].data);
 		uint16_t packet_length = IXGBE_RX_METADATA_LENGTH(receive_metadata);
 		handler(packet, packet_length, agent->outputs);
 

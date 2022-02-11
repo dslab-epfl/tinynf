@@ -1,3 +1,5 @@
+NOTE: The 'restrict' don't seem to change anything, but we put them there just to make the code equivalent to the semantics of other langs
+
 // All references in this file are to the Intel 82599 Data Sheet unless otherwise noted.
 // It can be found at https://www.intel.com/content/www/us/en/design/products-and-solutions/networking-and-io/82599-10-gigabit-ethernet-controller/technical-library.html
 

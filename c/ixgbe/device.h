@@ -606,7 +606,7 @@ static inline bool ixgbe_device_set_promiscuous(struct ixgbe_device* device)
 // ------------------------------------
 
 
-static inline bool ixgbe_device_add_input(struct ixgbe_device* device, struct ixgbe_descriptor* ring, uint32_t** out_tail_addr)
+static inline bool ixgbe_device_add_input(struct ixgbe_device* device, struct ixgbe_descriptor* ring, uint32_t* restrict* out_tail_addr)
 {
 	// The 82599 has more than one receive queue, but we only need queue 0
 	uint32_t queue_index = 0;
@@ -694,7 +694,7 @@ static inline bool ixgbe_device_add_input(struct ixgbe_device* device, struct ix
 // Section 4.6.8 Transmit Initialization
 // -------------------------------------
 
-static inline bool ixgbe_device_add_output(struct ixgbe_device* device, struct ixgbe_descriptor* ring, struct ixgbe_transmit_head* transmit_head, uint32_t** out_tail_addr)
+static inline bool ixgbe_device_add_output(struct ixgbe_device* device, struct ixgbe_descriptor* ring, struct ixgbe_transmit_head* transmit_head, uint32_t* restrict* out_tail_addr)
 {
 	uint32_t queue_index = 0;
 	for (; queue_index < TRANSMIT_QUEUES_COUNT; queue_index++) {

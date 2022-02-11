@@ -10,10 +10,10 @@
 
 struct ixgbe_queue_rx
 {
-	struct ixgbe_descriptor* ring;
-	struct ixgbe_buffer** buffers; // kept in sync with ring
+	struct ixgbe_descriptor* restrict ring;
+	struct ixgbe_buffer* restrict* buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
-	uint32_t* receive_tail_addr;
+	uint32_t* restrict receive_tail_addr;
 	uint8_t next;
 };
 
@@ -39,7 +39,7 @@ static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe
 	return true;
 }
 
-static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct ixgbe_buffer** buffers, uint8_t buffers_count)
+static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct ixgbe_buffer* restrict* buffers, uint8_t buffers_count)
 {
 	uint8_t rx_count = 0;
 	while (rx_count < buffers_count) {
@@ -75,11 +75,11 @@ static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct 
 
 struct ixgbe_queue_tx
 {
-	struct ixgbe_descriptor* ring;
-	struct ixgbe_buffer** buffers; // kept in sync with ring
+	struct ixgbe_descriptor* restrict ring;
+	struct ixgbe_buffer* restrict* buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
-	struct ixgbe_transmit_head* transmit_head_addr;
-	uint32_t* transmit_tail_addr;
+	struct ixgbe_transmit_head* restrict transmit_head_addr;
+	uint32_t* restrict transmit_tail_addr;
 	uint8_t recycled_head; // where we last saw the transmit head
 	uint8_t next;
 };
@@ -95,7 +95,7 @@ static inline bool ixgbe_queue_tx_init(struct ixgbe_device* device, struct ixgbe
 	return ixgbe_device_add_output(device, out_queue->ring, out_queue->transmit_head_addr, &(out_queue->transmit_tail_addr));
 }
 
-static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct ixgbe_buffer** buffers, uint8_t buffers_count)
+static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct ixgbe_buffer* restrict* buffers, uint8_t buffers_count)
 {
 	// 2* period so we are much more likely to recycle something since the last "batch" before an RS bit was likely not fully sent yet
 	if ((uint8_t) (queue->next - queue->recycled_head) >= 2 * IXGBE_QUEUE_TX_RECYCLE_PERIOD) {

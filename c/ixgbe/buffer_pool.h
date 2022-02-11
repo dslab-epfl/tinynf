@@ -20,7 +20,7 @@ struct ixgbe_buffer
 
 struct ixgbe_buffer_pool
 {
-	struct ixgbe_buffer** buffers;
+	struct ixgbe_buffer* restrict* buffers;
 	uint16_t index;
 	uint16_t size;
 };
