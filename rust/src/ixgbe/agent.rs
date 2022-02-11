@@ -1,16 +1,16 @@
 use crate::env::Environment;
 use crate::volatile;
 
-use super::descriptor::Descriptor;
-use super::device::{DeviceInput, DeviceOutput};
-use super::driver_constants;
-use super::transmit_head::TransmitHead;
-use super::PACKET_SIZE;
+use super::device::{RING_SIZE, Descriptor, PacketData, TransmitHead, DeviceInput, DeviceOutput};
+
+pub const FLUSH_PERIOD: usize = 8;
+
+pub const RECYCLE_PERIOD: u8 = 64;
 
 pub struct Agent<'a, 'b, const OUTPUTS: usize> {
-    packets: &'b mut [[u8; PACKET_SIZE]; driver_constants::RING_SIZE],
+    packets: &'b mut [PacketData; RING_SIZE],
     receive_tail: &'a mut u32,
-    rings: &'b mut [&'b mut [Descriptor; driver_constants::RING_SIZE]; OUTPUTS],
+    rings: &'b mut [&'b mut [Descriptor; RING_SIZE]; OUTPUTS],
     transmit_heads: &'b [TransmitHead; OUTPUTS],
     transmit_tails: &'b mut [&'a mut u32; OUTPUTS],
     outputs: &'b mut [u16; OUTPUTS],
@@ -19,16 +19,16 @@ pub struct Agent<'a, 'b, const OUTPUTS: usize> {
 
 impl<'a, 'b, const OUTPUTS: usize> Agent<'a, 'b, OUTPUTS> {
     pub fn create(env: &'b impl Environment<'b>, input: &'a mut DeviceInput<'a>, outputs: [&'a mut DeviceOutput<'a>; OUTPUTS]) -> Agent<'a, 'b, OUTPUTS> {
-        let packets = env.allocate::<[u8; PACKET_SIZE], { driver_constants::RING_SIZE }>();
+        let packets = env.allocate::<PacketData, { RING_SIZE }>();
 
-        let mut rings = env.allocate::<&'b mut [Descriptor; driver_constants::RING_SIZE], { OUTPUTS }>();
-        rings[0] = env.allocate::<Descriptor, { driver_constants::RING_SIZE }>();
-        for n in 0..driver_constants::RING_SIZE {
+        let mut rings = env.allocate::<&'b mut [Descriptor; RING_SIZE], { OUTPUTS }>();
+        rings[0] = env.allocate::<Descriptor, { RING_SIZE }>();
+        for n in 0..RING_SIZE {
             rings[0][n as usize].buffer = u64::to_le(env.get_physical_address(&mut packets[n as usize]) as u64);
         }
         for o in 1..OUTPUTS {
-            rings[o] = env.allocate::<Descriptor, { driver_constants::RING_SIZE }>();
-            for n in 0..driver_constants::RING_SIZE {
+            rings[o] = env.allocate::<Descriptor, { RING_SIZE }>();
+            for n in 0..RING_SIZE {
                 rings[o][n as usize].buffer = rings[0][n as usize].buffer;
             }
         }
@@ -55,9 +55,9 @@ impl<'a, 'b, const OUTPUTS: usize> Agent<'a, 'b, OUTPUTS> {
         }
     }
 
-    pub fn run(&mut self, processor: fn(&mut [u8; PACKET_SIZE], u16, &mut [u16; OUTPUTS])) {
+    pub fn run(&mut self, processor: fn(&mut PacketData, u16, &mut [u16; OUTPUTS])) {
         let mut n: usize = 0;
-        while n < driver_constants::FLUSH_PERIOD {
+        while n < FLUSH_PERIOD {
             let receive_metadata = u64::from_le(volatile::read(&self.rings[0][self.process_delimiter as usize].metadata));
             if (receive_metadata & (1 << 32)) == 0 {
                 break;
@@ -66,7 +66,7 @@ impl<'a, 'b, const OUTPUTS: usize> Agent<'a, 'b, OUTPUTS> {
             let length = receive_metadata as u16;
             processor(&mut self.packets[self.process_delimiter as usize], length, self.outputs);
 
-            let rs_bit: u64 = if self.process_delimiter % driver_constants::RECYCLE_PERIOD == (driver_constants::RECYCLE_PERIOD - 1) {
+            let rs_bit: u64 = if self.process_delimiter % RECYCLE_PERIOD == (RECYCLE_PERIOD - 1) {
                 1 << (24 + 3)
             } else {
                 0
@@ -98,7 +98,7 @@ impl<'a, 'b, const OUTPUTS: usize> Agent<'a, 'b, OUTPUTS> {
                     }
                 }
 
-                volatile::write(self.receive_tail, u32::to_le(earliest_transmit_head.wrapping_sub(1) % driver_constants::RING_SIZE as u32));
+                volatile::write(self.receive_tail, u32::to_le(earliest_transmit_head.wrapping_sub(1) % RING_SIZE as u32));
             }
             n += 1;
         }

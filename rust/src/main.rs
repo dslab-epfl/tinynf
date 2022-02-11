@@ -14,7 +14,7 @@ mod volatile; // declare it so ixgbe can use it... weird
 
 mod ixgbe;
 use ixgbe::agent::Agent;
-use ixgbe::device::Device;
+use ixgbe::device::{Device, PacketData};
 
 fn parse_pci_address(s: &str) -> PciAddress {
     let parts: Vec<&str> = s.split(&[':', '.'][..]).collect(); // technically too lax but that's fine
@@ -28,19 +28,19 @@ fn parse_pci_address(s: &str) -> PciAddress {
     }
 }
 
-fn proc(data: &mut [u8; ixgbe::PACKET_SIZE], length: u16, output_lengths: &mut [u16; 1]) {
-    data[0] = 0;
-    data[1] = 0;
-    data[2] = 0;
-    data[3] = 0;
-    data[4] = 0;
-    data[5] = 1;
-    data[6] = 0;
-    data[7] = 0;
-    data[8] = 0;
-    data[9] = 0;
-    data[10] = 0;
-    data[11] = 0;
+fn proc(data: &mut PacketData, length: u16, output_lengths: &mut [u16; 1]) {
+    data.data[0] = 0;
+    data.data[1] = 0;
+    data.data[2] = 0;
+    data.data[3] = 0;
+    data.data[4] = 0;
+    data.data[5] = 1;
+    data.data[6] = 0;
+    data.data[7] = 0;
+    data.data[8] = 0;
+    data.data[9] = 0;
+    data.data[10] = 0;
+    data.data[11] = 0;
     output_lengths[0] = length;
 }
 

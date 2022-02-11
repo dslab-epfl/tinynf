@@ -4,47 +4,8 @@
 
 use crate::volatile;
 
-pub fn read(buffer: &[u32], reg: usize) -> u32 {
-    u32::from_le(volatile::read(&buffer[reg]))
-}
 
-pub fn read_field(buffer: &[u32], reg: usize, field: u32) -> u32 {
-    let value = read(buffer, reg);
-    let shift = field.trailing_zeros();
-    (value & field) >> shift
-}
-
-pub fn write(buffer: &mut [u32], reg: usize, value: u32) {
-    volatile::write(&mut buffer[reg], u32::to_le(value));
-}
-
-pub fn write_field(buffer: &mut [u32], reg: usize, field: u32, field_value: u32) {
-    let old_value = read(buffer, reg);
-    let shift = field.trailing_zeros();
-    let new_value = (old_value & !field) | (field_value << shift);
-    write(buffer, reg, new_value);
-}
-
-pub fn clear(buffer: &mut [u32], reg: usize) {
-    write(buffer, reg, 0);
-}
-
-pub fn clear_field(buffer: &mut [u32], reg: usize, field: u32) {
-    write_field(buffer, reg, field, 0);
-}
-
-pub fn set_field(buffer: &mut [u32], reg: usize, field: u32) {
-    let old_value = read(buffer, reg);
-    let new_value = old_value | field;
-    write(buffer, reg, new_value);
-}
-
-pub fn is_field_cleared(buffer: &[u32], reg: usize, field: u32) -> bool {
-    read_field(buffer, reg, field) == 0
-}
-
-// All regs divided by 4 since they'll be used to address a slice of u32, not of u8
-// And they're usize so they can index a slice without ceremony
+// Regs are usize so they can index a slice without ceremony
 
 // Registers are split into general-purpose, RX, and TX, so that we can split the device address space
 // Thankfully RX/TX spaces are contiguous, otherwise this would be a huuuuge pain
@@ -260,4 +221,44 @@ pub mod TXDCTL_ {
     pub const PTHRESH: u32 = 0b0111_1111;
     pub const HTHRESH: u32 = 0b0111_1111_0000_0000;
     pub const ENABLE: u32 = 1 << 25;
+}
+
+
+pub fn read(buffer: &[u32], reg: usize) -> u32 {
+    u32::from_le(volatile::read(&buffer[reg]))
+}
+
+pub fn read_field(buffer: &[u32], reg: usize, field: u32) -> u32 {
+    let value = read(buffer, reg);
+    let shift = field.trailing_zeros();
+    (value & field) >> shift
+}
+
+pub fn write(buffer: &mut [u32], reg: usize, value: u32) {
+    volatile::write(&mut buffer[reg], u32::to_le(value));
+}
+
+pub fn write_field(buffer: &mut [u32], reg: usize, field: u32, field_value: u32) {
+    let old_value = read(buffer, reg);
+    let shift = field.trailing_zeros();
+    let new_value = (old_value & !field) | (field_value << shift);
+    write(buffer, reg, new_value);
+}
+
+pub fn clear(buffer: &mut [u32], reg: usize) {
+    write(buffer, reg, 0);
+}
+
+pub fn clear_field(buffer: &mut [u32], reg: usize, field: u32) {
+    write_field(buffer, reg, field, 0);
+}
+
+pub fn set_field(buffer: &mut [u32], reg: usize, field: u32) {
+    let old_value = read(buffer, reg);
+    let new_value = old_value | field;
+    write(buffer, reg, new_value);
+}
+
+pub fn is_field_cleared(buffer: &[u32], reg: usize, field: u32) -> bool {
+    read_field(buffer, reg, field) == 0
 }

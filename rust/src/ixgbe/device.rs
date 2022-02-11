@@ -5,15 +5,52 @@ use std::time::Duration;
 use crate::env::Environment;
 use crate::pci::PciAddress;
 
-use super::descriptor::Descriptor;
-use super::device_limits;
-use super::driver_constants;
 use super::pci_regs;
 use super::regs;
+
+
+pub const RING_SIZE: usize = 256;
+
 
 pub struct Device<'a> {
     buffer: &'a mut [u32],
 }
+
+#[repr(C)]
+pub struct Descriptor {
+    pub buffer: u64,
+    pub metadata: u64
+}
+
+#[repr(C)]
+pub struct PacketData {
+    pub data: [u8; 2048]
+}
+
+#[repr(C, align(64))]
+pub struct TransmitHead {
+    pub value: u32
+}
+
+
+pub const FIVE_TUPLE_FILTERS_COUNT: usize = 128;
+
+pub const INTERRUPT_REGISTERS_COUNT: usize = 3;
+
+pub const MULTICAST_TABLE_ARRAY_SIZE: usize = 4 * 1024;
+
+pub const POOLS_COUNT: usize = 64;
+
+pub const RECEIVE_ADDRESSES_COUNT: usize = 128;
+
+pub const RECEIVE_QUEUES_COUNT: usize = 128;
+
+pub const TRANSMIT_QUEUES_COUNT: usize = 128;
+
+pub const TRAFFIC_CLASSES_COUNT: usize = 8;
+
+pub const UNICAST_TABLE_ARRAY_SIZE: usize = 4 * 1024;
+
 
 fn after_timeout<'a>(env: &impl Environment<'a>, duration: Duration, cleared: bool, buffer: &mut [u32], reg: usize, field: u32) -> bool {
     env.sleep(Duration::from_nanos((duration.as_nanos() % 10).try_into().unwrap())); // will panic if 'duration' is too big
@@ -55,7 +92,7 @@ impl<'a> Device<'a> {
 
         let buffer = env.map_physical_memory::<u32>(dev_phys_addr, 128 * 1024 / size_of::<u32>());
 
-        for queue in 0..device_limits::RECEIVE_QUEUES_COUNT {
+        for queue in 0..RECEIVE_QUEUES_COUNT {
             regs::clear_field(buffer, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE);
             if after_timeout(env, Duration::from_secs(1), false, buffer, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE) {
                 panic!("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
@@ -90,7 +127,7 @@ impl<'a> Device<'a> {
         env.sleep(Duration::from_millis(10));
 
         regs::write(buffer, regs::EIMC(0), 0x7FFF_FFFF);
-        for n in 1..device_limits::INTERRUPT_REGISTERS_COUNT {
+        for n in 1..INTERRUPT_REGISTERS_COUNT {
             regs::write(buffer, regs::EIMC(n), 0xFFFF_FFFF);
         }
 
@@ -108,28 +145,28 @@ impl<'a> Device<'a> {
             panic!("DMA init timed out");
         }
 
-        for n in 0..device_limits::UNICAST_TABLE_ARRAY_SIZE / 32 {
+        for n in 0..UNICAST_TABLE_ARRAY_SIZE / 32 {
             regs::clear(buffer, regs::PFUTA(n));
         }
 
-        for n in 0..device_limits::POOLS_COUNT {
+        for n in 0..POOLS_COUNT {
             regs::clear(buffer, regs::PFVLVF(n));
         }
 
         regs::write(buffer, regs::MPSAR(0), 1);
-        for n in 1..device_limits::RECEIVE_ADDRESSES_COUNT * 2 {
+        for n in 1..RECEIVE_ADDRESSES_COUNT * 2 {
             regs::clear(buffer, regs::MPSAR(n));
         }
 
-        for n in 0..device_limits::POOLS_COUNT * 2 {
+        for n in 0..POOLS_COUNT * 2 {
             regs::clear(buffer, regs::PFVLVFB(n));
         }
 
-        for n in 0..device_limits::MULTICAST_TABLE_ARRAY_SIZE / 32 {
+        for n in 0..MULTICAST_TABLE_ARRAY_SIZE / 32 {
             regs::clear(buffer, regs::MTA(n));
         }
 
-        for n in 0..device_limits::FIVE_TUPLE_FILTERS_COUNT {
+        for n in 0..FIVE_TUPLE_FILTERS_COUNT {
             regs::clear_field(buffer, regs::FTQF(n), regs::FTQF_::QUEUE_ENABLE);
         }
 
@@ -141,7 +178,7 @@ impl<'a> Device<'a> {
 
         regs::set_field(buffer, regs::RDRXCTL, regs::RDRXCTL_::FCOE_WRFIX);
 
-        for n in 1..device_limits::TRAFFIC_CLASSES_COUNT {
+        for n in 1..TRAFFIC_CLASSES_COUNT {
             regs::clear(buffer, regs::RXPBSIZE(n));
         }
 
@@ -149,18 +186,18 @@ impl<'a> Device<'a> {
 
         regs::write_field(buffer, regs::FCCFG, regs::FCCFG_::TFCE, 1);
 
-        for n in 0..device_limits::TRANSMIT_QUEUES_COUNT {
+        for n in 0..TRANSMIT_QUEUES_COUNT {
             regs::write(buffer, regs::RTTDQSEL, n as u32);
             regs::clear(buffer, regs::RTTDT1C);
         }
 
         regs::set_field(buffer, regs::RTTDCS, regs::RTTDCS_::ARBDIS);
 
-        for n in 1..device_limits::TRAFFIC_CLASSES_COUNT {
+        for n in 1..TRAFFIC_CLASSES_COUNT {
             regs::clear(buffer, regs::TXPBSIZE(n));
         }
 
-        regs::write_field(buffer, regs::TXPBTHRESH(0), regs::TXPBTHRESH_::THRESH, 0xA0 - (driver_constants::PACKET_SIZE / 1024) as u32);
+        regs::write_field(buffer, regs::TXPBTHRESH(0), regs::TXPBTHRESH_::THRESH, 0xA0 - (size_of::<PacketData>() / 1024) as u32);
 
         regs::write_field(buffer, regs::DTXMXSZRQ, regs::DTXMXSZRQ_::MAX_BYTES_NUM_REQ, 0xFFF);
 
@@ -215,9 +252,9 @@ impl<'a> DeviceInput<'a> {
         regs::write(self.buffer, regs::RDBAH, (ring_phys_addr >> 32) as u32);
         regs::write(self.buffer, regs::RDBAL, ring_phys_addr as u32);
 
-        regs::write(self.buffer, regs::RDLEN, driver_constants::RING_SIZE as u32 * 16);
+        regs::write(self.buffer, regs::RDLEN, RING_SIZE as u32 * 16);
 
-        regs::write_field(self.buffer, regs::SRRCTL, regs::SRRCTL_::BSIZEPACKET, (driver_constants::PACKET_SIZE / 1024) as u32);
+        regs::write_field(self.buffer, regs::SRRCTL, regs::SRRCTL_::BSIZEPACKET, (size_of::<PacketData>() / 1024) as u32);
 
         regs::set_field(self.buffer, regs::SRRCTL, regs::SRRCTL_::DROP_EN);
 
@@ -227,7 +264,7 @@ impl<'a> DeviceInput<'a> {
             panic!("RXDCTL.ENABLE did not set, cannot enable queue");
         }
 
-        regs::write(self.buffer, regs::RDT, driver_constants::RING_SIZE as u32 - 1);
+        regs::write(self.buffer, regs::RDT, RING_SIZE as u32 - 1);
 
         regs::clear_field(self.buffer, regs::DCARXCTRL, regs::DCARXCTRL_::UNKNOWN);
 
@@ -249,7 +286,7 @@ impl<'a> DeviceOutput<'a> {
         regs::write(self.buffer, regs::TDBAH, (ring_phys_addr >> 32) as u32);
         regs::write(self.buffer, regs::TDBAL, ring_phys_addr as u32);
 
-        regs::write(self.buffer, regs::TDLEN, driver_constants::RING_SIZE as u32 * 16);
+        regs::write(self.buffer, regs::TDLEN, RING_SIZE as u32 * 16);
 
         regs::write_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::PTHRESH, 60);
         regs::write_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::HTHRESH, 4);
