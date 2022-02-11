@@ -26,11 +26,10 @@ struct ixgbe_agent
 	struct ixgbe_packet_data* buffer;
 	struct ixgbe_descriptor* restrict* rings; // 0 == shared receive/transmit, rest are exclusive transmit
 	uint32_t* restrict receive_tail_addr;
-	uint8_t processed_delimiter;
-	uint8_t _padding[7]; // for alignment of transmit_heads
 	struct ixgbe_transmit_head* transmit_heads;
 	uint32_t* restrict* transmit_tail_addrs;
 	uint16_t* outputs;
+	uint8_t processed_delimiter;
 #ifndef IXGBE_AGENT_OUTPUTS_COUNT
 	size_t outputs_count;
 #endif
