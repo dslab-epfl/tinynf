@@ -3,6 +3,9 @@ name = "tinynf"
 version = "0.1.0"
 edition = "2018"
 
+[features]
+constgenerics = []
+
 [dependencies]
 libc = "0.2.97"
 memmap = "0.7.0"
