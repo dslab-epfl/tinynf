@@ -17,4 +17,13 @@ package body NF is
     Data(11) := 0;
     Output_Lengths(Output_Lengths'First) := Length;
   end;
+
+  procedure Run(Agent0: in out Ixgbe_Agent.Agent;
+                Agent1: in out Ixgbe_Agent.Agent) is
+  begin
+    loop
+      Ixgbe_Agent.Run(Agent0, Processor'Access);
+      Ixgbe_Agent.Run(Agent1, Processor'Access);
+    end loop;
+  end;
 end NF;

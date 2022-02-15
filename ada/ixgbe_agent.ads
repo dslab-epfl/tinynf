@@ -22,7 +22,6 @@ package Ixgbe_Agent is
   type Transmit_Head_Array is array(Outputs_Range range <>) of Transmit_Head;
   type Transmit_Tail_Array is array(Outputs_Range range <>) of Register_Access;
 
-
   type Agent(Outputs_Max: Outputs_Range) is record
     Packets: not null access Packet_Array;
     Rings: Descriptor_Ring_Array(0 .. Outputs_Max);

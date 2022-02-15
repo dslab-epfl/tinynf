@@ -6,4 +6,8 @@ package NF is
                       Length: in Ixgbe_Agent.Packet_Length;
                       Output_Lengths: in out Ixgbe_Agent.Packet_Outputs)
             with Inline;
+
+  procedure Run(Agent0: in out Ixgbe_Agent.Agent;
+                Agent1: in out Ixgbe_Agent.Agent)
+            with No_Return, No_Inline;
 end NF;

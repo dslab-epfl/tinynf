@@ -10,4 +10,8 @@ package NF_Const is
                       Length: in Agent.Packet_Length;
                       Output_Lengths: in out Agent.Packet_Outputs)
             with Inline;
+
+  procedure Run(Agent0: in out Agent.Agent;
+                Agent1: in out Agent.Agent)
+            with No_Return, No_Inline;
 end NF_Const;

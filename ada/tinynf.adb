@@ -30,23 +30,19 @@ begin
 
     if Mode = 0 then
       declare
-        type Outputs_Range is range 0 .. 0 with Size => 64; -- TODO without Size? same below
         Outs0: Ixgbe_Agent.Output_Devices := (0 => Dev1'Unchecked_Access);
         Outs1: Ixgbe_Agent.Output_Devices := (0 => Dev0'Unchecked_Access);
         Agent0: Ixgbe_Agent.Agent := Ixgbe_Agent.Create_Agent(Dev0'Access, Outs0);
         Agent1: Ixgbe_Agent.Agent := Ixgbe_Agent.Create_Agent(Dev1'Access, Outs1);
       begin
         Text_IO.Put_Line("Ada TinyNF starting...");
-        loop
-          Ixgbe_Agent.Run(Agent0, NF.Processor'Access);
-          Ixgbe_Agent.Run(Agent1, NF.Processor'Access);
-        end loop;
+        NF.Run(Agent0, Agent1);
       end;
 
     elsif Mode = 1 then
 
       declare
-        type Outputs_Range is range 0 .. 0 with Size => 64;
+        type Outputs_Range is range 0 .. 0 with Size => 64; -- TODO without Size?
         package NetFunc is new NF_Const(Outputs_Range);
         Outs0: NetFunc.Agent.Output_Devices := (others => Dev1'Unchecked_Access);
         Outs1: NetFunc.Agent.Output_Devices := (others => Dev0'Unchecked_Access);
@@ -54,10 +50,7 @@ begin
         Agent1: NetFunc.Agent.Agent := NetFunc.Agent.Create_Agent(Dev1'Access, Outs1);
       begin
         Text_IO.Put_Line("Ada TinyNF starting with const generics...");
-        loop
-          NetFunc.Agent.Run(Agent0, NetFunc.Processor'Access);
-          NetFunc.Agent.Run(Agent1, NetFunc.Processor'Access);
-        end loop;
+        NetFunc.Run(Agent0, Agent1);
       end;
 
     end if;

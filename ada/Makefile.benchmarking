@@ -3,18 +3,18 @@ APP := tinynf
 TN_MODE ?= 0
 
 # Use -g for debug symbols, or -gnatD for detailed debugging stuff... not sure it's actually better, though
-CFLAGS += -O3 -march=native
+TN_CFLAGS += -O3 -march=native
 # Turn on overflow checks, required by the Ada spec, but GNAT doesn't do it by default (?!)
-CFLAGS += -gnato
+TN_CFLAGS += -gnato
 # -gnatn turns on some inlining
-CFLAGS += -gnatn
+TN_CFLAGS += -gnatn
 # remove unused stuff
-CFLAGS += -cargs -ffunction-sections -fdata-sections -largs -Wl,--gc-sections
+TN_CFLAGS += -cargs -ffunction-sections -fdata-sections -largs -Wl,--gc-sections
 
 # Always clean, just in case
 build:
 	@gnatclean $(APP)
-	@gnatmake $(APP) $(CFLAGS)
+	@gnatmake $(APP) $(TN_CFLAGS)
 
 run:
 	@sudo ./$(APP) $(TN_MODE) $(TN_ARGS)
