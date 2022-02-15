@@ -1,7 +1,7 @@
-package body NF is
+package body NF_Const is
   procedure Processor(Data: in out Packet_Data;
-                      Length: in Ixgbe_Agent.Packet_Length;
-                      Output_Lengths: in out Ixgbe_Agent.Packet_Outputs) is
+                      Length: in Agent.Packet_Length;
+                      Output_Lengths: not null access Agent.Packet_Outputs) is
   begin
     Data(0) := 0;
     Data(1) := 0;
@@ -15,6 +15,6 @@ package body NF is
     Data(9) := 0;
     Data(10) := 0;
     Data(11) := 0;
-    Output_Lengths(Output_Lengths'First) := Length;
+    Output_Lengths(Outputs_Range'First) := Length;
   end;
-end NF;
+end NF_Const;

@@ -1,60 +1,48 @@
-with Text_IO;
-
 with System;
 with Interfaces; use Interfaces;
 with Ada.Unchecked_Conversion;
 
 with Environment;
 
-package body Ixgbe_Agent is
+package body Ixgbe_Agent_Const is
   -- default value for arrays of non-null accesses
   Fake_Ring: aliased Descriptor_Ring;
   Fake_Reg: aliased VolatileUInt32;
 
-  -- TODO there's got to be a cleaner way than these _Sized types and intermediate values...
   function Create_Agent(Input_Device: not null access Device; Output_Devs: in out Output_Devices) return Agent is
     function Allocate_Packets is new Environment.Allocate(T => Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
     Packets: not null access Packet_Array := Allocate_Packets;
     function Get_Packet_Address is new Environment.Get_Physical_Address(T => Packet_Data);
 
-    subtype DRA_Sized is Descriptor_Ring_Array(0 .. Output_Devs'Length - 1);
-    Rings_Sized: DRA_Sized := (others => Fake_Ring'Access);
-    Rings: Descriptor_Ring_Array := Rings_Sized;
+    Rings: Descriptor_Ring_Array := (others => Fake_Ring'Access);
     function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
 
-    subtype THA_Sized is Transmit_Head_Array(0 .. Output_Devs'Length - 1);
-    function Allocate_Heads is new Environment.Allocate(
-    Transmit_Heads_Sized: THA_Sized;
-    Transmit_Heads: Transmit_Head_Array := Transmit_Heads_Sized;
+    function Allocate_Heads is new Environment.Allocate(T => Transmit_Head, R => Outputs_Range, T_Array => Transmit_Head_Array);
+    Transmit_Heads: not null access Transmit_Head_Array := Allocate_Heads;
 
-    subtype TTA_Sized is Transmit_Tail_Array(0 .. Output_Devs'Length - 1);
-    Transmit_Tails_Sized: TTA_Sized := (others => Fake_Reg'Access);
-    Transmit_Tails: Transmit_Tail_Array := Transmit_Tails_Sized;
+    Transmit_Tails: Transmit_Tail_Array := (others => Fake_Reg'Unchecked_Access);
 
-    subtype O_Sized is Packet_Outputs(0 .. Output_Devs'Length - 1);
-    Outputs_Sized: O_Sized := (others => Packet_Length(0));
-    Outputs: Packet_Outputs := Outputs_Sized;
+    function Allocate_Outputs is new Environment.Allocate(T => Packet_Length, R => Outputs_Range, T_Array => Packet_Outputs);
+    Outputs: not null access Packet_Outputs := Allocate_Outputs;
   begin
-    -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
-
     for R in Rings'Range loop
-      Rings(R) := Allocate_Ring.all'Unchecked_Access;
+      Rings(R) := Allocate_Ring.all'Unchecked_Access; -- why???
       for N in Delimiter_Range loop
         Rings(R)(N).Buffer := To_Little(Interfaces.Unsigned_64(Get_Packet_Address(Packets(N)'Access)));
       end loop;
     end loop;
 
-    for N in Transmit_Tails'Range loop
+    for N in Outputs_Range loop
       Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devs(N), Rings(N), Transmit_Heads(N).Value'Access);
     end loop;
 
-    return (Outputs_Max => Output_Devs'Length - 1,
-            Packets => Packets.all'Unchecked_Access,
+    -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
+    return (Packets => Packets.all'Unchecked_Access,
             Rings => Rings,
             Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(Outputs_Range'First)),
-            Transmit_Heads => Transmit_Heads,
+            Transmit_Heads => Transmit_Heads.all'Unchecked_Access,
             Transmit_Tails => Transmit_Tails,
-            Outputs => Outputs,
+            Outputs => Outputs.all'Unchecked_Access,
             Process_Delimiter => 0);
   end;
 
@@ -65,7 +53,7 @@ package body Ixgbe_Agent is
     Receive_Metadata: Interfaces.Unsigned_64;
     RS_Bit: Interfaces.Unsigned_64;
     Length: Packet_Length;
-    Earliest_Transmit_Head: Interfaces.Unsigned_32; -- TODO can this be delimiter_range? it should be...
+    Earliest_Transmit_Head: Interfaces.Unsigned_32;
     Min_Diff: Interfaces.Unsigned_64;
     Head: Interfaces.Unsigned_32;
     Diff: Interfaces.Unsigned_64;
@@ -91,11 +79,10 @@ package body Ixgbe_Agent is
 
       Length := Meta_To_Read(Receive_Metadata).Length;
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
-      Text_IO.Put_Line("Proc pkt, N= " & Integer'Image(N) & ", len = " & Packet_Length'Image(Length));
 
       RS_Bit := (if (This.Process_Delimiter mod Recycle_Period) = (Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
-      for M in 0 .. This.Outputs_Max loop
+      for M in Outputs_Range loop
         This.Rings(M)(This.Process_Delimiter).Metadata := To_Little(Interfaces.Unsigned_64(This.Outputs(M)) or RS_Bit or 16#00_00_00_00_03_00_00_00#);
         This.Outputs(M) := 0;
       end loop;
@@ -103,12 +90,10 @@ package body Ixgbe_Agent is
       This.Process_Delimiter := This.Process_Delimiter + 1;
 
       if RS_Bit /= 0 then
-        Text_IO.Put_Line("RS bit nonzero, recycling...");
         Earliest_Transmit_Head := Interfaces.Unsigned_32(This.Process_Delimiter);
         Min_Diff := Interfaces.Unsigned_64'Last;
-        for H of This.Transmit_Heads loop
+        for H of This.Transmit_Heads.all loop
           Head := From_Little(H.Value);
-          Text_IO.Put_Line("head=" & Interfaces.Unsigned_32'Image(Head));
           Diff := Interfaces.Unsigned_64(Head) - Interfaces.Unsigned_64(This.Process_Delimiter);
           if Diff <= Min_Diff then
             Earliest_Transmit_Head := Head;
@@ -116,16 +101,14 @@ package body Ixgbe_Agent is
           end if;
         end loop;
 
-        This.Receive_Tail.all := To_Little(Earliest_Transmit_Head mod Ring_Size);
+        This.Receive_Tail.all := To_Little((Earliest_Transmit_Head - 1) mod Ring_Size);
       end if;
-
       N := N + 1;
     end loop;
     if N /= 0 then
-      Text_IO.Put_Line("Flush: delim=" & Delimiter_Range'Image(This.Process_Delimiter));
       for T of This.Transmit_Tails loop
         T.all := To_Little(Interfaces.Unsigned_32(This.Process_Delimiter));
       end loop;
     end if;
   end Run;
-end Ixgbe_Agent;
+end Ixgbe_Agent_Const;

@@ -1,5 +1,7 @@
 APP := tinynf
 
+TN_MODE ?= 0
+
 # Use -g for debug symbols, or -gnatD for detailed debugging stuff... not sure it's actually better, though
 CFLAGS += -O3 -march=native
 # Turn on overflow checks, required by the Ada spec, but GNAT doesn't do it by default (?!)
@@ -15,7 +17,7 @@ build:
 	@gnatmake $(APP) $(CFLAGS)
 
 run:
-	@sudo ./$(APP) $(TN_ARGS)
+	@sudo ./$(APP) $(TN_MODE) $(TN_ARGS)
 
 print-nf-name:
 	@echo $(APP)
