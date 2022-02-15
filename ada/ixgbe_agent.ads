@@ -2,8 +2,7 @@ with Ixgbe; use Ixgbe;
 with Ixgbe_Device; use Ixgbe_Device;
 
 package Ixgbe_Agent is
-  Max_Outputs: constant := 8;
-  type Outputs_Range is range 0 .. Max_Outputs - 1;
+  type Outputs_Range is mod 2 ** 3; -- max 8 outputs
 
   Flush_Period: constant := 8;
   Recycle_Period: constant := 64;
