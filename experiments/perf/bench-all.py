@@ -59,8 +59,7 @@ def remove(file_or_folder):
 
 def get_cflags(nf, env):
   result = []
-  result.append('-flto') # LTO
-  result.append('-s') # strip
+  result.append('-s') # strip symbols
   return result
 
 def get_benchflags(nf, env):

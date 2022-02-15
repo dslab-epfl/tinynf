@@ -46,6 +46,7 @@ TN_FILES += $(shell echo $(TN_ENV)/*.c)
 # Compiler args
 TN_CFLAGS += -std=c11
 TN_CFLAGS += -march=native
+TN_CFLAGS += -flto
 TN_CFLAGS += -I $(TN_DIR)
 TN_CFLAGS += -DLOG_LEVEL=$(TN_DEBUG)
 TN_CFLAGS += -DTN_MODE=$(TN_MODE)
