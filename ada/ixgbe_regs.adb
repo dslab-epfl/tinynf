@@ -6,7 +6,7 @@ package body Ixgbe_Regs is
 
   function Read(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32) return Interfaces.Unsigned_32 is
   begin
-    return Interfaces.Unsigned_32(From_Little(Buffer(Device_Buffer_Range(Reg / 4))));
+    return Interfaces.Unsigned_32(From_Little(Buffer(Device_Buffer_Range(Reg))));
   end;
 
   function Read_Field(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32) return Interfaces.Unsigned_32 is
@@ -20,7 +20,7 @@ package body Ixgbe_Regs is
 
   procedure Write(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32) is
   begin
-    Buffer(Device_Buffer_Range(Reg / 4)) := To_Little(Value);
+    Buffer(Device_Buffer_Range(Reg)) := To_Little(Value);
   end;
 
   procedure Write_Field(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32) is

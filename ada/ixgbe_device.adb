@@ -241,7 +241,7 @@ package body Ixgbe_Device is
 
     Regs.Clear_Field(Dev.Buffer, Regs.DCARXCTRL(Queue_Index), Regs.DCARXCTRL_UNKNOWN);
 
-    return Dev.Buffer(Device_Buffer_Range(Regs.RDT(Queue_Index) / 4))'Access;
+    return Dev.Buffer(Device_Buffer_Range(Regs.RDT(Queue_Index)))'Access;
   end;
 
   function Add_Output(Dev: not null access Device; Ring: not null access Descriptor_Ring; Head: not null access VolatileUInt32) return Register_Access is
@@ -291,6 +291,6 @@ package body Ixgbe_Device is
       GNAT.OS_Lib.OS_Abort;
     end if;
 
-    return Dev.Buffer(Device_Buffer_Range(Regs.TDT(Queue_Index) / 4))'Access;
+    return Dev.Buffer(Device_Buffer_Range(Regs.TDT(Queue_Index)))'Access;
   end;
 end Ixgbe_Device;
