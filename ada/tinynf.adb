@@ -24,10 +24,10 @@ begin
   Text_IO.Put_Line("Ada TinyNF initializing...");
 
   declare
-    Dev0: aliased Dev := Init_Device(Pci_Parse.Parse_Address(Ada.Command_Line.Argument(1)));
-    Dev1: aliased Dev := Init_Device(Pci_Parse.Parse_Address(Ada.Command_Line.Argument(2)));
-    Outs0: NetFunc.Agent.Output_Devs := (0 => Dev1'Unchecked_Access);
-    Outs1: NetFunc.Agent.Output_Devs := (0 => Dev0'Unchecked_Access);
+    Dev0: aliased Device := Init_Device(Pci_Parse.Parse_Address(Ada.Command_Line.Argument(1)));
+    Dev1: aliased Device := Init_Device(Pci_Parse.Parse_Address(Ada.Command_Line.Argument(2)));
+    Outs0: NetFunc.Agent.Output_Devices := (0 => Dev1'Unchecked_Access);
+    Outs1: NetFunc.Agent.Output_Devices := (0 => Dev0'Unchecked_Access);
     Agent0: NetFunc.Agent.Agent := NetFunc.Agent.Create_Agent(Dev0'Access, Outs0);
     Agent1: NetFunc.Agent.Agent := NetFunc.Agent.Create_Agent(Dev1'Access, Outs1);
   begin

@@ -9,7 +9,7 @@ package body Ixgbe_Agent is
   Fake_Ring: aliased Descriptor_Ring;
   Fake_Reg: aliased VolatileUInt32;
 
-  function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent is
+  function Create_Agent(Input_Device: not null access Device; Output_Devs: in out Output_Devices) return Agent is
     function Allocate_Packets is new Environment.Allocate(T => Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
     Packets: not null access Packet_Array := Allocate_Packets;
     function Get_Packet_Address is new Environment.Get_Physical_Address(T => Packet_Data);
@@ -33,7 +33,7 @@ package body Ixgbe_Agent is
     end loop;
 
     for N in Outputs_Range loop
-      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devices(N), Rings(N), Transmit_Heads(N).Value'Access);
+      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devs(N), Rings(N), Transmit_Heads(N).Value'Access);
     end loop;
 
     -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
@@ -46,7 +46,6 @@ package body Ixgbe_Agent is
             Process_Delimiter => 0);
   end;
 
---pragma No_Inline(Run);
   procedure Run(This: in out Agent;
                 Proc: in Processor)
   is

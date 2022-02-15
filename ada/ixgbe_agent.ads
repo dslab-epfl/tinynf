@@ -1,5 +1,5 @@
 with Ixgbe; use Ixgbe;
-with Ixgbe_Device;
+with Ixgbe_Device; use Ixgbe_Device;
 
 generic
   type Outputs_Range is (<>);
@@ -17,6 +17,9 @@ package Ixgbe_Agent is
   type Transmit_Head_Array is array(Outputs_Range) of Transmit_Head;
   type Transmit_Tail_Array is array(Outputs_Range) of Register_Access;
 
+  Flush_Period: constant := 8;
+  Recycle_Period: constant := 64;
+
   type Agent is record
     Packets: not null access Packet_Array;
     Rings: Descriptor_Ring_Array;
@@ -27,8 +30,8 @@ package Ixgbe_Agent is
     Process_Delimiter: Delimiter_Range;
   end record;
 
-  type Output_Devs is array(Outputs_Range) of not null access Ixgbe_Device.Dev;
-  function Create_Agent(Input_Device: not null access Ixgbe_Device.Dev; Output_Devices: in out Output_Devs) return Agent;
+  type Output_Devices is array(Outputs_Range) of not null access Device;
+  function Create_Agent(Input_Device: not null access Device; Output_Devs: in out Output_Devices) return Agent;
   procedure Run(This: in out Agent;
                 Proc: in Processor);
 

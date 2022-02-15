@@ -3,14 +3,14 @@ with Interfaces; use Interfaces;
 with Ixgbe; use Ixgbe;
 
 package Ixgbe_Regs is
-  function Read(Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
-  function Read_Field(Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
-  procedure Write(Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32);
-  procedure Write_Field(Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32; Value: in Interfaces.Unsigned_32);
-  procedure Clear(Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32);
-  procedure Clear_Field(Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32);
-  procedure Set_Field(Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32);
-  function Is_Field_Cleared(Buffer: access Dev_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32) return Boolean is (Read_Field(Buffer, Reg, Field) = 0);
+  function Read(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
+  function Read_Field(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32) return Interfaces.Unsigned_32;
+  procedure Write(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32; Value: Interfaces.Unsigned_32);
+  procedure Write_Field(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32; Value: in Interfaces.Unsigned_32);
+  procedure Clear(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32);
+  procedure Clear_Field(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32);
+  procedure Set_Field(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32);
+  function Is_Field_Cleared(Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32) return Boolean is (Read_Field(Buffer, Reg, Field) = 0);
 
 
   CTRL: constant := 16#00000#;

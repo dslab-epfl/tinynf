@@ -1,4 +1,4 @@
-with Ixgbe; use Ixgbe;
+with Ixgbe_Device; use Ixgbe_Device;
 with Ixgbe_Agent;
 
 generic
