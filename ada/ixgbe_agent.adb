@@ -1,5 +1,3 @@
-with Text_IO;
-
 with System;
 with Interfaces; use Interfaces;
 with Ada.Unchecked_Conversion;
@@ -22,10 +20,11 @@ package body Ixgbe_Agent is
     Rings: Descriptor_Ring_Array := Rings_Sized;
     function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
 
-    subtype THA_Sized is Transmit_Head_Array(0 .. Output_Devs'Length - 1);
-    function Allocate_Heads is new Environment.Allocate(
-    Transmit_Heads_Sized: THA_Sized;
-    Transmit_Heads: Transmit_Head_Array := Transmit_Heads_Sized;
+    subtype THA_Range is Outputs_Range range 0 .. Output_Devs'Length - 1;
+    subtype THA_Sized is Transmit_Head_Array(THA_Range);
+    function Allocate_Heads is new Environment.Allocate(T => Transmit_Head, R => THA_Range, T_Array => THA_Sized);
+    Transmit_Heads_Sized: not null access THA_Sized := Allocate_Heads;
+    Transmit_Heads: not null access Transmit_Head_Array := Transmit_Heads_Sized;
 
     subtype TTA_Sized is Transmit_Tail_Array(0 .. Output_Devs'Length - 1);
     Transmit_Tails_Sized: TTA_Sized := (others => Fake_Reg'Access);
@@ -52,7 +51,7 @@ package body Ixgbe_Agent is
             Packets => Packets.all'Unchecked_Access,
             Rings => Rings,
             Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(Outputs_Range'First)),
-            Transmit_Heads => Transmit_Heads,
+            Transmit_Heads => Transmit_Heads.all'Unchecked_Access,
             Transmit_Tails => Transmit_Tails,
             Outputs => Outputs,
             Process_Delimiter => 0);
@@ -91,7 +90,6 @@ package body Ixgbe_Agent is
 
       Length := Meta_To_Read(Receive_Metadata).Length;
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
-      Text_IO.Put_Line("Proc pkt, N= " & Integer'Image(N) & ", len = " & Packet_Length'Image(Length));
 
       RS_Bit := (if (This.Process_Delimiter mod Recycle_Period) = (Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
@@ -103,12 +101,10 @@ package body Ixgbe_Agent is
       This.Process_Delimiter := This.Process_Delimiter + 1;
 
       if RS_Bit /= 0 then
-        Text_IO.Put_Line("RS bit nonzero, recycling...");
         Earliest_Transmit_Head := Interfaces.Unsigned_32(This.Process_Delimiter);
         Min_Diff := Interfaces.Unsigned_64'Last;
-        for H of This.Transmit_Heads loop
+        for H of This.Transmit_Heads.all loop
           Head := From_Little(H.Value);
-          Text_IO.Put_Line("head=" & Interfaces.Unsigned_32'Image(Head));
           Diff := Interfaces.Unsigned_64(Head) - Interfaces.Unsigned_64(This.Process_Delimiter);
           if Diff <= Min_Diff then
             Earliest_Transmit_Head := Head;
@@ -122,7 +118,6 @@ package body Ixgbe_Agent is
       N := N + 1;
     end loop;
     if N /= 0 then
-      Text_IO.Put_Line("Flush: delim=" & Delimiter_Range'Image(This.Process_Delimiter));
       for T of This.Transmit_Tails loop
         T.all := To_Little(Interfaces.Unsigned_32(This.Process_Delimiter));
       end loop;

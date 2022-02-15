@@ -23,14 +23,11 @@ package Ixgbe_Agent is
   type Transmit_Tail_Array is array(Outputs_Range range <>) of Register_Access;
 
 
-  -- NOTE: There's a tradeoff in terms of fidelity to C here; if Transmit_Heads and Outputs are allocated on the environment heap, as in C, then they can't be parameterized
-  --       and conversely if they are parameterized then they must be allocated by Ada...
-  --       we choose the parameterized version, it's unlikely the change of heaps would affect perf in any way (and anyway some non-C versions already rely on non-C heaps for objects)
   type Agent(Outputs_Max: Outputs_Range) is record
     Packets: not null access Packet_Array;
     Rings: Descriptor_Ring_Array(0 .. Outputs_Max);
     Receive_Tail: Register_Access;
-    Transmit_Heads: Transmit_Head_Array(0 .. Outputs_Max);
+    Transmit_Heads: not null access Transmit_Head_Array; -- constraint not allowed here, can't (0 .. Outputs_Max); but this is only used once every Recycle_Period packets...
     Transmit_Tails: Transmit_Tail_Array(0 .. Outputs_Max);
     Outputs: Packet_Outputs(0 .. Outputs_Max);
     Process_Delimiter: Delimiter_Range;

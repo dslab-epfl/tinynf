@@ -22,8 +22,7 @@ package body Ixgbe_Agent_Const is
 
     Transmit_Tails: Transmit_Tail_Array := (others => Fake_Reg'Unchecked_Access);
 
-    function Allocate_Outputs is new Environment.Allocate(T => Packet_Length, R => Outputs_Range, T_Array => Packet_Outputs);
-    Outputs: not null access Packet_Outputs := Allocate_Outputs;
+    Outputs: Packet_Outputs := (others => 0);
   begin
     for R in Rings'Range loop
       Rings(R) := Allocate_Ring.all'Unchecked_Access; -- why???
@@ -42,7 +41,7 @@ package body Ixgbe_Agent_Const is
             Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(Outputs_Range'First)),
             Transmit_Heads => Transmit_Heads.all'Unchecked_Access,
             Transmit_Tails => Transmit_Tails,
-            Outputs => Outputs.all'Unchecked_Access,
+            Outputs => Outputs,
             Process_Delimiter => 0);
   end;
 

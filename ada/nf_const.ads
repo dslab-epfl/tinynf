@@ -8,6 +8,6 @@ package NF_Const is
 
   procedure Processor(Data: in out Packet_Data;
                       Length: in Agent.Packet_Length;
-                      Output_Lengths: not null access Agent.Packet_Outputs)
+                      Output_Lengths: in out Agent.Packet_Outputs)
             with Inline;
 end NF_Const;
