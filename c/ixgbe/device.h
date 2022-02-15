@@ -20,15 +20,15 @@
 
 struct ixgbe_device
 {
-	uint32_t* addr;
+	volatile uint32_t* restrict addr;
 	bool rx_enabled;
 	bool tx_enabled;
 };
 
 struct ixgbe_descriptor
 {
-	volatile uint64_t addr;
-	volatile uint64_t metadata;
+	uint64_t addr;
+	uint64_t metadata;
 };
 
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
@@ -36,7 +36,7 @@ struct ixgbe_descriptor
 // Ethernet maximum transfer unit is 1518 bytes, so let's use 2048 as a nice round number
 struct ixgbe_packet_data
 {
-	volatile uint8_t data[2048];
+	uint8_t data[2048];
 } __attribute__((packed));
 
 // transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
@@ -44,7 +44,7 @@ struct ixgbe_packet_data
 // plus, we want each head on its own cache line to avoid conflicts (assumption CACHE -> 64 bytes)
 struct ixgbe_transmit_head
 {
-	volatile uint32_t value;
+	uint32_t value;
 	uint8_t _padding[60];
 } __attribute__((packed));
 
@@ -606,7 +606,7 @@ static inline bool ixgbe_device_set_promiscuous(struct ixgbe_device* device)
 // ------------------------------------
 
 
-static inline bool ixgbe_device_add_input(struct ixgbe_device* device, struct ixgbe_descriptor* ring, uint32_t* restrict* out_tail_addr)
+static inline bool ixgbe_device_add_input(struct ixgbe_device* device, volatile struct ixgbe_descriptor* ring, volatile uint32_t* restrict* out_tail_addr)
 {
 	// The 82599 has more than one receive queue, but we only need queue 0
 	uint32_t queue_index = 0;
@@ -694,7 +694,7 @@ static inline bool ixgbe_device_add_input(struct ixgbe_device* device, struct ix
 // Section 4.6.8 Transmit Initialization
 // -------------------------------------
 
-static inline bool ixgbe_device_add_output(struct ixgbe_device* device, struct ixgbe_descriptor* ring, struct ixgbe_transmit_head* transmit_head, uint32_t* restrict* out_tail_addr)
+static inline bool ixgbe_device_add_output(struct ixgbe_device* device, volatile struct ixgbe_descriptor* ring, volatile struct ixgbe_transmit_head* transmit_head, volatile uint32_t* restrict* out_tail_addr)
 {
 	uint32_t queue_index = 0;
 	for (; queue_index < TRANSMIT_QUEUES_COUNT; queue_index++) {

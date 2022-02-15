@@ -10,10 +10,10 @@
 
 struct ixgbe_queue_rx
 {
-	struct ixgbe_descriptor* restrict ring;
+	volatile struct ixgbe_descriptor* restrict ring;
 	struct ixgbe_buffer* restrict* buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
-	uint32_t* restrict receive_tail_addr;
+	volatile uint32_t* restrict receive_tail_addr;
 	uint8_t next;
 };
 
@@ -75,11 +75,11 @@ static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct 
 
 struct ixgbe_queue_tx
 {
-	struct ixgbe_descriptor* restrict ring;
+	volatile struct ixgbe_descriptor* restrict ring;
 	struct ixgbe_buffer* restrict* buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
-	struct ixgbe_transmit_head* restrict transmit_head_addr;
-	uint32_t* restrict transmit_tail_addr;
+	volatile struct ixgbe_transmit_head* restrict transmit_head_addr;
+	volatile uint32_t* restrict transmit_tail_addr;
 	uint8_t recycled_head; // where we last saw the transmit head
 	uint8_t next;
 };

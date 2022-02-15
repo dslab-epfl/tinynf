@@ -23,12 +23,12 @@
 
 struct ixgbe_agent
 {
-	struct ixgbe_packet_data* buffer;
-	struct ixgbe_descriptor* restrict* rings; // 0 == shared receive/transmit, rest are exclusive transmit
-	uint32_t* restrict receive_tail_addr;
-	struct ixgbe_transmit_head* transmit_heads;
-	uint32_t* restrict* transmit_tail_addrs;
-	uint16_t* outputs;
+	volatile struct ixgbe_packet_data* restrict buffer;
+	volatile struct ixgbe_descriptor* restrict* rings; // 0 == shared receive/transmit, rest are exclusive transmit
+	volatile uint32_t* restrict receive_tail_addr;
+	volatile struct ixgbe_transmit_head* restrict transmit_heads;
+	volatile uint32_t* restrict* restrict transmit_tail_addrs;
+	uint16_t* restrict outputs;
 	uint8_t processed_delimiter;
 #ifndef IXGBE_AGENT_OUTPUTS_COUNT
 	size_t outputs_count;

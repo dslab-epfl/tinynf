@@ -182,21 +182,20 @@
 
 
 // Gets the value of the given register address 'reg_addr'; this is the sum of a NIC address and a register offset
-static inline uint32_t reg_read_raw(uint32_t* reg_addr)
+static inline uint32_t reg_read_raw(volatile uint32_t* reg_addr)
 {
-	uint32_t val_le = *((volatile uint32_t*)reg_addr);
-	return tn_le_to_cpu32(val_le);
+	return tn_le_to_cpu32(*reg_addr);
 }
 
 // Get the value of register 'reg' on NIC at address 'addr'
-static inline uint32_t reg_read(uint32_t* addr, uint32_t reg)
+static inline uint32_t reg_read(volatile uint32_t* addr, uint32_t reg)
 {
 	uint32_t result = reg_read_raw(addr + reg);
 	TN_VERBOSE("read (addr %p): 0x%08" PRIx32 " -> 0x%08" PRIx32, (void*) addr, reg, result);
 	return result;
 }
 // Get the value of field 'field' of register 'reg' on NIC at address 'addr'
-static inline uint32_t reg_read_field(uint32_t* addr, uint32_t reg, uint32_t field)
+static inline uint32_t reg_read_field(volatile uint32_t* addr, uint32_t reg, uint32_t field)
 {
 	uint32_t value = reg_read(addr, reg);
 	uint32_t shift = find_first_set(field);
@@ -204,19 +203,19 @@ static inline uint32_t reg_read_field(uint32_t* addr, uint32_t reg, uint32_t fie
 }
 
 // Write 'value' to the given register address 'reg_addr'; this is the sum of a NIC address and a register offset
-static inline void reg_write_raw(uint32_t* reg_addr, uint32_t value)
+static inline void reg_write_raw(volatile uint32_t* reg_addr, uint32_t value)
 {
-	*((volatile uint32_t*)reg_addr) = tn_cpu_to_le32(value);
+	*reg_addr = tn_cpu_to_le32(value);
 }
 
 // Write 'value' to register 'reg' on NIC at address 'addr'
-static inline void reg_write(uint32_t* addr, uint32_t reg, uint32_t value)
+static inline void reg_write(volatile uint32_t* addr, uint32_t reg, uint32_t value)
 {
 	reg_write_raw(addr + reg, value);
 	TN_VERBOSE("write (addr %p): 0x%08" PRIx32 " := 0x%08" PRIx32, (void*) addr, reg, value);
 }
 // Write 'value' to the field 'field' of register 'reg' on NIC at address 'addr'
-static inline void reg_write_field(uint32_t* addr, uint32_t reg, uint32_t field, uint32_t field_value)
+static inline void reg_write_field(volatile uint32_t* addr, uint32_t reg, uint32_t field, uint32_t field_value)
 {
 	uint32_t old_value = reg_read(addr, reg);
 	uint32_t shift = find_first_set(field);
@@ -225,18 +224,18 @@ static inline void reg_write_field(uint32_t* addr, uint32_t reg, uint32_t field,
 }
 
 // Clear (i.e., write all 0s) register 'reg' on NIC at address 'addr'
-static inline void reg_clear(uint32_t* addr, uint32_t reg)
+static inline void reg_clear(volatile uint32_t* addr, uint32_t reg)
 {
 	reg_write(addr, reg, 0);
 }
 // Clear (i.e., write all 0s) the field 'field' of register 'reg' on NIC at address 'addr'
-static inline void reg_clear_field(uint32_t* addr, uint32_t reg, uint32_t field)
+static inline void reg_clear_field(volatile uint32_t* addr, uint32_t reg, uint32_t field)
 {
 	reg_write_field(addr, reg, field, 0);
 }
 
 // Set (i.e., write all 1s) the field 'field' of register 'reg' on NIC at address 'addr'
-static inline void reg_set_field(uint32_t* addr, uint32_t reg, uint32_t field)
+static inline void reg_set_field(volatile uint32_t* addr, uint32_t reg, uint32_t field)
 {
 	uint32_t old_value = reg_read(addr, reg);
 	uint32_t new_value = old_value | field;
@@ -244,7 +243,7 @@ static inline void reg_set_field(uint32_t* addr, uint32_t reg, uint32_t field)
 }
 
 // Check if the field 'field' of register 'reg' on NIC at address 'addr' is cleared (i.e., reads as all 0s)
-static inline bool reg_is_field_cleared(uint32_t* addr, uint32_t reg, uint32_t field)
+static inline bool reg_is_field_cleared(volatile uint32_t* addr, uint32_t reg, uint32_t field)
 {
 	return reg_read_field(addr, reg, field) == 0;
 }
