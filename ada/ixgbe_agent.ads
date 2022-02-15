@@ -3,7 +3,7 @@ with Ixgbe_Device; use Ixgbe_Device;
 
 package Ixgbe_Agent is
   Max_Outputs: constant := 8;
-  type Outputs_Range is range 0 .. Max_Outputs;
+  type Outputs_Range is range 0 .. Max_Outputs - 1;
 
   Flush_Period: constant := 8;
   Recycle_Period: constant := 64;
