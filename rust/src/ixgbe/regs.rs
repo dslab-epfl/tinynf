@@ -4,7 +4,6 @@
 
 use crate::volatile;
 
-
 // Regs are usize so they can index a slice without ceremony
 
 // Registers are split into general-purpose, RX, and TX, so that we can split the device address space
@@ -222,7 +221,6 @@ pub mod TXDCTL_ {
     pub const HTHRESH: u32 = 0b0111_1111_0000_0000;
     pub const ENABLE: u32 = 1 << 25;
 }
-
 
 pub fn read(buffer: &[u32], reg: usize) -> u32 {
     u32::from_le(volatile::read(&buffer[reg]))

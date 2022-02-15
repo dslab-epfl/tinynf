@@ -1,7 +1,7 @@
 use crate::env::Environment;
 use crate::volatile;
 
-use super::device::{RING_SIZE, Descriptor, PacketData, TransmitHead, DeviceInput, DeviceOutput};
+use super::device::{Descriptor, DeviceInput, DeviceOutput, PacketData, TransmitHead, RING_SIZE};
 
 pub const FLUSH_PERIOD: usize = 8;
 
@@ -14,7 +14,7 @@ pub struct Agent<'a, 'b, const OUTPUTS: usize> {
     transmit_heads: &'b [TransmitHead; OUTPUTS],
     transmit_tails: &'b mut [&'a mut u32; OUTPUTS],
     outputs: &'b mut [u16; OUTPUTS],
-    process_delimiter: u8
+    process_delimiter: u8,
 }
 
 impl<'a, 'b, const OUTPUTS: usize> Agent<'a, 'b, OUTPUTS> {
@@ -51,7 +51,7 @@ impl<'a, 'b, const OUTPUTS: usize> Agent<'a, 'b, OUTPUTS> {
             transmit_heads,
             transmit_tails,
             outputs: env.allocate::<u16, { OUTPUTS }>(),
-            process_delimiter: 0
+            process_delimiter: 0,
         }
     }
 
@@ -66,22 +66,18 @@ impl<'a, 'b, const OUTPUTS: usize> Agent<'a, 'b, OUTPUTS> {
             let length = receive_metadata as u16;
             processor(&mut self.packets[self.process_delimiter as usize], length, self.outputs);
 
-            let rs_bit: u64 = if self.process_delimiter % RECYCLE_PERIOD == (RECYCLE_PERIOD - 1) {
-                1 << (24 + 3)
-            } else {
-                0
-            };
-//            let mut o: u8 = 0;
+            let rs_bit: u64 = if self.process_delimiter % RECYCLE_PERIOD == (RECYCLE_PERIOD - 1) { 1 << (24 + 3) } else { 0 };
+            //            let mut o: u8 = 0;
             // TODO: check?
             // I tried an explicit for n in 0..self.rings.len() but there was still a bounds check :/
-//            for r in self.rings {
+            //            for r in self.rings {
             for o in 0..OUTPUTS {
                 volatile::write(
                     &mut self.rings[o][self.process_delimiter as usize].metadata,
                     u64::to_le(self.outputs[o] as u64 | rs_bit | (1 << (24 + 1)) | (1 << 24)),
                 );
                 self.outputs[o] = 0;
-//                o += 1;
+                //                o += 1;
             }
 
             self.process_delimiter += 1;

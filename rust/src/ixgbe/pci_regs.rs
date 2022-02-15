@@ -3,7 +3,6 @@
 use crate::env::Environment;
 use crate::pci::PciAddress;
 
-
 pub const BAR0_LOW: u8 = 0x10;
 pub const BAR0_HIGH: u8 = 0x14;
 
@@ -25,7 +24,6 @@ pub const PMCSR: u8 = 0x44;
 pub mod PMCSR_ {
     pub const POWER_STATE: u32 = 0b0011;
 }
-
 
 pub fn read_field<'a>(env: &impl Environment<'a>, addr: PciAddress, reg: u8, field: u32) -> u32 {
     let value = env.pci_read(addr, reg);

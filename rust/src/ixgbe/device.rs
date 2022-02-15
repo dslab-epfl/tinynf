@@ -8,9 +8,7 @@ use crate::pci::PciAddress;
 use super::pci_regs;
 use super::regs;
 
-
 pub const RING_SIZE: usize = 256;
-
 
 pub struct Device<'a> {
     buffer: &'a mut [u32],
@@ -19,19 +17,18 @@ pub struct Device<'a> {
 #[repr(C)]
 pub struct Descriptor {
     pub buffer: u64,
-    pub metadata: u64
+    pub metadata: u64,
 }
 
 #[repr(C)]
 pub struct PacketData {
-    pub data: [u8; 2048]
+    pub data: [u8; 2048],
 }
 
 #[repr(C, align(64))]
 pub struct TransmitHead {
-    pub value: u32
+    pub value: u32,
 }
-
 
 pub const FIVE_TUPLE_FILTERS_COUNT: usize = 128;
 
@@ -50,7 +47,6 @@ pub const TRANSMIT_QUEUES_COUNT: usize = 128;
 pub const TRAFFIC_CLASSES_COUNT: usize = 8;
 
 pub const UNICAST_TABLE_ARRAY_SIZE: usize = 4 * 1024;
-
 
 fn after_timeout<'a>(env: &impl Environment<'a>, duration: Duration, cleared: bool, buffer: &mut [u32], reg: usize, field: u32) -> bool {
     env.sleep(Duration::from_nanos((duration.as_nanos() % 10).try_into().unwrap())); // will panic if 'duration' is too big

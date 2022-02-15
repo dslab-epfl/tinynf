@@ -28,7 +28,7 @@ fn parse_pci_address(s: &str) -> PciAddress {
     }
 }
 
-fn proc(data: &mut PacketData, length: u16, output_lengths: &mut [u16; 1]) {
+fn proc<const N: usize>(data: &mut PacketData, length: u16, output_lengths: &mut [u16; N]) {
     data.data[0] = 0;
     data.data[1] = 0;
     data.data[2] = 0;
@@ -44,10 +44,11 @@ fn proc(data: &mut PacketData, length: u16, output_lengths: &mut [u16; 1]) {
     output_lengths[0] = length;
 }
 
-fn run(agent0: &mut Agent<'_, '_, 1>, agent1: &mut Agent<'_, '_, 1>) {
+#[inline(never)]
+fn run<const N: usize>(agent0: &mut Agent<'_, '_, N>, agent1: &mut Agent<'_, '_, N>) {
     loop {
-        agent0.run(proc);
-        agent1.run(proc);
+        agent0.run(proc::<N>);
+        agent1.run(proc::<N>);
     }
 }
 
@@ -77,5 +78,5 @@ fn main() {
 
     println!("All good, running...");
 
-    run(&mut agent0, &mut agent1);
+    run::<1>(&mut agent0, &mut agent1);
 }
