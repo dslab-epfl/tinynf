@@ -2,14 +2,14 @@ with Ixgbe; use Ixgbe;
 with Ixgbe_Device; use Ixgbe_Device;
 
 package Ixgbe_Agent is
-  type Outputs_Range is mod 2 ** 3; -- max 8 outputs
+  type Outputs_Range is mod 2 ** 8; -- max 256 outputs; TODO should be 8 but GNAT generates an "invalid data" check, why?
 
   Flush_Period: constant := 8;
   Recycle_Period: constant := 64;
 
   -- WEIRD: This MUST be of size 64, otherwise the card locks up quickly (even the heatup in the benchmarks doesn't finish)
   type Packet_Length is mod 2 ** 16 with Size => 64;
-  type Packet_Outputs is array(Outputs_Range range <>) of Packet_Length;
+  type Packet_Outputs is array(Outputs_Range) of Packet_Length;
 
   type Processor is not null access procedure(Data: in out Packet_Data;
                                               Length: in Packet_Length;
@@ -27,7 +27,7 @@ package Ixgbe_Agent is
     Receive_Tail: Register_Access;
     Transmit_Heads: not null access Transmit_Head_Array; -- constraint not allowed here, can't (0 .. Outputs_Max); but this is only used once every Recycle_Period packets...
     Transmit_Tails: Transmit_Tail_Array(0 .. Outputs_Max);
-    Outputs: Packet_Outputs(0 .. Outputs_Max);
+    Outputs: Packet_Outputs;
     Process_Delimiter: Delimiter_Range;
   end record;
 

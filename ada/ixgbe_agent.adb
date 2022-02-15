@@ -30,9 +30,7 @@ package body Ixgbe_Agent is
     Transmit_Tails_Sized: TTA_Sized := (others => Fake_Reg'Access);
     Transmit_Tails: Transmit_Tail_Array := Transmit_Tails_Sized;
 
-    subtype O_Sized is Packet_Outputs(0 .. Output_Devs'Length - 1);
-    Outputs_Sized: O_Sized := (others => Packet_Length(0));
-    Outputs: Packet_Outputs := Outputs_Sized;
+    Outputs: Packet_Outputs := (others => Packet_Length(0));
   begin
     -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
 
