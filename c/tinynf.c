@@ -48,27 +48,27 @@ static int init(int argc, char** argv, struct ixgbe_device* out_device0, struct 
 	return 0;
 }
 
-static inline void packet_handler(volatile uint8_t* restrict data)
+static inline void packet_handler(volatile struct ixgbe_packet_data* restrict data)
 {
 	// DST MAC
-	data[0] = 0;
-	data[1] = 0;
-	data[2] = 0;
-	data[3] = 0;
-	data[4] = 0;
-	data[5] = 1;
+	data->data[0] = 0;
+	data->data[1] = 0;
+	data->data[2] = 0;
+	data->data[3] = 0;
+	data->data[4] = 0;
+	data->data[5] = 1;
 	// SRC MAC
-	data[6] = 0;
-	data[7] = 0;
-	data[8] = 0;
-	data[9] = 0;
-	data[10] = 0;
-	data[11] = 0;
+	data->data[6] = 0;
+	data->data[7] = 0;
+	data->data[8] = 0;
+	data->data[9] = 0;
+	data->data[10] = 0;
+	data->data[11] = 0;
 }
 
 #if TN_MODE == 0 || TN_MODE == 1
 
-static void agent_packet_handler(volatile uint8_t* restrict packet, uint16_t packet_length, uint16_t* restrict outputs)
+static void agent_packet_handler(volatile struct ixgbe_packet_data* restrict packet, uint16_t packet_length, uint16_t* restrict outputs)
 {
 	packet_handler(packet);
 	// Output on opposite device
@@ -128,7 +128,7 @@ noreturn static void run(struct ixgbe_queue_rx* restrict rx0, struct ixgbe_queue
 	while (true) {
 		nb_rx = ixgbe_queue_rx_batch(rx0, buffers, TINYNF_QUEUE_BATCH);
 		for (size_t n = 0; n < nb_rx; n++) {
-			packet_handler(buffers[n]->data->data);
+			packet_handler(buffers[n]->data);
 		}
 		nb_tx = ixgbe_queue_tx_batch(tx1, buffers, nb_rx);
 		for (size_t n = nb_tx; n < nb_rx; n++) {
@@ -138,7 +138,7 @@ noreturn static void run(struct ixgbe_queue_rx* restrict rx0, struct ixgbe_queue
 
 		nb_rx = ixgbe_queue_rx_batch(rx1, buffers, TINYNF_QUEUE_BATCH);
 		for (size_t n = 0; n < nb_rx; n++) {
-			packet_handler(buffers[n]->data->data);
+			packet_handler(buffers[n]->data);
 		}
 		nb_tx = ixgbe_queue_tx_batch(tx0, buffers, nb_rx);
 		for (size_t n = nb_tx; n < nb_rx; n++) {

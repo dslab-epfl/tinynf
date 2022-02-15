@@ -23,13 +23,13 @@
 
 struct ixgbe_agent
 {
-	volatile struct ixgbe_packet_data* restrict buffer;
+	volatile struct ixgbe_packet_data* restrict buffers;
 	volatile struct ixgbe_descriptor* restrict* rings; // 0 == shared receive/transmit, rest are exclusive transmit
 	volatile uint32_t* restrict receive_tail_addr;
 	volatile struct ixgbe_transmit_head* restrict transmit_heads;
 	volatile uint32_t* restrict* restrict transmit_tail_addrs;
 	uint16_t* restrict outputs;
-	uint8_t processed_delimiter;
+	size_t processed_delimiter;
 #ifndef IXGBE_AGENT_OUTPUTS_COUNT
 	size_t outputs_count;
 #endif
@@ -53,7 +53,7 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 		return false;
 	}
 
-	out_agent->buffer = tn_mem_allocate(IXGBE_RING_SIZE * sizeof(struct ixgbe_packet_data));
+	out_agent->buffers = tn_mem_allocate(IXGBE_RING_SIZE * sizeof(struct ixgbe_packet_data));
 	out_agent->transmit_heads = tn_mem_allocate(outputs_count * sizeof(struct ixgbe_transmit_head));
 	out_agent->rings = tn_mem_allocate(outputs_count * sizeof(struct ixgbe_descriptor*));
 	out_agent->transmit_tail_addrs = tn_mem_allocate(outputs_count * sizeof(uint32_t*));
@@ -65,7 +65,7 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 		for (size_t n = 0; n < IXGBE_RING_SIZE; n++) {
 			// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:
 			// "Buffer Address (64)", 1st line offset 0
-			uintptr_t packet_phys_addr = tn_mem_virt_to_phys((void*) &(out_agent->buffer[n]));
+			uintptr_t packet_phys_addr = tn_mem_virt_to_phys((void*) &(out_agent->buffers[n]));
 			// INTERPRETATION-MISSING: The data sheet does not specify the endianness of descriptor buffer addresses..
 			// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
 			out_agent->rings[r][n].addr = tn_cpu_to_le64(packet_phys_addr);
@@ -90,7 +90,7 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 // High-level API
 // --------------
 
-typedef void ixgbe_packet_handler(volatile uint8_t* restrict packet, uint16_t packet_length, uint16_t* restrict outputs);
+typedef void ixgbe_packet_handler(volatile struct ixgbe_packet_data* restrict packet, uint16_t packet_length, uint16_t* restrict outputs);
 
 static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler)
 {
@@ -107,7 +107,7 @@ static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* ha
 			break;
 		}
 
-		volatile uint8_t* restrict packet = (volatile uint8_t* restrict) &(agent->buffer[agent->processed_delimiter].data);
+		volatile struct ixgbe_packet_data* restrict packet = &(agent->buffers[agent->processed_delimiter]);
 		uint16_t packet_length = IXGBE_RX_METADATA_LENGTH(receive_metadata);
 		handler(packet, packet_length, agent->outputs);
 
@@ -136,7 +136,7 @@ static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* ha
 	}
 	if (p != 0) {
 		for (uint64_t n = 0; n < outs_count; n++) {
-			reg_write_raw(agent->transmit_tail_addrs[n], agent->processed_delimiter);
+			reg_write_raw(agent->transmit_tail_addrs[n], (uint32_t) agent->processed_delimiter);
 		}
 	}
 }

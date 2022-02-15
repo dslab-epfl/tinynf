@@ -97,8 +97,8 @@ def bench(path, name, extra_env):
 
 
 cpu_low_power()
-bench('../c', 'C', {})
-#bench('../c', 'C, const', {'TN_MODE': '1'})
+#bench('../c', 'C', {})
+bench('../c', 'C, const', {'TN_MODE': '1'})
 #bench('../c', 'C, queues', {'TN_MODE': '2'})
 #bench('../csharp', 'C#, JIT', {'CSHARP_MODE': 'safe'})
 #bench('../csharp', 'C# extended, JIT', {'CSHARP_MODE': 'extended'})
