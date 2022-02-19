@@ -42,7 +42,7 @@ begin
     elsif Mode = 1 then
 
       declare
-        type Outputs_Range is range 0 .. 0 with Size => 64; -- TODO without Size?
+        type Outputs_Range is range 0 .. 0;
         package NetFunc is new NF_Const(Outputs_Range);
         Outs0: NetFunc.Agent.Output_Devices := (others => Dev1'Unchecked_Access);
         Outs1: NetFunc.Agent.Output_Devices := (others => Dev0'Unchecked_Access);

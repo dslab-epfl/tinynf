@@ -1,4 +1,5 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
+
 from distutils.dir_util import copy_tree
 import os
 import shutil
@@ -36,10 +37,6 @@ def cpu_low_power():
 
 
 # --- utility ---
-
-def add_suffix(file_or_folder, suffix):
-  os.rename(file_or_folder, file_or_folder + suffix)
-
 def move_into(src, dst):
   if os.path.isdir(src):
     os.makedirs(dst, exist_ok=True)
@@ -55,22 +52,7 @@ def remove(file_or_folder):
   else:
     os.remove(file_or_folder)
 
-# --- per-NF parameters ---
-
-def get_cflags(nf, env):
-  result = []
-  result.append('-s') # strip symbols
-  return result
-
-def get_benchflags(nf, env):
-  return ['standard']
-
-def get_layer(nf, env):
-  return 2
-
-
 # --- benchmarking ---
-
 def bench(path, name, extra_env):
   print('[ !!! ] Benchmarking', name, 'in', path)
   out_folder = 'results/' + name + '/'
@@ -80,12 +62,9 @@ def bench(path, name, extra_env):
 
   env = dict(os.environ)
   env.update(extra_env)
-  env['TN_CFLAGS'] = env.get('TN_CFLAGS', '') + ' ' +  " ".join(get_cflags(None, env))
-
-  benchflags = get_benchflags(None, env) + [str(get_layer(None, env))]
 
   while True: # bench.sh can fail for spurious reasons, e.g. random DNS failures during SSH login
-    result = subprocess.run(['sh', 'bench.sh', path] + benchflags, cwd=BENCH_PATH, env=env).returncode
+    result = subprocess.run(['sh', 'bench.sh', path, 'standard', '2'], cwd=BENCH_PATH, env=env).returncode
     if result == 0:
       break
     else:
@@ -93,6 +72,7 @@ def bench(path, name, extra_env):
 
   remove(out_folder + '/latencies') # don't keep old latencies around
   move_into(BENCH_RESULTS_PATH, out_folder)
+
 
 
 cpu_low_power()
@@ -105,5 +85,6 @@ cpu_low_power()
 #bench('../csharp', 'C# extended, AOT', {'CSHARP_MODE': 'extended', 'CSHARP_AOT': 'y'})
 #bench('../rust', 'Rust', {})
 #bench('../rust', 'Rust, const generics', {'TN_MODE': '1'})
-bench('../ada', 'Ada', {'TN_MODE': '1'})
+#bench('../ada', 'Ada', {})
+bench('../ada', 'Ada, const generics', {'TN_MODE': '1'})
 cpu_full_power()
