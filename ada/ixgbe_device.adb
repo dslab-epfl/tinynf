@@ -244,12 +244,12 @@ package body Ixgbe_Device is
     return Dev.Buffer(Device_Buffer_Range(Regs.RDT(Queue_Index)))'Access;
   end;
 
-  function Add_Output(Dev: in out Device; Ring: not null access Descriptor_Ring; Head: not null access VolatileUInt32) return Register_Access is
+  function Add_Output(Dev: in out Device; Ring: not null access Descriptor_Ring; Head: not null access Transmit_Head) return Register_Access is
     Queue_Index: Integer := 0;
     Ring_Phys_Addr: Interfaces.Unsigned_64;
     Head_Phys_Addr: Interfaces.Unsigned_64;
     function Get_Ring_Addr is new Environment.Get_Physical_Address(T => Descriptor);
-    function Get_Head_Addr is new Environment.Get_Physical_Address(T => VolatileUInt32);
+    function Get_Head_Addr is new Environment.Get_Physical_Address(T => Transmit_Head);
   begin
     loop
       if Queue_Index = Transmit_Queues_Count then

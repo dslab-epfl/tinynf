@@ -42,7 +42,7 @@ package body Ixgbe_Agent is
     end loop;
 
     for N in Transmit_Tails'Range loop
-      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devs(N), Rings(N), Transmit_Heads(N).Value'Access);
+      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devs(N), Rings(N), Transmit_Heads(N)'Access);
     end loop;
 
     return (Outputs_Max => Output_Devs'Length - 1,
@@ -110,14 +110,14 @@ package body Ixgbe_Agent is
           end if;
         end loop;
 
-        This.Receive_Tail.all := To_Little(Earliest_Transmit_Head mod Ring_Size);
+        This.Receive_Tail.all := VolatileUInt32(To_Little(Earliest_Transmit_Head mod Ring_Size));
       end if;
 
       N := N + 1;
     end loop;
     if N /= 0 then
       for T of This.Transmit_Tails loop
-        T.all := To_Little(Interfaces.Unsigned_32(This.Process_Delimiter));
+        T.all := VolatileUInt32(To_Little(Interfaces.Unsigned_32(This.Process_Delimiter)));
       end loop;
     end if;
   end Run;

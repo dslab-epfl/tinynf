@@ -17,7 +17,7 @@ package Ixgbe_Agent is
 
   type Packet_Array is array(Delimiter_Range) of aliased Packet_Data;
   type Descriptor_Ring_Array is array(Outputs_Range range <>) of not null access Descriptor_Ring;
-  type Transmit_Head_Array is array(Outputs_Range range <>) of Transmit_Head;
+  type Transmit_Head_Array is array(Outputs_Range range <>) of aliased Transmit_Head;
   type Transmit_Tail_Array is array(Outputs_Range range <>) of Register_Access;
 
   type Agent(Outputs_Max: Outputs_Range) is record

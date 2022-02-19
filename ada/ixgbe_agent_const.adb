@@ -32,7 +32,7 @@ package body Ixgbe_Agent_Const is
     end loop;
 
     for N in Outputs_Range loop
-      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devs(N), Rings(N), Transmit_Heads(N).Value'Access);
+      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devs(N), Rings(N), Transmit_Heads(N)'Access);
     end loop;
 
     -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
@@ -100,13 +100,13 @@ package body Ixgbe_Agent_Const is
           end if;
         end loop;
 
-        This.Receive_Tail.all := To_Little((Earliest_Transmit_Head - 1) mod Ring_Size);
+        This.Receive_Tail.all := VolatileUInt32(To_Little((Earliest_Transmit_Head - 1) mod Ring_Size));
       end if;
       N := N + 1;
     end loop;
     if N /= 0 then
       for T of This.Transmit_Tails loop
-        T.all := To_Little(Interfaces.Unsigned_32(This.Process_Delimiter));
+        T.all := VolatileUInt32(To_Little(Interfaces.Unsigned_32(This.Process_Delimiter)));
       end loop;
     end if;
   end Run;
