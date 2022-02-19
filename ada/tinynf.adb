@@ -30,10 +30,10 @@ begin
 
     if Mode = 0 then
       declare
-        Outs0: Ixgbe_Agent.Output_Devices := (0 => Dev1'Unchecked_Access);
-        Outs1: Ixgbe_Agent.Output_Devices := (0 => Dev0'Unchecked_Access);
-        Agent0: Ixgbe_Agent.Agent := Ixgbe_Agent.Create_Agent(Dev0'Access, Outs0);
-        Agent1: Ixgbe_Agent.Agent := Ixgbe_Agent.Create_Agent(Dev1'Access, Outs1);
+        Outs0: Ixgbe_Agent.Output_Devices := (0 => Dev1);
+        Outs1: Ixgbe_Agent.Output_Devices := (0 => Dev0);
+        Agent0: Ixgbe_Agent.Agent := Ixgbe_Agent.Create_Agent(Dev0, Outs0);
+        Agent1: Ixgbe_Agent.Agent := Ixgbe_Agent.Create_Agent(Dev1, Outs1);
       begin
         Text_IO.Put_Line("Ada TinyNF starting...");
         NF.Run(Agent0, Agent1);
@@ -44,10 +44,10 @@ begin
       declare
         type Outputs_Range is range 0 .. 0;
         package NetFunc is new NF_Const(Outputs_Range);
-        Outs0: NetFunc.Agent.Output_Devices := (others => Dev1'Unchecked_Access);
-        Outs1: NetFunc.Agent.Output_Devices := (others => Dev0'Unchecked_Access);
-        Agent0: NetFunc.Agent.Agent := NetFunc.Agent.Create_Agent(Dev0'Access, Outs0);
-        Agent1: NetFunc.Agent.Agent := NetFunc.Agent.Create_Agent(Dev1'Access, Outs1);
+        Outs0: NetFunc.Agent.Output_Devices := (others => Dev1);
+        Outs1: NetFunc.Agent.Output_Devices := (others => Dev0);
+        Agent0: NetFunc.Agent.Agent := NetFunc.Agent.Create_Agent(Dev0, Outs0);
+        Agent1: NetFunc.Agent.Agent := NetFunc.Agent.Create_Agent(Dev1, Outs1);
       begin
         Text_IO.Put_Line("Ada TinyNF starting with const generics...");
         NetFunc.Run(Agent0, Agent1);

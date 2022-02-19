@@ -2,10 +2,10 @@ with Ixgbe; use Ixgbe;
 with Ixgbe_Device; use Ixgbe_Device;
 
 package Ixgbe_Agent is
-  type Outputs_Range is mod 2 ** 8; -- max 256 outputs; TODO should be 8 but GNAT generates an "invalid data" check, why?
-
   Flush_Period: constant := 8;
   Recycle_Period: constant := 64;
+
+  type Outputs_Range is mod 2 ** 8; -- max 256 outputs; TODO should be 8 but GNAT generates an "invalid data" check, why?
 
   -- WEIRD: This MUST be of size 64, otherwise the card locks up quickly (even the heatup in the benchmarks doesn't finish)
   type Packet_Length is mod 2 ** 16 with Size => 64;
@@ -15,7 +15,6 @@ package Ixgbe_Agent is
                                               Length: in Packet_Length;
                                               Output_Lengths: in out Packet_Outputs);
 
-  -- TODO do we need these types to be explicit?
   type Packet_Array is array(Delimiter_Range) of aliased Packet_Data;
   type Descriptor_Ring_Array is array(Outputs_Range range <>) of not null access Descriptor_Ring;
   type Transmit_Head_Array is array(Outputs_Range range <>) of Transmit_Head;
@@ -31,9 +30,10 @@ package Ixgbe_Agent is
     Process_Delimiter: Delimiter_Range;
   end record;
 
-  type Output_Devices is array(Outputs_Range range <>) of not null access Device;
-  function Create_Agent(Input_Device: not null access Device; Output_Devs: in out Output_Devices) return Agent;
-  procedure Run(This: in out Agent;
-                Proc: in Processor);
+  type Output_Devices is array(Outputs_Range range <>) of Device;
+  function Create_Agent(Input_Device: in out Device; Output_Devs: in out Output_Devices) return Agent;
+
+  procedure Run(This: in out Agent; Proc: in Processor)
+       with Inline_Always; -- to mimic C "static inline"
 
 end Ixgbe_Agent;

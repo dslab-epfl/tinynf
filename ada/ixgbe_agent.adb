@@ -10,7 +10,7 @@ package body Ixgbe_Agent is
   Fake_Reg: aliased VolatileUInt32;
 
   -- TODO there's got to be a cleaner way than these _Sized types and intermediate values...
-  function Create_Agent(Input_Device: not null access Device; Output_Devs: in out Output_Devices) return Agent is
+  function Create_Agent(Input_Device: in out Device; Output_Devs: in out Output_Devices) return Agent is
     function Allocate_Packets is new Environment.Allocate(T => Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
     Packets: not null access Packet_Array := Allocate_Packets;
     function Get_Packet_Address is new Environment.Get_Physical_Address(T => Packet_Data);

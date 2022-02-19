@@ -9,7 +9,7 @@ package body Ixgbe_Agent_Const is
   Fake_Ring: aliased Descriptor_Ring;
   Fake_Reg: aliased VolatileUInt32;
 
-  function Create_Agent(Input_Device: not null access Device; Output_Devs: in out Output_Devices) return Agent is
+  function Create_Agent(Input_Device: in out Device; Output_Devs: in out Output_Devices) return Agent is
     function Allocate_Packets is new Environment.Allocate(T => Packet_Data, R => Delimiter_Range, T_Array => Packet_Array);
     Packets: not null access Packet_Array := Allocate_Packets;
     function Get_Packet_Address is new Environment.Get_Physical_Address(T => Packet_Data);

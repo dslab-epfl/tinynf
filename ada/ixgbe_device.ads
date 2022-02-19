@@ -47,8 +47,8 @@ package Ixgbe_Device is
 
   function Init_Device(Addr: in Pci_Address) return Device;
   procedure Set_Promiscuous(Dev: in out Device);
-  function Set_Input(Dev: not null access Device; Ring: not null access Descriptor_Ring) return Register_Access;
-  function Add_Output(Dev: not null access Device; Ring: not null access Descriptor_Ring; Head: not null access VolatileUInt32) return Register_Access;
+  function Set_Input(Dev: in out Device; Ring: not null access Descriptor_Ring) return Register_Access;
+  function Add_Output(Dev: in out Device; Ring: not null access Descriptor_Ring; Head: not null access VolatileUInt32) return Register_Access;
 
 private
   function After_Timeout(Timeout: Duration; Cleared: Boolean; Buffer: access Device_Buffer; Reg: in Interfaces.Unsigned_32; Field: in Interfaces.Unsigned_32) return Boolean;

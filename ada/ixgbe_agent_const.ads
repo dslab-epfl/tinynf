@@ -30,9 +30,10 @@ package Ixgbe_Agent_Const is
     Process_Delimiter: Delimiter_Range;
   end record;
 
-  type Output_Devices is array(Outputs_Range) of not null access Device;
-  function Create_Agent(Input_Device: not null access Device; Output_Devs: in out Output_Devices) return Agent;
+  type Output_Devices is array(Outputs_Range) of Device;
+  function Create_Agent(Input_Device: in out Device; Output_Devs: in out Output_Devices) return Agent;
   procedure Run(This: in out Agent;
-                Proc: in Processor);
+                Proc: in Processor)
+       with Inline_Always; -- to mimic C "static inline"
 
 end Ixgbe_Agent_Const;
