@@ -5,7 +5,8 @@ with Ada.Unchecked_Conversion;
 with Environment;
 
 package body Ixgbe_Agent is
-  -- default value for arrays of non-null accesses
+  -- default values for arrays of non-null accesses
+  Fake_Head: aliased Transmit_Head;
   Fake_Ring: aliased Descriptor_Ring;
   Fake_Reg: aliased VolatileUInt32;
 
@@ -20,17 +21,18 @@ package body Ixgbe_Agent is
     Rings: Descriptor_Ring_Array := Rings_Sized;
     function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
 
-    subtype THA_Range is Outputs_Range range 0 .. Output_Devs'Length - 1;
-    subtype THA_Sized is Transmit_Head_Array(THA_Range);
-    function Allocate_Heads is new Environment.Allocate(T => Transmit_Head, R => THA_Range, T_Array => THA_Sized);
-    Transmit_Heads_Sized: not null access THA_Sized := Allocate_Heads;
-    Transmit_Heads: not null access Transmit_Head_Array := Transmit_Heads_Sized;
+    -- this is slightly messy; we convert from access-of-array to array-of-access
+    type THA_Range is new Natural range 0 .. Output_Devs'Length - 1;
+    type Transmit_Head_Array is array(THA_Range) of aliased Transmit_Head;
+    function Allocate_Heads is new Environment.Allocate(T => Transmit_Head, R => THA_Range, T_Array => Transmit_Head_Array);
+    All_Heads: not null access Transmit_Head_Array := Allocate_Heads;
+    Transmit_Heads: Transmit_Head_Access_Array(0 .. Output_Devs'Length - 1) := (others => Fake_Head'Access);
 
     subtype TTA_Sized is Transmit_Tail_Array(0 .. Output_Devs'Length - 1);
     Transmit_Tails_Sized: TTA_Sized := (others => Fake_Reg'Access);
     Transmit_Tails: Transmit_Tail_Array := Transmit_Tails_Sized;
 
-    Outputs: Packet_Outputs := (others => Packet_Length(0));
+    Outputs: Packet_Outputs(0 .. Output_Devs'Length - 1) := (others => Packet_Length(0));
   begin
     -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
 
@@ -41,15 +43,19 @@ package body Ixgbe_Agent is
       end loop;
     end loop;
 
+    for N in Transmit_Heads'Range loop
+      Transmit_Heads(N) := All_Heads(THA_Range(N))'Access;
+    end loop;
+
     for N in Transmit_Tails'Range loop
-      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devs(N), Rings(N), Transmit_Heads(N)'Access);
+      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devs(N), Rings(N), Transmit_Heads(N));
     end loop;
 
     return (Outputs_Max => Output_Devs'Length - 1,
             Packets => Packets.all'Unchecked_Access,
             Rings => Rings,
-            Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(Outputs_Range'First)),
-            Transmit_Heads => Transmit_Heads.all'Unchecked_Access,
+            Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(0)),
+            Transmit_Heads => Transmit_Heads,
             Transmit_Tails => Transmit_Tails,
             Outputs => Outputs,
             Process_Delimiter => 0);
@@ -83,7 +89,8 @@ package body Ixgbe_Agent is
   begin
     N := 0;
     while N < Flush_Period loop
-      Receive_Metadata := From_Little(This.Rings(Outputs_Range'First)(This.Process_Delimiter).Metadata);
+if This.Outputs_Max < 0 then return; end if;
+      Receive_Metadata := From_Little(This.Rings(This.Rings'First)(This.Process_Delimiter).Metadata);
       exit when not Meta_To_Read(Receive_Metadata).DescriptorDone;
 
       Length := Meta_To_Read(Receive_Metadata).Length;
@@ -91,7 +98,7 @@ package body Ixgbe_Agent is
 
       RS_Bit := (if (This.Process_Delimiter mod Recycle_Period) = (Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
 
-      for M in 0 .. This.Outputs_Max loop
+      for M in This.Rings'Range loop --0 .. This.Outputs_Max loop
         This.Rings(M)(This.Process_Delimiter).Metadata := To_Little(Interfaces.Unsigned_64(This.Outputs(M)) or RS_Bit or 16#00_00_00_00_03_00_00_00#);
         This.Outputs(M) := 0;
       end loop;
@@ -101,8 +108,8 @@ package body Ixgbe_Agent is
       if RS_Bit /= 0 then
         Earliest_Transmit_Head := Interfaces.Unsigned_32(This.Process_Delimiter);
         Min_Diff := Interfaces.Unsigned_64'Last;
-        for H of This.Transmit_Heads.all loop
-          Head := From_Little(H.Value);
+        for H of This.Transmit_Heads loop
+          Head := From_Little(H.all.Value);
           Diff := Interfaces.Unsigned_64(Head) - Interfaces.Unsigned_64(This.Process_Delimiter);
           if Diff <= Min_Diff then
             Earliest_Transmit_Head := Head;

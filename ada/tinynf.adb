@@ -30,8 +30,8 @@ begin
 
     if Mode = 0 then
       declare
-        Outs0: Ixgbe_Agent.Output_Devices := (0 => Dev1);
-        Outs1: Ixgbe_Agent.Output_Devices := (0 => Dev0);
+        Outs0: Ixgbe_Agent.Output_Devices(0..0) := (0 => Dev1);
+        Outs1: Ixgbe_Agent.Output_Devices(0..0) := (0 => Dev0);
         Agent0: Ixgbe_Agent.Agent := Ixgbe_Agent.Create_Agent(Dev0, Outs0);
         Agent1: Ixgbe_Agent.Agent := Ixgbe_Agent.Create_Agent(Dev1, Outs1);
       begin

@@ -76,7 +76,7 @@ def bench(path, name, extra_env):
 
 
 cpu_low_power()
-bench('../c', 'C', {})
+#bench('../c', 'C', {})
 #bench('../c', 'C, const', {'TN_MODE': '1'})
 #bench('../c', 'C, queues', {'TN_MODE': '2'})
 #bench('../csharp', 'C#, JIT', {'CSHARP_MODE': 'safe'})
@@ -85,6 +85,6 @@ bench('../c', 'C', {})
 #bench('../csharp', 'C# extended, AOT', {'CSHARP_MODE': 'extended', 'CSHARP_AOT': 'y'})
 #bench('../rust', 'Rust', {})
 #bench('../rust', 'Rust, const generics', {'TN_MODE': '1'})
-#bench('../ada', 'Ada', {})
+bench('../ada', 'Ada', {})
 #bench('../ada', 'Ada, const generics', {'TN_MODE': '1'})
 cpu_full_power()
