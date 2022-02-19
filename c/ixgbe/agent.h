@@ -131,7 +131,7 @@ static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* ha
 				}
 			}
 
-			reg_write_raw(agent->receive_tail_addr, earliest_transmit_head % IXGBE_RING_SIZE); // TODO is this modulo needed at all?
+			reg_write_raw(agent->receive_tail_addr, earliest_transmit_head);
 		}
 	}
 	if (p != 0) {

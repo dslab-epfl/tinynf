@@ -74,7 +74,7 @@ namespace TinyNF.Ixgbe
                     _outputs[(byte)b] = 0;
                 }
 
-                _processDelimiter++;
+                _processDelimiter++; // modulo implicit since it's a byte
 
                 if (rsBit != 0)
                 {
@@ -91,7 +91,7 @@ namespace TinyNF.Ixgbe
                         }
                     }
 
-                    Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle((earliestTransmitHead - 1) % DriverConstants.RingSize));
+                    Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle(earliestTransmitHead));
                 }
             }
             if (n != 0)

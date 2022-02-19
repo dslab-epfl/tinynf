@@ -110,7 +110,7 @@ package body Ixgbe_Agent is
           end if;
         end loop;
 
-        This.Receive_Tail.all := VolatileUInt32(To_Little(Earliest_Transmit_Head mod Ring_Size));
+        This.Receive_Tail.all := VolatileUInt32(To_Little(Earliest_Transmit_Head));
       end if;
 
       N := N + 1;

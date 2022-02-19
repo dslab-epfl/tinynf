@@ -100,7 +100,7 @@ package body Ixgbe_Agent_Const is
           end if;
         end loop;
 
-        This.Receive_Tail.all := VolatileUInt32(To_Little((Earliest_Transmit_Head - 1) mod Ring_Size));
+        This.Receive_Tail.all := VolatileUInt32(To_Little(Earliest_Transmit_Head));
       end if;
       N := N + 1;
     end loop;
