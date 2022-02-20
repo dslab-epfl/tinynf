@@ -5,8 +5,7 @@ use super::device::{DeviceInput, DeviceOutput, Descriptor, TransmitHead, RING_SI
 
 pub const MAX_OUTPUTS: usize = 8;
 
-// TODO consistent types? (also for const)
-const FLUSH_PERIOD: usize = 8;
+const FLUSH_PERIOD: u8 = 8;
 const RECYCLE_PERIOD: u8 = 64;
 
 pub struct Agent<'a, 'b> {
@@ -66,7 +65,7 @@ impl Agent<'_, '_> {
     }
 
     pub fn run(&mut self, processor: fn(&mut PacketData, u16, &mut [u16; MAX_OUTPUTS])) {
-        let mut n: usize = 0;
+        let mut n: u8 = 0;
         while n < FLUSH_PERIOD {
             let receive_metadata = u64::from_le(volatile::read(&self.first_ring[self.process_delimiter as usize].metadata));
             if (receive_metadata & (1 << 32)) == 0 {

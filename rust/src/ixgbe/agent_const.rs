@@ -3,7 +3,7 @@ use crate::volatile;
 
 use super::device::{Descriptor, DeviceInput, DeviceOutput, PacketData, TransmitHead, RING_SIZE};
 
-const FLUSH_PERIOD: usize = 8;
+const FLUSH_PERIOD: u8 = 8;
 const RECYCLE_PERIOD: u8 = 64;
 
 pub struct AgentConst<'a, 'b, const OUTPUTS: usize> {
@@ -55,7 +55,7 @@ impl<'a, 'b, const OUTPUTS: usize> AgentConst<'a, 'b, OUTPUTS> {
     }
 
     pub fn run(&mut self, processor: fn(&mut PacketData, u16, &mut [u16; OUTPUTS])) {
-        let mut n: usize = 0;
+        let mut n: u8 = 0;
         while n < FLUSH_PERIOD {
             let receive_metadata = u64::from_le(volatile::read(&self.rings[0][self.process_delimiter as usize].metadata));
             if (receive_metadata & (1 << 32)) == 0 {
