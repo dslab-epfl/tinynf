@@ -54,6 +54,7 @@ impl<'a, 'b, const OUTPUTS: usize> AgentConst<'a, 'b, OUTPUTS> {
         }
     }
 
+    #[inline(always)]
     pub fn run(&mut self, processor: fn(&mut PacketData, u16, &mut [u16; OUTPUTS])) {
         let mut n: u8 = 0;
         while n < FLUSH_PERIOD {

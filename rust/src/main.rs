@@ -46,6 +46,7 @@ fn proc<const N: usize>(data: &mut PacketData, length: u16, output_lengths: &mut
     output_lengths[0] = length;
 }
 
+#[inline(never)]
 fn run_const<const N: usize>(agent0: &mut AgentConst<'_, '_, N>, agent1: &mut AgentConst<'_, '_, N>) {
     loop {
         agent0.run(proc::<N>);
@@ -53,6 +54,7 @@ fn run_const<const N: usize>(agent0: &mut AgentConst<'_, '_, N>, agent1: &mut Ag
     }
 }
 
+#[inline(never)]
 fn run(agent0: &mut Agent<'_, '_>, agent1: &mut Agent<'_, '_>) {
     loop {
         agent0.run(proc::<{ agent::MAX_OUTPUTS }>);
