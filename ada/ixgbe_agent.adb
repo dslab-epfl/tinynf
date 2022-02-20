@@ -89,7 +89,6 @@ package body Ixgbe_Agent is
   begin
     N := 0;
     while N < Flush_Period loop
-if This.Outputs_Max < 0 then return; end if;
       Receive_Metadata := From_Little(This.Rings(This.Rings'First)(This.Process_Delimiter).Metadata);
       exit when not Meta_To_Read(Receive_Metadata).DescriptorDone;
 
