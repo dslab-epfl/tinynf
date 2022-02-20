@@ -65,6 +65,4 @@ endif
 
 .PHONY: tn_default
 tn_default:
-	@$(TN_CC) $(TN_CFLAGS) $(TN_FILES) -c
-	@$(TN_CC) $(subst .c,.o,$(notdir $(TN_FILES))) $(TN_CFLAGS) -o $(TN_APP)
-	@rm -f $(subst .c,.o,$(notdir $(TN_FILES)))
+	$(TN_CC) $(TN_CFLAGS) $(TN_FILES) -o $(TN_APP)
