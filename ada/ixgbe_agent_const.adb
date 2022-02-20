@@ -5,7 +5,8 @@ with Ada.Unchecked_Conversion;
 with Environment;
 
 package body Ixgbe_Agent_Const is
-  -- default value for arrays of non-null accesses
+  -- default values for arrays of non-null accesses
+  Fake_Head: aliased Transmit_Head;
   Fake_Ring: aliased Descriptor_Ring;
   Fake_Reg: aliased VolatileUInt32;
 
@@ -17,8 +18,11 @@ package body Ixgbe_Agent_Const is
     Rings: Descriptor_Ring_Array := (others => Fake_Ring'Access);
     function Allocate_Ring is new Environment.Allocate(T => Descriptor, R => Delimiter_Range, T_Array => Descriptor_Ring);
 
+    -- this is slightly messy; we convert from access-of-array to array-of-access
+    type Transmit_Head_Array is array(Outputs_Range) of aliased Transmit_Head;
     function Allocate_Heads is new Environment.Allocate(T => Transmit_Head, R => Outputs_Range, T_Array => Transmit_Head_Array);
-    Transmit_Heads: not null access Transmit_Head_Array := Allocate_Heads;
+    All_Heads: not null access Transmit_Head_Array := Allocate_Heads;
+    Transmit_Heads: Transmit_Head_Access_Array := (others => Fake_Head'Access);
 
     Transmit_Tails: Transmit_Tail_Array := (others => Fake_Reg'Unchecked_Access);
 
@@ -32,14 +36,18 @@ package body Ixgbe_Agent_Const is
     end loop;
 
     for N in Outputs_Range loop
-      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devs(N), Rings(N), Transmit_Heads(N)'Access);
+      Transmit_Heads(N) := All_Heads(N)'Access;
+    end loop;
+
+    for N in Outputs_Range loop
+      Transmit_Tails(N) := Ixgbe_Device.Add_Output(Output_Devs(N), Rings(N), Transmit_Heads(N));
     end loop;
 
     -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
     return (Packets => Packets.all'Unchecked_Access,
             Rings => Rings,
             Receive_Tail => Ixgbe_Device.Set_Input(Input_Device, Rings(Outputs_Range'First)),
-            Transmit_Heads => Transmit_Heads.all'Unchecked_Access,
+            Transmit_Heads => Transmit_Heads,
             Transmit_Tails => Transmit_Tails,
             Outputs => Outputs,
             Process_Delimiter => 0);
@@ -91,7 +99,7 @@ package body Ixgbe_Agent_Const is
       if RS_Bit /= 0 then
         Earliest_Transmit_Head := Interfaces.Unsigned_32(This.Process_Delimiter);
         Min_Diff := Interfaces.Unsigned_64'Last;
-        for H of This.Transmit_Heads.all loop
+        for H of This.Transmit_Heads loop
           Head := From_Little(H.Value);
           Diff := Interfaces.Unsigned_64(Head) - Interfaces.Unsigned_64(This.Process_Delimiter);
           if Diff <= Min_Diff then
