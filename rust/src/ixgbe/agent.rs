@@ -3,7 +3,7 @@ use crate::volatile;
 
 use super::device::{DeviceInput, DeviceOutput, Descriptor, TransmitHead, RING_SIZE, PacketData};
 
-pub const MAX_OUTPUTS: usize = 8;
+pub const MAX_OUTPUTS: usize = 256; // so that an u8 can index into it without bounds checks
 
 const FLUSH_PERIOD: u8 = 8;
 const RECYCLE_PERIOD: u8 = 64;
@@ -21,7 +21,7 @@ pub struct Agent<'a, 'b> {
 
 impl Agent<'_, '_> {
     pub fn create<'a, 'b>(env: &'b impl Environment<'b>, input: &'a mut DeviceInput<'a>, outputs: &'a mut [&'a mut DeviceOutput<'a>]) -> Agent<'a, 'b> {
-        if outputs.len() > MAX_OUTPUTS {
+        if outputs.len() >= MAX_OUTPUTS {
             panic!("Too many outputs");
         }
 
@@ -90,7 +90,6 @@ impl Agent<'_, '_> {
             );
             self.outputs[0] = 0;
             let mut o: u8 = 1;
-            // I tried an explicit for n in 0..self.other_rings.len() but there was still a bounds check :/
             for r in &mut self.other_rings {
                 volatile::write(
                     &mut r[self.process_delimiter as usize].metadata,
