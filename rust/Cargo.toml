@@ -7,9 +7,9 @@ edition = "2021"
 constgenerics = []
 
 [dependencies]
-libc = "0.2.97"
+libc = "0.2.119"
 memmap = "0.7.0"
-x86_64 = { version = "0.14.3", default-features = false, features = ["instructions", "external_asm"] }
+x86_64 = { version = "0.14.8", default-features = false, features = ["instructions", "external_asm"] }
 non-empty-vec = "0.2.3"
 
 [profile.release]
