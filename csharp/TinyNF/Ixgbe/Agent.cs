@@ -1,12 +1,21 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using TinyNF.Environment;
 using TinyNF.Unsafe;
 
 namespace TinyNF.Ixgbe
 {
-    public ref struct Agent
+    internal interface IPacketProcessor
     {
+        void Process(ref PacketData data, ushort length, Array256<ushort> outputs);
+    }
+
+    internal ref struct Agent
+    {
+        private const uint FlushPeriod = 8;
+        private const uint RecyclePeriod = 64;
+
         private static uint _fakeTail; // default value when initiailizing TransmitTails
 
         private readonly Array256<PacketData> _packets;
@@ -49,10 +58,11 @@ namespace TinyNF.Ixgbe
         // Allow the JIT to inline the processor by making it a struct with a method instead of a delegate.
         // The JIT doesn't inline delegates, as far as I know; however, it will generate a specialized version
         // of the method per value type (and one shared version for all reference types), at which point it can inline the ""virtual"" call.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Run<T>(T processor) where T : struct, IPacketProcessor
         {
             nint n;
-            for (n = 0; n < DriverConstants.FlushPeriod; n++)
+            for (n = 0; n < FlushPeriod; n++)
             {
                 ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _receiveRing[_processDelimiter].Metadata));
                 if ((receiveMetadata & (1ul << 32)) == 0)
@@ -63,10 +73,10 @@ namespace TinyNF.Ixgbe
                 ushort length = (ushort)receiveMetadata;
                 processor.Process(ref _packets[_processDelimiter], length, _outputs);
 
-                ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
+                ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
 
                 // not clear why we have to copy _transmitRings here (its only member is an array), but this is necessary for the bounds check to be eliminated
-                // using a byte as the index likewise doesn't lead to the bounds check being eliminated
+                // TODO: re-check this with latest .net/c#
                 var _transmitRings = this._transmitRings;
                 for (int b = 0; b < _transmitRings.Length; b++)
                 {

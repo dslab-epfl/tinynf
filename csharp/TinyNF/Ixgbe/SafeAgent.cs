@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using TinyNF.Environment;
 
@@ -7,8 +8,16 @@ using TinyNF.Environment;
 
 namespace TinyNF.Ixgbe
 {
-    public ref struct SafeAgent
+    internal interface ISafePacketProcessor
     {
+        void Process(ref PacketData data, ushort length, Span<ushort> outputs);
+    }
+
+    internal ref struct SafeAgent
+    {
+        private const uint FlushPeriod = 8;
+        private const uint RecyclePeriod = 64;
+
         private readonly Span<PacketData> _packets;
         private readonly Span<Descriptor> _receiveRing;
         private readonly Memory<Descriptor>[] _transmitRings;
@@ -24,12 +33,12 @@ namespace TinyNF.Ixgbe
             _processDelimiter = 0;
             _outputs = env.Allocate<ushort>((uint)outputDevices.Length).Span;
 
-            _packets = env.Allocate<PacketData>(DriverConstants.RingSize).Span;
+            _packets = env.Allocate<PacketData>(Device.RingSize).Span;
 
             _transmitRings = new Memory<Descriptor>[outputDevices.Length];
             for (int n = 0; n < _transmitRings.Length; n++)
             {
-                _transmitRings[n] = env.Allocate<Descriptor>(DriverConstants.RingSize);
+                _transmitRings[n] = env.Allocate<Descriptor>(Device.RingSize);
                 for (int m = 0; m < _transmitRings[n].Length; m++)
                 {
                     _transmitRings[n].Span[m].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[m]));
@@ -47,10 +56,11 @@ namespace TinyNF.Ixgbe
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Run<T>(T processor) where T : struct, ISafePacketProcessor
         {
             nint n;
-            for (n = 0; n < DriverConstants.FlushPeriod; n++)
+            for (n = 0; n < FlushPeriod; n++)
             {
                 ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _receiveRing[_processDelimiter].Metadata));
                 if ((receiveMetadata & (1ul << 32)) == 0)
@@ -61,7 +71,7 @@ namespace TinyNF.Ixgbe
                 ushort length = (ushort)receiveMetadata;
                 processor.Process(ref _packets[_processDelimiter], length, _outputs);
 
-                ulong rsBit = ((_processDelimiter % DriverConstants.RecyclePeriod) == (DriverConstants.RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
+                ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
                 var transmitRings = _transmitRings;
                 for (int r = 0; r < transmitRings.Length; r++)
                 {
@@ -86,7 +96,7 @@ namespace TinyNF.Ixgbe
                         }
                     }
 
-                    Volatile.Write(ref _receiveTail[0], Endianness.ToLittle((earliestTransmitHead - 1) % DriverConstants.RingSize));
+                    Volatile.Write(ref _receiveTail[0], Endianness.ToLittle(earliestTransmitHead));
                 }
             }
             if (n != 0)

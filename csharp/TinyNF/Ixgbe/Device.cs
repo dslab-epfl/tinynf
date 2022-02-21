@@ -1,10 +1,63 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using TinyNF.Environment;
 
 namespace TinyNF.Ixgbe
 {
-    public sealed class Device
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Descriptor
     {
+        public ulong Buffer;
+        public ulong Metadata;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Size = 64)]
+    internal struct TransmitHead
+    {
+        public uint Value;
+    }
+
+    // This struct mimics a safe fixed-size buffer, planned for a future C# version.
+    // See https://github.com/dotnet/csharplang/blob/main/proposals/fixed-sized-buffers.md
+    // and https://github.com/dotnet/csharplang/issues/1314
+    [StructLayout(LayoutKind.Explicit, Size = Size)]
+    internal struct PacketData
+    {
+        public const int Size = 2048;
+
+        public byte this[int index]
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return Volatile.Read(ref MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index]);
+            }
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set
+            {
+                Volatile.Write(ref MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index], value);
+            }
+        }
+    }
+
+    internal sealed class Device
+    {
+        public const uint RingSize = 256;
+
+
+        private const uint FiveTupleFiltersCount = 128u;
+        private const uint InterruptRegistersCount = 3u;
+        private const uint MulticastTableArraySize = 4u * 1024u;
+        private const uint PoolsCount = 64u;
+        private const uint ReceiveAddressesCount = 128u;
+        private const uint ReceiveQueuesCount = 128u;
+        private const uint TransmitQueuesCount = 128u;
+        private const uint TrafficClassesCount = 8u;
+        private const uint UnicastTableArraySize = 4u * 1024u;
+
+
         private readonly Memory<uint> _buffer;
         private bool _rxEnabled;
         private bool _txEnabled;
@@ -58,10 +111,9 @@ namespace TinyNF.Ixgbe
             ulong devPhysAddr = (((ulong)pciBar0High) << 32) | (pciBar0Low & ~(ulong)0b1111);
             _buffer = env.MapPhysicalMemory<uint>(devPhysAddr, 128 * 1024 / sizeof(uint));
 
-            //            Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", pciAddress.Bus, pciAddress.Device, pciAddress.Function, devPhysAddr);
+            // Console.WriteLine("Device {0:X}:{1:X}.{2:X} with BAR {3} mapped", pciAddress.Bus, pciAddress.Device, pciAddress.Function, devPhysAddr);
 
-
-            for (byte queue = 0; queue < DeviceLimits.ReceiveQueuesCount; queue++)
+            for (byte queue = 0; queue < ReceiveQueuesCount; queue++)
             {
                 Regs.ClearField(_buffer, Regs.RXDCTL(queue), Regs.RXDCTL_.ENABLE);
                 if (AfterTimeout(env, TimeSpan.FromSeconds(1), cleared: false, Regs.RXDCTL(queue), Regs.RXDCTL_.ENABLE))
@@ -98,7 +150,7 @@ namespace TinyNF.Ixgbe
             env.Sleep(TimeSpan.FromMilliseconds(10));
 
             Regs.Write(_buffer, Regs.EIMC(0), 0x7FFFFFFFu);
-            for (byte n = 1; n < DeviceLimits.InterruptRegistersCount; n++)
+            for (byte n = 1; n < InterruptRegistersCount; n++)
             {
                 Regs.Write(_buffer, Regs.EIMC(n), 0xFFFFFFFFu);
             }
@@ -120,33 +172,33 @@ namespace TinyNF.Ixgbe
                 throw new Exception("DMA init timed out");
             }
 
-            for (uint n = 0; n < DeviceLimits.UnicastTableArraySize / 32; n++)
+            for (uint n = 0; n < UnicastTableArraySize / 32; n++)
             {
                 Regs.Clear(_buffer, Regs.PFUTA(n));
             }
 
-            for (byte n = 0; n < DeviceLimits.PoolsCount; n++)
+            for (byte n = 0; n < PoolsCount; n++)
             {
                 Regs.Clear(_buffer, Regs.PFVLVF(n));
             }
 
             Regs.Write(_buffer, Regs.MPSAR(0), 1);
-            for (ushort n = 1; n < DeviceLimits.ReceiveAddressesCount * 2; n++)
+            for (ushort n = 1; n < ReceiveAddressesCount * 2; n++)
             {
                 Regs.Clear(_buffer, Regs.MPSAR(n));
             }
 
-            for (byte n = 0; n < DeviceLimits.PoolsCount * 2; n++)
+            for (byte n = 0; n < PoolsCount * 2; n++)
             {
                 Regs.Clear(_buffer, Regs.PFVLVFB(n));
             }
 
-            for (uint n = 0; n < DeviceLimits.MulticastTableArraySize / 32; n++)
+            for (uint n = 0; n < MulticastTableArraySize / 32; n++)
             {
                 Regs.Clear(_buffer, Regs.MTA(n));
             }
 
-            for (byte n = 0; n < DeviceLimits.FiveTupleFiltersCount; n++)
+            for (byte n = 0; n < FiveTupleFiltersCount; n++)
             {
                 Regs.ClearField(_buffer, Regs.FTQF(n), Regs.FTQF_.QUEUE_ENABLE);
             }
@@ -159,7 +211,7 @@ namespace TinyNF.Ixgbe
 
             Regs.SetField(_buffer, Regs.RDRXCTL, Regs.RDRXCTL_.FCOE_WRFIX);
 
-            for (byte n = 1; n < DeviceLimits.TrafficClassesCount; n++)
+            for (byte n = 1; n < TrafficClassesCount; n++)
             {
                 Regs.Clear(_buffer, Regs.RXPBSIZE(n));
             }
@@ -168,7 +220,7 @@ namespace TinyNF.Ixgbe
 
             Regs.WriteField(_buffer, Regs.FCCFG, Regs.FCCFG_.TFCE, 1);
 
-            for (byte n = 0; n < DeviceLimits.TransmitQueuesCount; n++)
+            for (byte n = 0; n < TransmitQueuesCount; n++)
             {
                 Regs.Write(_buffer, Regs.RTTDQSEL, n);
                 Regs.Clear(_buffer, Regs.RTTDT1C);
@@ -176,7 +228,7 @@ namespace TinyNF.Ixgbe
 
             Regs.SetField(_buffer, Regs.RTTDCS, Regs.RTTDCS_.ARBDIS);
 
-            for (byte n = 1; n < DeviceLimits.TrafficClassesCount; n++)
+            for (byte n = 1; n < TrafficClassesCount; n++)
             {
                 Regs.Clear(_buffer, Regs.TXPBSIZE(n));
             }
@@ -218,7 +270,7 @@ namespace TinyNF.Ixgbe
             Regs.Write(_buffer, Regs.RDBAH(queueIndex), (uint)(ringPhysAddr >> 32));
             Regs.Write(_buffer, Regs.RDBAL(queueIndex), (uint)ringPhysAddr);
 
-            Regs.Write(_buffer, Regs.RDLEN(queueIndex), DriverConstants.RingSize * 16u);
+            Regs.Write(_buffer, Regs.RDLEN(queueIndex), RingSize * 16u);
 
             Regs.WriteField(_buffer, Regs.SRRCTL(queueIndex), Regs.SRRCTL_.BSIZEPACKET, PacketData.Size / 1024u);
 
@@ -230,7 +282,7 @@ namespace TinyNF.Ixgbe
                 throw new Exception("RXDCTL.ENABLE did not set, cannot enable queue");
             }
 
-            Regs.Write(_buffer, Regs.RDT(queueIndex), DriverConstants.RingSize - 1u);
+            Regs.Write(_buffer, Regs.RDT(queueIndex), RingSize - 1u);
 
             if (!_rxEnabled)
             {
@@ -252,20 +304,20 @@ namespace TinyNF.Ixgbe
 
             Regs.ClearField(_buffer, Regs.DCARXCTRL(queueIndex), Regs.DCARXCTRL_.UNKNOWN);
 
-            return _buffer.Slice((int)Regs.RDT(queueIndex) / sizeof(uint), 1);
+            return _buffer.Slice((int)Regs.RDT(queueIndex), 1);
         }
 
         internal Memory<uint> AddOutput(IEnvironment env, Span<Descriptor> ring, ref uint transmitHead)
         {
             uint queueIndex = 0;
-            for (; queueIndex < DeviceLimits.TransmitQueuesCount; queueIndex++)
+            for (; queueIndex < TransmitQueuesCount; queueIndex++)
             {
                 if (Regs.IsFieldCleared(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.ENABLE))
                 {
                     break;
                 }
             }
-            if (queueIndex == DeviceLimits.TransmitQueuesCount)
+            if (queueIndex == TransmitQueuesCount)
             {
                 throw new Exception("No available transmit queues");
             }
@@ -275,7 +327,7 @@ namespace TinyNF.Ixgbe
             Regs.Write(_buffer, Regs.TDBAH(queueIndex), (uint)(ringPhysAddr >> 32));
             Regs.Write(_buffer, Regs.TDBAL(queueIndex), (uint)ringPhysAddr);
 
-            Regs.Write(_buffer, Regs.TDLEN(queueIndex), DriverConstants.RingSize * 16u);
+            Regs.Write(_buffer, Regs.TDLEN(queueIndex), RingSize * 16u);
 
             Regs.WriteField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.PTHRESH, 60);
             Regs.WriteField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.HTHRESH, 4);
@@ -304,7 +356,8 @@ namespace TinyNF.Ixgbe
                 throw new Exception("TXDCTL.ENABLE did not set, cannot enable queue");
             }
 
-            return _buffer.Slice((int)Regs.TDT(queueIndex) / sizeof(uint), 1);
+
+            return _buffer.Slice((int)Regs.TDT(queueIndex), 1);
         }
     }
 }

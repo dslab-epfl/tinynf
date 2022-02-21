@@ -5,25 +5,6 @@ namespace TinyNF.Ixgbe
 {
     internal static class PciRegs
     {
-        public static uint ReadField(IEnvironment environment, PciAddress address, byte reg, uint field)
-        {
-            uint value = environment.PciRead(address, reg);
-            int shift = BitOperations.TrailingZeroCount(field);
-            return (value & field) >> shift;
-        }
-
-        public static bool IsFieldCleared(IEnvironment environment, PciAddress address, byte reg, uint field)
-        {
-            return ReadField(environment, address, reg, field) == 0;
-        }
-
-        public static void SetField(IEnvironment environment, PciAddress address, byte reg, uint field)
-        {
-            uint oldValue = environment.PciRead(address, reg);
-            uint newValue = oldValue | field;
-            environment.PciWrite(address, reg, newValue);
-        }
-
         public static byte BAR0_LOW => 0x10;
         public static byte BAR0_HIGH => 0x14;
 
@@ -47,6 +28,26 @@ namespace TinyNF.Ixgbe
         public static class PMCSR_
         {
             public const uint POWER_STATE = 0b0011;
+        }
+
+
+        public static uint ReadField(IEnvironment environment, PciAddress address, byte reg, uint field)
+        {
+            uint value = environment.PciRead(address, reg);
+            int shift = BitOperations.TrailingZeroCount(field);
+            return (value & field) >> shift;
+        }
+
+        public static bool IsFieldCleared(IEnvironment environment, PciAddress address, byte reg, uint field)
+        {
+            return ReadField(environment, address, reg, field) == 0;
+        }
+
+        public static void SetField(IEnvironment environment, PciAddress address, byte reg, uint field)
+        {
+            uint oldValue = environment.PciRead(address, reg);
+            uint newValue = oldValue | field;
+            environment.PciWrite(address, reg, newValue);
         }
     }
 }
