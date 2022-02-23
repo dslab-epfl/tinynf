@@ -1,8 +1,14 @@
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-CSHARP_MODE ?= extended
+TN_CSHARP_MODE ?= extended
 
-ifdef CSHARP_AOT
+ifdef TN_CSHARP_DEBUG
+CONFIG=Debug
+else
+CONFIG=Release
+endif
+
+ifdef TN_CSHARP_AOT
 BUILD_ARGS := -p:UseAOT=y
 else
 BUILD_ARGS := #nothing
@@ -10,10 +16,10 @@ endif
 
 build:
 	@make -C $(THIS_DIR)/cwrapper --no-print-directory
-	@dotnet publish -r linux-x64 -c Release $(BUILD_ARGS) $(THIS_DIR)
+	@dotnet publish -r linux-x64 -c $(CONFIG) --self-contained $(BUILD_ARGS) $(THIS_DIR)
 
 run:
-	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/TinyNF/bin/Release/net6.0/linux-x64/publish/TinyNF $(TN_ARGS) $(CSHARP_MODE)
+	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/TinyNF/bin/Release/net6.0/linux-x64/publish/TinyNF $(TN_ARGS) $(TN_CSHARP_MODE)
 
 print-nf-name:
 	@echo TinyNF

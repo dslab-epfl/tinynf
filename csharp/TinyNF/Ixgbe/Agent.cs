@@ -76,7 +76,6 @@ namespace TinyNF.Ixgbe
                 ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
 
                 // not clear why we have to copy _transmitRings here (its only member is an array), but this is necessary for the bounds check to be eliminated
-                // TODO: re-check this with latest .net/c#
                 var _transmitRings = this._transmitRings;
                 for (int b = 0; b < _transmitRings.Length; b++)
                 {
