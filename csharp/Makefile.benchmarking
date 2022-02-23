@@ -14,9 +14,15 @@ else
 BUILD_ARGS := #nothing
 endif
 
+ifdef TN_DOTNET_PATH
+DOTNET=$(TN_DOTNET_PATH)/dotnet
+else
+DOTNET=dotnet
+endif
+
 build:
 	@make -C $(THIS_DIR)/cwrapper --no-print-directory
-	@dotnet publish -r linux-x64 -c $(CONFIG) --self-contained $(BUILD_ARGS) $(THIS_DIR)
+	@$(DOTNET) publish -r linux-x64 -c $(CONFIG) --self-contained $(BUILD_ARGS) $(THIS_DIR)
 
 run:
 	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/TinyNF/bin/Release/net6.0/linux-x64/publish/TinyNF $(TN_ARGS) $(TN_CSHARP_MODE)
