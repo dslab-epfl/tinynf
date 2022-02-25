@@ -10,7 +10,7 @@ namespace TinyNF.Ixgbe
 {
     internal interface ISafePacketProcessor
     {
-        void Process(ref PacketData data, ushort length, Span<ushort> outputs);
+        void Process(ref PacketData data, ulong length, Span<ulong> outputs);
     }
 
     internal ref struct SafeAgent
@@ -24,14 +24,14 @@ namespace TinyNF.Ixgbe
         private readonly Span<uint> _receiveTail;
         private readonly Span<TransmitHead> _transmitHeads;
         private readonly Memory<uint>[] _transmitTails;
-        private readonly Span<ushort> _outputs;
+        private readonly Span<ulong> _outputs;
         private byte _processDelimiter;
 
 
         public SafeAgent(IEnvironment env, Device inputDevice, Device[] outputDevices)
         {
             _processDelimiter = 0;
-            _outputs = env.Allocate<ushort>((uint)outputDevices.Length).Span;
+            _outputs = env.Allocate<ulong>((uint)outputDevices.Length).Span;
 
             _packets = env.Allocate<PacketData>(Device.RingSize).Span;
 
@@ -68,7 +68,7 @@ namespace TinyNF.Ixgbe
                     break;
                 }
 
-                ushort length = (ushort)receiveMetadata;
+                ulong length = receiveMetadata & 0xFFFFu;
                 processor.Process(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;

@@ -32,12 +32,18 @@ namespace TinyNF.Ixgbe
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                return Volatile.Read(ref MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index]);
+                // We would like the following, which has bounds checks, because the compiler should be smart enough to remove them:
+                // return Volatile.Read(ref MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index]);
+                // But it currently does not; this depends on https://github.com/dotnet/runtime/pull/62864
+                // TODO: replace this once it's done
+                return Volatile.Read(ref System.Runtime.CompilerServices.Unsafe.Add(ref System.Runtime.CompilerServices.Unsafe.As<PacketData, byte>(ref this), index));
             }
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set
             {
-                Volatile.Write(ref MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index], value);
+                // TODO: same as above
+                // Volatile.Write(ref MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index], value);
+                Volatile.Write(ref System.Runtime.CompilerServices.Unsafe.Add(ref System.Runtime.CompilerServices.Unsafe.As<PacketData, byte>(ref this), index), value);
             }
         }
     }

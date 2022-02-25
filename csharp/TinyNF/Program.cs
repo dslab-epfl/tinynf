@@ -29,7 +29,7 @@ namespace TinyNF
         private struct Processor : IPacketProcessor
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void Process(ref PacketData data, ushort len, Array256<ushort> outputs)
+            public void Process(ref PacketData data, ulong len, Array256<ulong> outputs)
             {
                 HandleData(ref data);
                 outputs[0] = len;
@@ -39,7 +39,7 @@ namespace TinyNF
         private struct SafeProcessor : ISafePacketProcessor
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void Process(ref PacketData data, ushort len, Span<ushort> outputs)
+            public void Process(ref PacketData data, ulong len, Span<ulong> outputs)
             {
                 HandleData(ref data);
                 outputs[0] = len;

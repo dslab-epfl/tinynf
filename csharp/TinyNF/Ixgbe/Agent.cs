@@ -8,7 +8,7 @@ namespace TinyNF.Ixgbe
 {
     internal interface IPacketProcessor
     {
-        void Process(ref PacketData data, ushort length, Array256<ushort> outputs);
+        void Process(ref PacketData data, ulong length, Array256<ulong> outputs);
     }
 
     internal ref struct Agent
@@ -24,14 +24,14 @@ namespace TinyNF.Ixgbe
         private readonly Ref<uint> _receiveTail;
         private readonly Span<TransmitHead> _transmitHeads;
         private readonly RefArray<uint> _transmitTails;
-        private readonly Array256<ushort> _outputs; // trade off a tiny bit of unused space for no bounds checks
+        private readonly Array256<ulong> _outputs; // trade off a tiny bit of unused space for no bounds checks
         private byte _processDelimiter;
 
 
         public Agent(IEnvironment env, Device inputDevice, Device[] outputDevices)
         {
             _processDelimiter = 0;
-            _outputs = new Array256<ushort>(env.Allocate<ushort>);
+            _outputs = new Array256<ulong>(env.Allocate<ulong>);
 
             _packets = new Array256<PacketData>(env.Allocate<PacketData>);
 
@@ -70,7 +70,7 @@ namespace TinyNF.Ixgbe
                     break;
                 }
 
-                ushort length = (ushort)receiveMetadata;
+                ulong length = receiveMetadata & 0xFFFFu;
                 processor.Process(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
