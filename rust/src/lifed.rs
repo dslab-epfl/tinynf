@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::ptr;
 use std::ptr::NonNull;
 
@@ -123,28 +124,29 @@ impl<'a, T, const N: usize> Copy for LifedArray<'a, T, N> { }
 #[derive(Clone, Copy)]
 pub struct LifedSlice<'a, T> {
     ptr: NonNull<T>,
-    len: usize,
+    len: NonZeroUsize,
     _lifetime: PhantomData<&'a mut T>,
 }
 
 impl<'a, T> LifedSlice<'a, T> {
     pub fn new(src: &'a mut [T]) -> LifedSlice<'a, T> {
         let nonnull_src = NonNull::new(src.as_mut_ptr()).unwrap();
+        let nonzero_len = NonZeroUsize::new(src.len()).unwrap();
         LifedSlice {
             ptr: nonnull_src,
-            len: src.len(),
+            len: nonzero_len,
             _lifetime: PhantomData
         }
     }
 
     #[inline(always)]
     pub fn len(&self) -> usize {
-        self.len
+        self.len.get()
     }
 
     #[inline(always)]
     pub fn index(&self, index: usize) -> LifedPtr<'a, T> {
-        if index < self.len {
+        if index < self.len.get() {
             // Safe because we just checked the index (no >=0, it's unsigned) and the value must be valid for the lifetime 'a
             unsafe {
                 let ptr = self.ptr.as_ptr().offset(index as isize);
@@ -158,8 +160,16 @@ impl<'a, T> LifedSlice<'a, T> {
 
 impl<'a, T: Copy> LifedSlice<'a, T> {
     #[inline(always)]
+    pub fn first(&self) -> T {
+        // Safe because we know our length is >0, thus the pointer must be valid
+        unsafe {
+            *self.ptr.as_ptr()
+        }
+    }
+
+    #[inline(always)]
     pub fn get(&self, index: usize) -> T {
-        if index < self.len {
+        if index < self.len.get() {
             // Safe for the same reason as above
             unsafe {
                 *self.ptr.as_ptr().offset(index as isize)
@@ -171,7 +181,7 @@ impl<'a, T: Copy> LifedSlice<'a, T> {
 
     #[inline(always)]
     pub fn set(&self, index: usize, value: T) {
-        if index < self.len {
+        if index < self.len.get() {
             // Safe for the same reason as above
             unsafe {
                 *self.ptr.as_ptr().offset(index as isize) = value

@@ -11,9 +11,7 @@ const RECYCLE_PERIOD: u8 = 64;
 // OVERHEAD: each of these slices has the same length, but we can't state it in code
 pub struct Agent<'a> {
     packets: &'a mut [PacketData; RING_SIZE],
-    // OVERHEAD: trade 1 more field for a lack of bounds check for the shared ring
-    shared_ring: LifedArray<'a, Descriptor, { RING_SIZE }>,
-    all_rings: LifedSlice<'a, LifedArray<'a, Descriptor, { RING_SIZE }>>,
+    rings: LifedSlice<'a, LifedArray<'a, Descriptor, { RING_SIZE }>>,
     receive_tail: LifedPtr<'a, u32>,
     transmit_heads: LifedSlice<'a, TransmitHead>,
     transmit_tails: LifedSlice<'a, LifedPtr<'a, u32>>,
@@ -23,35 +21,38 @@ pub struct Agent<'a> {
 
 impl<'a> Agent<'a> {
     pub fn create(env: &impl Environment<'a>, input: &Device<'a>, outputs: &[&Device<'a>]) -> Agent<'a> {
+        // LifedSlice requires a nonzero length, allowing us to access the shared first ring without any checks
+        if outputs.len() == 0 {
+            panic!("Cannot have zero outputs");
+        }
         if outputs.len() >= MAX_OUTPUTS {
             panic!("Too many outputs");
         }
 
         let packets = env.allocate::<PacketData, { RING_SIZE }>();
 
-        let all_rings = env.allocate_slice::<LifedArray<'a, Descriptor, { RING_SIZE }>>(outputs.len());
+        let rings = env.allocate_slice::<LifedArray<'a, Descriptor, { RING_SIZE }>>(outputs.len());
         for r in 0..outputs.len() {
-            all_rings[r] = LifedArray::new(env.allocate::<Descriptor, { RING_SIZE }>());
+            rings[r] = LifedArray::new(env.allocate::<Descriptor, { RING_SIZE }>());
         }
         for n in 0..packets.len() {
             let packet_phys_addr = u64::to_le(env.get_physical_address(&mut packets[n as usize]) as u64);
             for r in 0..outputs.len() {
-                all_rings[r].index(n as usize).write_volatile_part(packet_phys_addr, |d| { &mut d.buffer });
+                rings[r].index(n as usize).write_volatile_part(packet_phys_addr, |d| { &mut d.buffer });
             }
         }
 
-        let receive_tail = input.add_input(env, all_rings[0].index(0));
+        let receive_tail = input.add_input(env, rings[0].index(0));
 
         let transmit_heads = LifedSlice::new(env.allocate_slice::<TransmitHead>(outputs.len()));
         let transmit_tails = LifedSlice::new(env.allocate_slice::<LifedPtr<'a, u32>>(outputs.len()));
         for n in 0..outputs.len() {
-            transmit_tails.set(n, outputs[n].add_output(env, all_rings[n].index(0), transmit_heads.index(n)));
+            transmit_tails.set(n, outputs[n].add_output(env, rings[n].index(0), transmit_heads.index(n)));
         }
 
         Agent {
             packets,
-            shared_ring: all_rings[0],
-            all_rings: LifedSlice::new(all_rings),
+            rings: LifedSlice::new(rings),
             receive_tail,
             transmit_heads,
             transmit_tails,
@@ -64,7 +65,7 @@ impl<'a> Agent<'a> {
     pub fn run(&mut self, processor: fn(&mut PacketData, u64, &mut [u64; MAX_OUTPUTS])) {
         let mut n: u8 = 0;
         while n < FLUSH_PERIOD {
-            let receive_metadata = u64::from_le(self.shared_ring.index(self.process_delimiter as usize).read_volatile_part(|d| { &d.metadata }));
+            let receive_metadata = u64::from_le(self.rings.first().index(self.process_delimiter as usize).read_volatile_part(|d| { &d.metadata }));
             if (receive_metadata & (1 << 32)) == 0 {
                 break;
             }
@@ -77,8 +78,8 @@ impl<'a> Agent<'a> {
             } else {
                 0
             };
-            for o in 0..self.all_rings.len() {
-                self.all_rings.get(o as usize).index(self.process_delimiter as usize).write_volatile_part(
+            for o in 0..self.rings.len() {
+                self.rings.get(o as usize).index(self.process_delimiter as usize).write_volatile_part(
                     u64::to_le(self.outputs[o as u8 as usize] | rs_bit | (1 << (24 + 1)) | (1 << 24)),
                     |d| { &mut d.metadata }
                 );
