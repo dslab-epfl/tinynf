@@ -20,6 +20,9 @@ use ixgbe::device::{Device, PacketData};
 
 // TEMP
 use ixgbe::buffer_pool;
+mod lifed_ptr;
+mod lifed_slice;
+mod lifed_array;
 
 fn parse_pci_address(s: &str) -> PciAddress {
     let parts: Vec<&str> = s.split(&[':', '.'][..]).collect(); // technically too lax but that's fine
