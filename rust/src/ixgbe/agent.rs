@@ -88,7 +88,7 @@ impl Agent<'_, '_> {
                 o += 1;
             }
 
-            self.process_delimiter = self.process_delimiter + 1; // modulo implicit since it's an u8
+            self.process_delimiter = self.process_delimiter.wrapping_add(1); // modulo implicit since it's an u8
 
             if rs_bit != 0 {
                 let mut earliest_transmit_head = self.process_delimiter as u32;

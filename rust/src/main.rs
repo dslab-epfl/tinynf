@@ -10,13 +10,16 @@ use env::LinuxEnvironment;
 mod pci;
 use pci::PciAddress;
 
-mod volatile; // declare it so ixgbe can use it... weird
+mod volatile;
 
 mod ixgbe;
 use ixgbe::agent;
 use ixgbe::agent::Agent;
 use ixgbe::agent_const::AgentConst;
 use ixgbe::device::{Device, PacketData};
+
+// TEMP
+use ixgbe::buffer_pool;
 
 fn parse_pci_address(s: &str) -> PciAddress {
     let parts: Vec<&str> = s.split(&[':', '.'][..]).collect(); // technically too lax but that's fine
@@ -31,18 +34,20 @@ fn parse_pci_address(s: &str) -> PciAddress {
 }
 
 fn proc<const N: usize>(data: &mut PacketData, length: u16, output_lengths: &mut [u16; N]) {
-    data.data[0] = 0;
-    data.data[1] = 0;
-    data.data[2] = 0;
-    data.data[3] = 0;
-    data.data[4] = 0;
-    data.data[5] = 1;
-    data.data[6] = 0;
-    data.data[7] = 0;
-    data.data[8] = 0;
-    data.data[9] = 0;
-    data.data[10] = 0;
-    data.data[11] = 0;
+    // This is awkward, because Rust's Index/IndexMut traits return references and references can't be volatile...
+    // With some proper engineering one could probably get a nice API, but for now, semantics count
+    volatile::write(&mut data.data[0], 0);
+    volatile::write(&mut data.data[1], 0);
+    volatile::write(&mut data.data[2], 0);
+    volatile::write(&mut data.data[3], 0);
+    volatile::write(&mut data.data[4], 0);
+    volatile::write(&mut data.data[5], 1);
+    volatile::write(&mut data.data[6], 0);
+    volatile::write(&mut data.data[7], 0);
+    volatile::write(&mut data.data[8], 0);
+    volatile::write(&mut data.data[9], 0);
+    volatile::write(&mut data.data[10], 0);
+    volatile::write(&mut data.data[11], 0);
     output_lengths[0] = length;
 }
 

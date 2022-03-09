@@ -12,7 +12,7 @@ use x86_64::instructions::port::Port;
 
 use crate::pci::PciAddress;
 
-// TODO might be worth splitting this file into a proper module
+// TODO split this file into a proper module (folder)
 
 pub trait Environment<'a> {
     fn allocate<T, const COUNT: usize>(&self) -> &'a mut [T; COUNT];
