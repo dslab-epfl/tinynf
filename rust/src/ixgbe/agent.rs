@@ -1,59 +1,53 @@
-use non_empty_vec::NonEmpty; // this crate uses unsafe but then Vec itself uses unsafe so...
-
 use crate::env::Environment;
-use crate::volatile;
+use crate::lifed::{LifedArray, LifedPtr, LifedSlice};
 
-use super::device::{DeviceInput, DeviceOutput, Descriptor, TransmitHead, RING_SIZE, PacketData};
+use super::device::{Device, Descriptor, TransmitHead, RING_SIZE, PacketData};
 
 pub const MAX_OUTPUTS: usize = 256; // so that an u8 can index into it without bounds checks
 
 const FLUSH_PERIOD: u8 = 8;
 const RECYCLE_PERIOD: u8 = 64;
 
-pub struct Agent<'a, 'b> {
-    packets: &'b mut [PacketData; RING_SIZE],
-    rings: NonEmpty<&'b mut [Descriptor; RING_SIZE]>,
-    receive_tail: &'a mut u32,
-    transmit_heads: &'b [TransmitHead],
-    transmit_tails: Vec<&'a mut u32>,
-    outputs: &'b mut [u16; MAX_OUTPUTS],
+// OVERHEAD: each of these slices has the same length, but we can't state it in code
+pub struct Agent<'a> {
+    packets: &'a mut [PacketData<'a>; RING_SIZE],
+    // OVERHEAD: trade 1 more field for a lack of bounds check for the shared ring
+    shared_ring: LifedArray<'a, Descriptor, { RING_SIZE }>,
+    all_rings: LifedSlice<'a, LifedArray<'a, Descriptor, { RING_SIZE }>>,
+    receive_tail: LifedPtr<'a, u32>,
+    transmit_heads: LifedSlice<'a, TransmitHead>,
+    transmit_tails: LifedSlice<'a, LifedPtr<'a, u32>>,
+    outputs: &'a mut [u16; MAX_OUTPUTS],
     process_delimiter: u8,
 }
 
-impl Agent<'_, '_> {
-    pub fn create<'a, 'b>(env: &'b impl Environment<'b>, input: &'a mut DeviceInput<'a>, outputs: &'a mut [&'a mut DeviceOutput<'a>]) -> Agent<'a, 'b> {
+impl<'a> Agent<'a> {
+    pub fn create(env: &impl Environment<'a>, input: &Device<'a>, outputs: &[&Device<'a>]) -> Agent<'a> {
         if outputs.len() >= MAX_OUTPUTS {
             panic!("Too many outputs");
         }
 
-        let packets = env.allocate::<PacketData, { RING_SIZE }>();
+        let packets = env.allocate::<PacketData<'a>, { RING_SIZE }>();
 
-        let mut rings = NonEmpty::new(env.allocate::<Descriptor, { RING_SIZE }>());
-        for n in 0..RING_SIZE {
-            rings[0][n as usize].buffer = u64::to_le(env.get_physical_address(&mut packets[n as usize]) as u64);
-        }
-        for _n in 0..outputs.len() - 1 {
-            let r = env.allocate::<Descriptor, { RING_SIZE }>();
-            for n in 0..RING_SIZE {
-                r[n as usize].buffer = rings[0][n as usize].buffer;
+        let all_rings = env.allocate_slice::<LifedArray<'a, Descriptor, { RING_SIZE }>>(outputs.len());
+        for n in 0..packets.len() {
+            let packet_phys_addr = u64::to_le(env.get_physical_address(&mut packets[n as usize]) as u64);
+            for r in all_rings {
+                r.index(n as usize).write_volatile_part(packet_phys_addr, |d| { &mut d.buffer });
             }
-            rings.push(r);
         }
 
-        let receive_tail = input.associate(env, rings[0]);
-
-        let transmit_heads = env.allocate_slice::<TransmitHead>(outputs.len());
-
-        let mut transmit_tails = Vec::new();
-        for out in outputs.iter_mut() {
-            let n = transmit_tails.len();
-            transmit_tails.push(out.associate(env, rings[n], &mut transmit_heads[n].value));
+        let transmit_heads = LifedSlice::new(env.allocate_slice::<TransmitHead>(outputs.len()));
+        let transmit_tails = LifedSlice::new(env.allocate_slice::<LifedPtr<'a, u32>>(outputs.len()));
+        for n in 0..outputs.len() {
+            transmit_tails.set(n, outputs[n].add_output(env, all_rings[n].index(0), transmit_heads.index(n)));
         }
 
         Agent {
             packets,
-            rings,
-            receive_tail,
+            shared_ring: all_rings[0],
+            all_rings: LifedSlice::new(all_rings),
+            receive_tail: input.add_input(env, all_rings[0].index(0)),
             transmit_heads,
             transmit_tails,
             outputs: env.allocate::<u16, { MAX_OUTPUTS }>(),
@@ -62,10 +56,10 @@ impl Agent<'_, '_> {
     }
 
     #[inline(always)] // mimic C "static inline"
-    pub fn run(&mut self, processor: fn(&mut PacketData, u16, &mut [u16; MAX_OUTPUTS])) {
+    pub fn run(&mut self, processor: fn(&mut PacketData<'_>, u16, &mut [u16; MAX_OUTPUTS])) {
         let mut n: u8 = 0;
         while n < FLUSH_PERIOD {
-            let receive_metadata = u64::from_le(volatile::read(&self.rings.first()[self.process_delimiter as usize].metadata));
+            let receive_metadata = u64::from_le(self.shared_ring.index(self.process_delimiter as usize).read_volatile_part(|d| { &d.metadata }));
             if (receive_metadata & (1 << 32)) == 0 {
                 break;
             }
@@ -78,23 +72,21 @@ impl Agent<'_, '_> {
             } else {
                 0
             };
-            let mut o: u8 = 0;
-            for r in &mut self.rings {
-                volatile::write(
-                    &mut r[self.process_delimiter as usize].metadata,
+            for o in 0..self.all_rings.len() {
+                self.all_rings.get(o as usize).index(self.process_delimiter as usize).write_volatile_part(
                     u64::to_le(self.outputs[o as usize] as u64 | rs_bit | (1 << (24 + 1)) | (1 << 24)),
+                    |d| { &mut d.metadata }
                 );
-                self.outputs[o as usize] = 0;
-                o += 1;
+                self.outputs[o as u8 as usize] = 0;
             }
 
-            self.process_delimiter = self.process_delimiter.wrapping_add(1); // modulo implicit since it's an u8
+            self.process_delimiter = self.process_delimiter.wrapping_add(1); // modulo ring size implicit since it's an u8
 
             if rs_bit != 0 {
                 let mut earliest_transmit_head = self.process_delimiter as u32;
                 let mut min_diff = u64::MAX;
-                for head in self.transmit_heads {
-                    let head_value = u32::from_le(volatile::read(&head.value));
+                for h in 0..self.transmit_heads.len() {
+                    let head_value = u32::from_le(self.transmit_heads.index(h).read_volatile_part(|h| { &h.value }));
                     let diff = (head_value as u64).wrapping_sub(self.process_delimiter as u64);
                     if diff <= min_diff {
                         earliest_transmit_head = head_value;
@@ -102,13 +94,13 @@ impl Agent<'_, '_> {
                     }
                 }
 
-                volatile::write(self.receive_tail, u32::to_le(earliest_transmit_head));
+                self.receive_tail.write_volatile(u32::to_le(earliest_transmit_head));
             }
             n += 1;
         }
         if n != 0 {
-            for tail in &mut self.transmit_tails {
-                volatile::write(*tail, u32::to_le(self.process_delimiter as u32));
+            for t in 0..self.transmit_tails.len() {
+                self.transmit_tails.get(t).write_volatile(u32::to_le(self.process_delimiter as u32));
             }
         }
     }

@@ -3,6 +3,7 @@ use std::mem::size_of;
 use std::time::Duration;
 
 use crate::env::Environment;
+use crate::lifed::{LifedArray, LifedSlice, LifedPtr};
 use crate::pci::PciAddress;
 
 use super::pci_regs;
@@ -11,7 +12,7 @@ use super::regs;
 pub const RING_SIZE: usize = 256;
 
 pub struct Device<'a> {
-    buffer: &'a mut [u32],
+    buffer: LifedSlice<'a, u32>,
 }
 
 #[repr(C)]
@@ -21,8 +22,8 @@ pub struct Descriptor {
 }
 
 #[repr(C)]
-pub struct PacketData {
-    pub data: [u8; 2048],
+pub struct PacketData<'a> {
+    pub data: LifedArray<'a, u8, 2048>,
 }
 
 #[repr(C, align(64))]
@@ -48,7 +49,7 @@ pub const TRAFFIC_CLASSES_COUNT: usize = 8;
 
 pub const UNICAST_TABLE_ARRAY_SIZE: usize = 4 * 1024;
 
-fn after_timeout<'a>(env: &impl Environment<'a>, duration: Duration, cleared: bool, buffer: &mut [u32], reg: usize, field: u32) -> bool {
+fn after_timeout<'a>(env: &impl Environment<'a>, duration: Duration, cleared: bool, buffer: LifedSlice<'a, u32>, reg: usize, field: u32) -> bool {
     env.sleep(Duration::from_nanos((duration.as_nanos() % 10).try_into().unwrap())); // will panic if 'duration' is too big
     for _i in 0..10 {
         if regs::is_field_cleared(buffer, reg, field) != cleared {
@@ -86,7 +87,7 @@ impl<'a> Device<'a> {
         let pci_bar0_high = env.pci_read(pci_address, pci_regs::BAR0_HIGH);
         let dev_phys_addr = ((pci_bar0_high as u64) << 32) | ((pci_bar0_low as u64) & !0b1111);
 
-        let buffer = env.map_physical_memory::<u32>(dev_phys_addr, 128 * 1024 / size_of::<u32>());
+        let buffer = LifedSlice::new(env.map_physical_memory::<u32>(dev_phys_addr, 128 * 1024 / size_of::<u32>()));
 
         for queue in 0..RECEIVE_QUEUES_COUNT {
             regs::clear_field(buffer, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE);
@@ -193,7 +194,7 @@ impl<'a> Device<'a> {
             regs::clear(buffer, regs::TXPBSIZE(n));
         }
 
-        regs::write_field(buffer, regs::TXPBTHRESH(0), regs::TXPBTHRESH_::THRESH, 0xA0 - (size_of::<PacketData>() / 1024) as u32);
+        regs::write_field(buffer, regs::TXPBTHRESH(0), regs::TXPBTHRESH_::THRESH, 0xA0 - (size_of::<PacketData<'_>>() / 1024) as u32);
 
         regs::write_field(buffer, regs::DTXMXSZRQ, regs::DTXMXSZRQ_::MAX_BYTES_NUM_REQ, 0xFFF);
 
@@ -225,32 +226,18 @@ impl<'a> Device<'a> {
         regs::set_field(self.buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
     }
 
-    pub fn into_inout(self) -> (DeviceInput<'a>, DeviceOutput<'a>) {
-        let (_x, rx_base) = self.buffer.split_at_mut(regs::RX_ZONE_BASE(0));
-        let (rx, rest) = rx_base.split_at_mut(regs::RX_ZONE_LEN);
-        let (_y, tx_base) = rest.split_at_mut(regs::TX_ZONE_BASE(0) - regs::RX_ZONE_LEN - regs::RX_ZONE_BASE(0));
-        let (tx, _z) = tx_base.split_at_mut(regs::TX_ZONE_LEN);
-        (DeviceInput { buffer: rx }, DeviceOutput { buffer: tx })
-    }
-}
-
-pub struct DeviceInput<'a> {
-    buffer: &'a mut [u32],
-}
-
-impl<'a> DeviceInput<'a> {
-    pub fn associate<'b>(&'a mut self, env: &impl Environment<'b>, ring: &mut [Descriptor]) -> &'a mut u32 {
+    pub fn add_input(&self, env: &impl Environment<'a>, ring_start: LifedPtr<'a, Descriptor>) -> LifedPtr<'a, u32> {
         if !regs::is_field_cleared(self.buffer, regs::RXDCTL, regs::RXDCTL_::ENABLE) {
             panic!("Receive queue is already in use");
         }
 
-        let ring_phys_addr = env.get_physical_address(&mut ring[0]);
+        let ring_phys_addr = ring_start.get_physical_address(env);
         regs::write(self.buffer, regs::RDBAH, (ring_phys_addr >> 32) as u32);
         regs::write(self.buffer, regs::RDBAL, ring_phys_addr as u32);
 
         regs::write(self.buffer, regs::RDLEN, RING_SIZE as u32 * 16);
 
-        regs::write_field(self.buffer, regs::SRRCTL, regs::SRRCTL_::BSIZEPACKET, (size_of::<PacketData>() / 1024) as u32);
+        regs::write_field(self.buffer, regs::SRRCTL, regs::SRRCTL_::BSIZEPACKET, (size_of::<PacketData<'_>>() / 1024) as u32);
 
         regs::set_field(self.buffer, regs::SRRCTL, regs::SRRCTL_::DROP_EN);
 
@@ -264,21 +251,15 @@ impl<'a> DeviceInput<'a> {
 
         regs::clear_field(self.buffer, regs::DCARXCTRL, regs::DCARXCTRL_::UNKNOWN);
 
-        &mut self.buffer[regs::RDT]
+        self.buffer.index(regs::RDT)
     }
-}
 
-pub struct DeviceOutput<'a> {
-    buffer: &'a mut [u32],
-}
-
-impl<'a> DeviceOutput<'a> {
-    pub fn associate<'b>(&'a mut self, env: &impl Environment<'b>, ring: &mut [Descriptor], transmit_head: &mut u32) -> &'a mut u32 {
+    pub fn add_output(&self, env: &impl Environment<'a>, ring_start: LifedPtr<'a, Descriptor>, transmit_head: LifedPtr<'a, TransmitHead>) -> LifedPtr<'a, u32> {
         if !regs::is_field_cleared(self.buffer, regs::TXDCTL, regs::TXDCTL_::ENABLE) {
             panic!("Transmit queue is not available");
         }
 
-        let ring_phys_addr = env.get_physical_address(&mut ring[0]);
+        let ring_phys_addr = ring_start.get_physical_address(env);
         regs::write(self.buffer, regs::TDBAH, (ring_phys_addr >> 32) as u32);
         regs::write(self.buffer, regs::TDBAL, ring_phys_addr as u32);
 
@@ -287,7 +268,7 @@ impl<'a> DeviceOutput<'a> {
         regs::write_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::PTHRESH, 60);
         regs::write_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::HTHRESH, 4);
 
-        let head_phys_addr = env.get_physical_address(transmit_head);
+        let head_phys_addr = transmit_head.get_physical_address(env);
         if head_phys_addr % 16 != 0 {
             panic!("Transmit head's physical address is not aligned properly");
         }
@@ -302,6 +283,6 @@ impl<'a> DeviceOutput<'a> {
             panic!("TXDCTL.ENABLE did not set, cannot enable queue");
         }
 
-        &mut self.buffer[regs::TDT]
+        self.buffer.index(regs::TDT)
     }
 }

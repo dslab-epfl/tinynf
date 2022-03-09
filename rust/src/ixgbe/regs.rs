@@ -2,7 +2,7 @@
 #![allow(clippy::eq_op)]
 #![allow(clippy::erasing_op)]
 
-use crate::volatile;
+use crate::lifed::LifedSlice;
 
 // Regs are usize so they can index a slice without ceremony
 
@@ -222,41 +222,41 @@ pub mod TXDCTL_ {
     pub const ENABLE: u32 = 1 << 25;
 }
 
-pub fn read(buffer: &[u32], reg: usize) -> u32 {
-    u32::from_le(volatile::read(&buffer[reg]))
+pub fn read(buffer: LifedSlice<'_, u32>, reg: usize) -> u32 {
+    u32::from_le(buffer.index(reg).read_volatile())
 }
 
-pub fn read_field(buffer: &[u32], reg: usize, field: u32) -> u32 {
+pub fn read_field(buffer: LifedSlice<'_, u32>, reg: usize, field: u32) -> u32 {
     let value = read(buffer, reg);
     let shift = field.trailing_zeros();
     (value & field) >> shift
 }
 
-pub fn write(buffer: &mut [u32], reg: usize, value: u32) {
-    volatile::write(&mut buffer[reg], u32::to_le(value));
+pub fn write(buffer: LifedSlice<'_, u32>, reg: usize, value: u32) {
+    buffer.index(reg).write_volatile(u32::to_le(value));
 }
 
-pub fn write_field(buffer: &mut [u32], reg: usize, field: u32, field_value: u32) {
+pub fn write_field(buffer: LifedSlice<'_, u32>, reg: usize, field: u32, field_value: u32) {
     let old_value = read(buffer, reg);
     let shift = field.trailing_zeros();
     let new_value = (old_value & !field) | (field_value << shift);
     write(buffer, reg, new_value);
 }
 
-pub fn clear(buffer: &mut [u32], reg: usize) {
+pub fn clear(buffer: LifedSlice<'_, u32>, reg: usize) {
     write(buffer, reg, 0);
 }
 
-pub fn clear_field(buffer: &mut [u32], reg: usize, field: u32) {
+pub fn clear_field(buffer: LifedSlice<'_, u32>, reg: usize, field: u32) {
     write_field(buffer, reg, field, 0);
 }
 
-pub fn set_field(buffer: &mut [u32], reg: usize, field: u32) {
+pub fn set_field(buffer: LifedSlice<'_, u32>, reg: usize, field: u32) {
     let old_value = read(buffer, reg);
     let new_value = old_value | field;
     write(buffer, reg, new_value);
 }
 
-pub fn is_field_cleared(buffer: &[u32], reg: usize, field: u32) -> bool {
+pub fn is_field_cleared(buffer: LifedSlice<'_, u32>, reg: usize, field: u32) -> bool {
     read_field(buffer, reg, field) == 0
 }

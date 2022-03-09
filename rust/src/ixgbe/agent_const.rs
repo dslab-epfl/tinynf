@@ -1,5 +1,4 @@
 use crate::env::Environment;
-use crate::volatile;
 
 use super::device::{Descriptor, DeviceInput, DeviceOutput, PacketData, TransmitHead, RING_SIZE};
 
