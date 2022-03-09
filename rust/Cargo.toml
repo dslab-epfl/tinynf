@@ -13,3 +13,4 @@ x86_64 = { version = "0.14.8", default-features = false, features = ["instructio
 
 [profile.release]
 lto = true
+debug = true

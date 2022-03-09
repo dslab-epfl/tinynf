@@ -31,7 +31,7 @@ impl <'a, T: ?Sized> LifedPtr<'a, T> {
     #[inline(always)]
     pub fn write_volatile_part<U: Copy>(&self, value: U, f: fn(&mut T) -> &mut U) {
         unsafe {
-            ptr::write_volatile(f(self.ptr.as_mut()), value);
+            ptr::write_volatile(f(&mut *self.ptr.as_ptr()), value);
         }
     }
 }
@@ -43,7 +43,8 @@ impl <'a, T> LifedPtr<'a, T> {
 }
 
 impl<'a, T: Copy> LifedPtr<'a, T> {
-    #[inline(always)]
+// These are not needed in practice, even during init we need the _part ones for the agent
+/*    #[inline(always)]
     pub fn read(&self) -> T {
         unsafe {
             *self.ptr.as_ptr()
@@ -56,7 +57,7 @@ impl<'a, T: Copy> LifedPtr<'a, T> {
             *self.ptr.as_ptr() = value
         }
     }
-
+*/
     #[inline(always)]
     pub fn read_volatile(&self) -> T {
         unsafe {
@@ -100,7 +101,7 @@ impl<'a, T, const N: usize> LifedArray<'a, T, N> {
         }
     }
 }
-
+// Manually derive these as using #[derive] doesn't work if T isn't Clone even though this does not matter here
 impl<'a, T, const N: usize> Clone for LifedArray<'a, T, N> {
     fn clone(&self) -> Self {
         LifedArray { ptr: self.ptr, _lifetime: self._lifetime }
@@ -112,6 +113,7 @@ impl<'a, T, const N: usize> Clone for LifedArray<'a, T, N> {
 impl<'a, T, const N: usize> Copy for LifedArray<'a, T, N> { }
 
 
+#[derive(Clone, Copy)]
 pub struct LifedSlice<'a, T> {
     ptr: NonNull<T>,
     len: usize,
@@ -161,7 +163,7 @@ impl<'a, T: Copy> LifedSlice<'a, T> {
     }
 
     #[inline(always)]
-    pub fn set(&mut self, index: usize, value: T) {
+    pub fn set(&self, index: usize, value: T) {
         if index < self.len {
             // Safe for the same reason as above
             unsafe {

@@ -2,6 +2,9 @@
 #![allow(clippy::eq_op)]
 #![allow(clippy::erasing_op)]
 
+// TODO move the /4 to match the C code for indexed regs
+// TODO reorder to match the C code
+
 use crate::lifed::LifedSlice;
 
 // Regs are usize so they can index a slice without ceremony
@@ -162,65 +165,86 @@ pub mod TXPBTHRESH_ {
 
 // --- RX ---
 
-pub const fn RX_ZONE_BASE(n: usize) -> usize {
+pub const fn RDBAL(n: usize) -> usize {
     (if n <= 63 { 0x01000 + 0x40 * n } else { 0x0D000 + 0x40 * (n - 64) }) / 4
 }
-pub const RX_ZONE_LEN: usize = 0x40;
 
-pub const RDBAH: usize = 0x04 / 4;
+pub const fn RDBAH(n: usize) -> usize {
+    (if n <= 63 { 0x01004 + 0x40 * n } else { 0x0D004 + 0x40 * (n - 64) }) / 4
+}
 
-pub const RDBAL: usize = 0x00 / 4;
+pub const fn RDLEN(n: usize) -> usize {
+    (if n <= 63 { 0x01008 + 0x40 * n } else { 0x0D008 + 0x40 * (n - 64) }) / 4
+}
 
-pub const RDLEN: usize = 0x08 / 4;
+pub const fn RDT(n: usize) -> usize {
+    (if n <= 63 { 0x01018 + 0x40 * n } else { 0x0D018 + 0x40 * (n - 64) }) / 4
+}
 
-pub const RDT: usize = 0x18 / 4;
-
-pub const RXDCTL: usize = 0x28 / 4;
+pub const fn RXDCTL(n: usize) -> usize {
+    (if n <= 63 { 0x01028 + 0x40 * n } else { 0x0D028 + 0x40 * (n - 64) }) / 4
+}
 pub mod RXDCTL_ {
     pub const ENABLE: u32 = 1 << 25;
 }
 
-pub const SRRCTL: usize = 0x14 / 4;
+pub const fn SRRCTL(n: usize) -> usize {
+    (if n <= 63 { 0x01014 + 0x40 * n } else { 0x0D014 + 0x40 * (n - 64) }) / 4
+}
 pub mod SRRCTL_ {
     pub const BSIZEPACKET: u32 = 0b0001_1111;
     pub const DROP_EN: u32 = 1 << 28;
 }
 
-pub const DCARXCTRL: usize = 0x0C / 4;
+pub const fn DCARXCTRL(n: usize) -> usize {
+    (if n <= 63 { 0x0100C + 0x40 * n } else { 0x0D00C + 0x40 * (n - 64) }) / 4
+}
 pub mod DCARXCTRL_ {
     pub const UNKNOWN: u32 = 1 << 12; // This bit is reserved, has no name, but must be used anyway
 }
 
 // --- TX ---
 
-pub const fn TX_ZONE_BASE(n: usize) -> usize {
-    (0x06000 + 0x40 * n) / 4
+pub const fn DCATXCTRL(n: usize) -> usize {
+    (0x0600C + 0x40 * n) / 4
 }
-pub const TX_ZONE_LEN: usize = 0x40;
-
-pub const DCATXCTRL: usize = 0x0C / 4;
 pub mod DCATXCTRL_ {
     pub const TX_DESC_WB_RO_EN: u32 = 1 << 11;
 }
 
-pub const TDBAH: usize = 0x04 / 4;
+pub const fn TDBAH(n: usize) -> usize {
+    (0x06004 + 0x40 * n) / 4
+}
 
-pub const TDBAL: usize = 0x00 / 4;
+pub const fn TDBAL(n: usize) -> usize {
+    (0x06000 + 0x40 * n) / 4
+}
 
-pub const TDLEN: usize = 0x08 / 4;
+pub const fn TDLEN(n: usize) -> usize {
+    (0x06008 + 0x40 * n) / 4
+}
 
-pub const TDT: usize = 0x18 / 4;
+pub const fn TDT(n: usize) -> usize {
+    (0x06018 + 0x40 * n) / 4
+}
 
-pub const TDWBAH: usize = 0x3C / 4;
+pub const fn TDWBAH(n: usize) -> usize {
+    (0x0603C + 0x40 * n) / 4
+}
 
-pub const TDWBAL: usize = 0x38 / 4;
+pub const fn TDWBAL(n: usize) -> usize {
+    (0x06038 + 0x40 * n) / 4
+}
 
-pub const TXDCTL: usize = 0x28 / 4;
+pub const fn TXDCTL(n: usize) -> usize {
+    (0x06028 + 0x40 * n) / 4
+}
 pub mod TXDCTL_ {
     pub const PTHRESH: u32 = 0b0111_1111;
     pub const HTHRESH: u32 = 0b0111_1111_0000_0000;
     pub const ENABLE: u32 = 1 << 25;
 }
+
 
 pub fn read(buffer: LifedSlice<'_, u32>, reg: usize) -> u32 {
     u32::from_le(buffer.index(reg).read_volatile())

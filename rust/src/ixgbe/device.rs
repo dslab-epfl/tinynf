@@ -90,8 +90,8 @@ impl<'a> Device<'a> {
         let buffer = LifedSlice::new(env.map_physical_memory::<u32>(dev_phys_addr, 128 * 1024 / size_of::<u32>()));
 
         for queue in 0..RECEIVE_QUEUES_COUNT {
-            regs::clear_field(buffer, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE);
-            if after_timeout(env, Duration::from_secs(1), false, buffer, regs::RX_ZONE_BASE(queue) + regs::RXDCTL, regs::RXDCTL_::ENABLE) {
+            regs::clear_field(buffer, regs::RXDCTL(queue), regs::RXDCTL_::ENABLE);
+            if after_timeout(env, Duration::from_secs(1), false, buffer, regs::RXDCTL(queue), regs::RXDCTL_::ENABLE) {
                 panic!("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
             };
             env.sleep(Duration::from_micros(100));
@@ -212,7 +212,8 @@ impl<'a> Device<'a> {
         // Enable TX
         regs::set_field(buffer, regs::DMATXCTL, regs::DMATXCTL_::TE);
         // But disable first queue, which is enabled when we enable TX globally (see 8.2.3.9.10 ENABLE)
-        regs::clear_field(buffer, regs::TX_ZONE_BASE(0) + regs::TXDCTL, regs::TXDCTL_::ENABLE);
+        // TODO not exactly what C does, fix this
+        regs::clear_field(buffer, regs::TXDCTL(0), regs::TXDCTL_::ENABLE);
 
         Device { buffer }
     }
@@ -227,62 +228,72 @@ impl<'a> Device<'a> {
     }
 
     pub fn add_input(&self, env: &impl Environment<'a>, ring_start: LifedPtr<'a, Descriptor>) -> LifedPtr<'a, u32> {
-        if !regs::is_field_cleared(self.buffer, regs::RXDCTL, regs::RXDCTL_::ENABLE) {
+        let queue_index: usize = 0;
+
+        if !regs::is_field_cleared(self.buffer, regs::RXDCTL(queue_index), regs::RXDCTL_::ENABLE) {
             panic!("Receive queue is already in use");
         }
 
         let ring_phys_addr = ring_start.get_physical_address(env);
-        regs::write(self.buffer, regs::RDBAH, (ring_phys_addr >> 32) as u32);
-        regs::write(self.buffer, regs::RDBAL, ring_phys_addr as u32);
+        regs::write(self.buffer, regs::RDBAH(queue_index), (ring_phys_addr >> 32) as u32);
+        regs::write(self.buffer, regs::RDBAL(queue_index), ring_phys_addr as u32);
 
-        regs::write(self.buffer, regs::RDLEN, RING_SIZE as u32 * 16);
+        regs::write(self.buffer, regs::RDLEN(queue_index), RING_SIZE as u32 * 16);
 
-        regs::write_field(self.buffer, regs::SRRCTL, regs::SRRCTL_::BSIZEPACKET, (size_of::<PacketData<'_>>() / 1024) as u32);
+        regs::write_field(self.buffer, regs::SRRCTL(queue_index), regs::SRRCTL_::BSIZEPACKET, (size_of::<PacketData<'_>>() / 1024) as u32);
 
-        regs::set_field(self.buffer, regs::SRRCTL, regs::SRRCTL_::DROP_EN);
+        regs::set_field(self.buffer, regs::SRRCTL(queue_index), regs::SRRCTL_::DROP_EN);
 
-        regs::set_field(self.buffer, regs::RXDCTL, regs::RXDCTL_::ENABLE);
+        regs::set_field(self.buffer, regs::RXDCTL(queue_index), regs::RXDCTL_::ENABLE);
 
-        if after_timeout(env, Duration::from_secs(1), true, self.buffer, regs::RXDCTL, regs::RXDCTL_::ENABLE) {
+        if after_timeout(env, Duration::from_secs(1), true, self.buffer, regs::RXDCTL(queue_index), regs::RXDCTL_::ENABLE) {
             panic!("RXDCTL.ENABLE did not set, cannot enable queue");
         }
 
-        regs::write(self.buffer, regs::RDT, RING_SIZE as u32 - 1);
+        regs::write(self.buffer, regs::RDT(queue_index), RING_SIZE as u32 - 1);
 
-        regs::clear_field(self.buffer, regs::DCARXCTRL, regs::DCARXCTRL_::UNKNOWN);
+        regs::clear_field(self.buffer, regs::DCARXCTRL(queue_index), regs::DCARXCTRL_::UNKNOWN);
 
-        self.buffer.index(regs::RDT)
+        self.buffer.index(regs::RDT(queue_index))
     }
 
     pub fn add_output(&self, env: &impl Environment<'a>, ring_start: LifedPtr<'a, Descriptor>, transmit_head: LifedPtr<'a, TransmitHead>) -> LifedPtr<'a, u32> {
-        if !regs::is_field_cleared(self.buffer, regs::TXDCTL, regs::TXDCTL_::ENABLE) {
-            panic!("Transmit queue is not available");
+        let mut queue_index = 0;
+        while queue_index < TRANSMIT_QUEUES_COUNT {
+            if regs::is_field_cleared(self.buffer, regs::TXDCTL(queue_index), regs::TXDCTL_::ENABLE) {
+                break;
+            }
+            queue_index = queue_index + 1;
+        }
+
+        if queue_index == TRANSMIT_QUEUES_COUNT {
+            panic!("No available transmit queues");
         }
 
         let ring_phys_addr = ring_start.get_physical_address(env);
-        regs::write(self.buffer, regs::TDBAH, (ring_phys_addr >> 32) as u32);
-        regs::write(self.buffer, regs::TDBAL, ring_phys_addr as u32);
+        regs::write(self.buffer, regs::TDBAH(queue_index), (ring_phys_addr >> 32) as u32);
+        regs::write(self.buffer, regs::TDBAL(queue_index), ring_phys_addr as u32);
 
-        regs::write(self.buffer, regs::TDLEN, RING_SIZE as u32 * 16);
+        regs::write(self.buffer, regs::TDLEN(queue_index), RING_SIZE as u32 * 16);
 
-        regs::write_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::PTHRESH, 60);
-        regs::write_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::HTHRESH, 4);
+        regs::write_field(self.buffer, regs::TXDCTL(queue_index), regs::TXDCTL_::PTHRESH, 60);
+        regs::write_field(self.buffer, regs::TXDCTL(queue_index), regs::TXDCTL_::HTHRESH, 4);
 
         let head_phys_addr = transmit_head.get_physical_address(env);
         if head_phys_addr % 16 != 0 {
             panic!("Transmit head's physical address is not aligned properly");
         }
 
-        regs::write(self.buffer, regs::TDWBAH, (head_phys_addr >> 32) as u32);
-        regs::write(self.buffer, regs::TDWBAL, head_phys_addr as u32 | 1);
+        regs::write(self.buffer, regs::TDWBAH(queue_index), (head_phys_addr >> 32) as u32);
+        regs::write(self.buffer, regs::TDWBAL(queue_index), head_phys_addr as u32 | 1);
 
-        regs::clear_field(self.buffer, regs::DCATXCTRL, regs::DCATXCTRL_::TX_DESC_WB_RO_EN);
+        regs::clear_field(self.buffer, regs::DCATXCTRL(queue_index), regs::DCATXCTRL_::TX_DESC_WB_RO_EN);
 
-        regs::set_field(self.buffer, regs::TXDCTL, regs::TXDCTL_::ENABLE);
-        if after_timeout(env, Duration::from_secs(1), true, self.buffer, regs::TXDCTL, regs::TXDCTL_::ENABLE) {
+        regs::set_field(self.buffer, regs::TXDCTL(queue_index), regs::TXDCTL_::ENABLE);
+        if after_timeout(env, Duration::from_secs(1), true, self.buffer, regs::TXDCTL(queue_index), regs::TXDCTL_::ENABLE) {
             panic!("TXDCTL.ENABLE did not set, cannot enable queue");
         }
 
-        self.buffer.index(regs::TDT)
+        self.buffer.index(regs::TDT(queue_index))
     }
 }

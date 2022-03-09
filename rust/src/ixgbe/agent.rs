@@ -32,10 +32,12 @@ impl<'a> Agent<'a> {
         let all_rings = env.allocate_slice::<LifedArray<'a, Descriptor, { RING_SIZE }>>(outputs.len());
         for n in 0..packets.len() {
             let packet_phys_addr = u64::to_le(env.get_physical_address(&mut packets[n as usize]) as u64);
-            for r in all_rings {
-                r.index(n as usize).write_volatile_part(packet_phys_addr, |d| { &mut d.buffer });
+            for r in 0..outputs.len() {
+                all_rings[r].index(n as usize).write_volatile_part(packet_phys_addr, |d| { &mut d.buffer });
             }
         }
+
+        let receive_tail = input.add_input(env, all_rings[0].index(0));
 
         let transmit_heads = LifedSlice::new(env.allocate_slice::<TransmitHead>(outputs.len()));
         let transmit_tails = LifedSlice::new(env.allocate_slice::<LifedPtr<'a, u32>>(outputs.len()));
@@ -47,7 +49,7 @@ impl<'a> Agent<'a> {
             packets,
             shared_ring: all_rings[0],
             all_rings: LifedSlice::new(all_rings),
-            receive_tail: input.add_input(env, all_rings[0].index(0)),
+            receive_tail,
             transmit_heads,
             transmit_tails,
             outputs: env.allocate::<u16, { MAX_OUTPUTS }>(),
@@ -74,7 +76,7 @@ impl<'a> Agent<'a> {
             };
             for o in 0..self.all_rings.len() {
                 self.all_rings.get(o as usize).index(self.process_delimiter as usize).write_volatile_part(
-                    u64::to_le(self.outputs[o as usize] as u64 | rs_bit | (1 << (24 + 1)) | (1 << 24)),
+                    u64::to_le(self.outputs[o as u8 as usize] as u64 | rs_bit | (1 << (24 + 1)) | (1 << 24)),
                     |d| { &mut d.metadata }
                 );
                 self.outputs[o as u8 as usize] = 0;
