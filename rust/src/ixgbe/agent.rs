@@ -10,14 +10,14 @@ const RECYCLE_PERIOD: u8 = 64;
 
 // OVERHEAD: each of these slices has the same length, but we can't state it in code
 pub struct Agent<'a> {
-    packets: &'a mut [PacketData<'a>; RING_SIZE],
+    packets: &'a mut [PacketData; RING_SIZE],
     // OVERHEAD: trade 1 more field for a lack of bounds check for the shared ring
     shared_ring: LifedArray<'a, Descriptor, { RING_SIZE }>,
     all_rings: LifedSlice<'a, LifedArray<'a, Descriptor, { RING_SIZE }>>,
     receive_tail: LifedPtr<'a, u32>,
     transmit_heads: LifedSlice<'a, TransmitHead>,
     transmit_tails: LifedSlice<'a, LifedPtr<'a, u32>>,
-    outputs: &'a mut [u16; MAX_OUTPUTS],
+    outputs: &'a mut [u64; MAX_OUTPUTS],
     process_delimiter: u8,
 }
 
@@ -27,9 +27,12 @@ impl<'a> Agent<'a> {
             panic!("Too many outputs");
         }
 
-        let packets = env.allocate::<PacketData<'a>, { RING_SIZE }>();
+        let packets = env.allocate::<PacketData, { RING_SIZE }>();
 
         let all_rings = env.allocate_slice::<LifedArray<'a, Descriptor, { RING_SIZE }>>(outputs.len());
+        for r in 0..outputs.len() {
+            all_rings[r] = LifedArray::new(env.allocate::<Descriptor, { RING_SIZE }>());
+        }
         for n in 0..packets.len() {
             let packet_phys_addr = u64::to_le(env.get_physical_address(&mut packets[n as usize]) as u64);
             for r in 0..outputs.len() {
@@ -52,13 +55,13 @@ impl<'a> Agent<'a> {
             receive_tail,
             transmit_heads,
             transmit_tails,
-            outputs: env.allocate::<u16, { MAX_OUTPUTS }>(),
+            outputs: env.allocate::<u64, { MAX_OUTPUTS }>(),
             process_delimiter: 0,
         }
     }
 
     #[inline(always)] // mimic C "static inline"
-    pub fn run(&mut self, processor: fn(&mut PacketData<'_>, u16, &mut [u16; MAX_OUTPUTS])) {
+    pub fn run(&mut self, processor: fn(&mut PacketData, u64, &mut [u64; MAX_OUTPUTS])) {
         let mut n: u8 = 0;
         while n < FLUSH_PERIOD {
             let receive_metadata = u64::from_le(self.shared_ring.index(self.process_delimiter as usize).read_volatile_part(|d| { &d.metadata }));
@@ -66,7 +69,7 @@ impl<'a> Agent<'a> {
                 break;
             }
 
-            let length = receive_metadata as u16;
+            let length = receive_metadata & 0xFFFF;
             processor(&mut self.packets[self.process_delimiter as usize], length, self.outputs);
 
             let rs_bit: u64 = if self.process_delimiter % RECYCLE_PERIOD == (RECYCLE_PERIOD - 1) {
@@ -76,7 +79,7 @@ impl<'a> Agent<'a> {
             };
             for o in 0..self.all_rings.len() {
                 self.all_rings.get(o as usize).index(self.process_delimiter as usize).write_volatile_part(
-                    u64::to_le(self.outputs[o as u8 as usize] as u64 | rs_bit | (1 << (24 + 1)) | (1 << 24)),
+                    u64::to_le(self.outputs[o as u8 as usize] | rs_bit | (1 << (24 + 1)) | (1 << 24)),
                     |d| { &mut d.metadata }
                 );
                 self.outputs[o as u8 as usize] = 0;

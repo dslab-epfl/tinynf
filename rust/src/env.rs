@@ -15,6 +15,7 @@ use crate::pci::PciAddress;
 // TODO split this file into a proper module (folder)
 
 pub trait Environment<'a> {
+    // TODO require initialization of these T by a function, currently we expose zeroed memory
     fn allocate<T, const COUNT: usize>(&self) -> &'a mut [T; COUNT];
     fn allocate_slice<T>(&self, count: usize) -> &'a mut [T];
     fn map_physical_memory<T>(&self, addr: u64, count: usize) -> &'static mut [T]; // addr is u64, not usize, because PCI BARs are 64-bit

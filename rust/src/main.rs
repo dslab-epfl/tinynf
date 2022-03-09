@@ -31,20 +31,19 @@ fn parse_pci_address(s: &str) -> PciAddress {
     }
 }
 
-fn proc<const N: usize>(data: &mut PacketData<'_>, length: u16, output_lengths: &mut [u16; N]) {
-    // This is awkward, but with some proper engineering one could probably get a nice API; for now, only semantics count
-    data.data.index(0).write_volatile(0);
-    data.data.index(1).write_volatile(0);
-    data.data.index(2).write_volatile(0);
-    data.data.index(3).write_volatile(0);
-    data.data.index(4).write_volatile(0);
-    data.data.index(5).write_volatile(1);
-    data.data.index(6).write_volatile(0);
-    data.data.index(7).write_volatile(0);
-    data.data.index(8).write_volatile(0);
-    data.data.index(9).write_volatile(0);
-    data.data.index(10).write_volatile(0);
-    data.data.index(11).write_volatile(0);
+fn proc<const N: usize>(data: &mut PacketData, length: u64, output_lengths: &mut [u64; N]) {
+    data.write(0, 0);
+    data.write(1, 0);
+    data.write(2, 0);
+    data.write(3, 0);
+    data.write(4, 0);
+    data.write(5, 1);
+    data.write(6, 0);
+    data.write(7, 0);
+    data.write(8, 0);
+    data.write(9, 0);
+    data.write(10, 0);
+    data.write(11, 0);
     output_lengths[0] = length;
 }
 

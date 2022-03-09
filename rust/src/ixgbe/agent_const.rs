@@ -7,18 +7,18 @@ const FLUSH_PERIOD: u8 = 8;
 const RECYCLE_PERIOD: u8 = 64;
 
 pub struct AgentConst<'a, const OUTPUTS: usize> {
-    packets: &'a mut [PacketData<'a>; RING_SIZE],
+    packets: &'a mut [PacketData; RING_SIZE],
     receive_tail: LifedPtr<'a, u32>,
     rings: &'a mut [LifedArray<'a, Descriptor, { RING_SIZE }>; OUTPUTS],
     transmit_heads: LifedArray<'a, TransmitHead, { OUTPUTS }>,
     transmit_tails: &'a mut [LifedPtr<'a, u32>; OUTPUTS],
-    outputs: &'a mut [u16; OUTPUTS],
+    outputs: &'a mut [u64; OUTPUTS],
     process_delimiter: u8,
 }
 
 impl<'a, const OUTPUTS: usize> AgentConst<'a, OUTPUTS> {
     pub fn create(env: &impl Environment<'a>, input: &Device<'a>, outputs: [&Device<'a>; OUTPUTS]) -> AgentConst<'a, OUTPUTS> {
-        let packets = env.allocate::<PacketData<'a>, { RING_SIZE }>();
+        let packets = env.allocate::<PacketData, { RING_SIZE }>();
 
         let rings = env.allocate::<LifedArray<'a, Descriptor, { RING_SIZE }>, { OUTPUTS }>();
         for r in 0..rings.len() {
@@ -47,13 +47,13 @@ impl<'a, const OUTPUTS: usize> AgentConst<'a, OUTPUTS> {
             rings,
             transmit_heads,
             transmit_tails,
-            outputs: env.allocate::<u16, { OUTPUTS }>(),
+            outputs: env.allocate::<u64, { OUTPUTS }>(),
             process_delimiter: 0,
         }
     }
 
     #[inline(always)]
-    pub fn run(&mut self, processor: fn(&mut PacketData<'a>, u16, &mut [u16; OUTPUTS])) {
+    pub fn run(&mut self, processor: fn(&mut PacketData, u64, &mut [u64; OUTPUTS])) {
         let mut n: u8 = 0;
         while n < FLUSH_PERIOD {
             let receive_metadata = u64::from_le(self.rings[0].index(self.process_delimiter as usize).read_volatile_part(|d| { &d.metadata }));
@@ -61,13 +61,13 @@ impl<'a, const OUTPUTS: usize> AgentConst<'a, OUTPUTS> {
                 break;
             }
 
-            let length = receive_metadata as u16;
+            let length = receive_metadata & 0xFFFF;
             processor(&mut self.packets[self.process_delimiter as usize], length, self.outputs);
 
             let rs_bit: u64 = if self.process_delimiter % RECYCLE_PERIOD == (RECYCLE_PERIOD - 1) { 1 << (24 + 3) } else { 0 };
             for o in 0..OUTPUTS {
                 self.rings[o].index(self.process_delimiter as usize).write_volatile_part(
-                    u64::to_le(self.outputs[o] as u64 | rs_bit | (1 << (24 + 1)) | (1 << 24)),
+                    u64::to_le(self.outputs[o] | rs_bit | (1 << (24 + 1)) | (1 << 24)),
                     |d| { &mut d.metadata }
                 );
                 self.outputs[o] = 0;

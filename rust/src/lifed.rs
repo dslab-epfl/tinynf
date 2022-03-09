@@ -12,12 +12,19 @@ pub struct LifedPtr<'a, T: ?Sized> {
 }
 
 impl <'a, T: ?Sized> LifedPtr<'a, T> {
+    #[inline(always)]
     pub fn new(src: &'a mut T) -> LifedPtr<'a, T> {
         let nonnull_src = NonNull::new(src).unwrap(); // must succeed since src is a ref not a ptr and thus cannot be null
         LifedPtr {
             ptr: nonnull_src,
             _lifetime: PhantomData
         }
+    }
+
+    // Safe IFF the pointer is non-null and valid for the lifetime 'a
+    #[inline(always)]
+    fn new_unchecked(src: *mut T) -> LifedPtr<'a, T> {
+        unsafe { LifedPtr { ptr: NonNull::new_unchecked(src), _lifetime: PhantomData } }
     }
 
     // otherwise `instance.read_volatile().field` loads the whole `instance`
@@ -94,7 +101,7 @@ impl<'a, T, const N: usize> LifedArray<'a, T, N> {
             // Safe because we just checked the index (no >=0, it's unsigned) and the value must be valid for the lifetime 'a
             unsafe {
                 let ptr = self.ptr.as_ptr().offset(index as isize);
-                LifedPtr::new(&mut *ptr)
+                LifedPtr::new_unchecked(ptr)
             }
         } else {
             panic!("Out of bounds")
@@ -141,7 +148,7 @@ impl<'a, T> LifedSlice<'a, T> {
             // Safe because we just checked the index (no >=0, it's unsigned) and the value must be valid for the lifetime 'a
             unsafe {
                 let ptr = self.ptr.as_ptr().offset(index as isize);
-                LifedPtr::new(&mut *ptr)
+                LifedPtr::new_unchecked(ptr)
             }
         } else {
             panic!("Out of bounds")

@@ -3,7 +3,7 @@ use std::mem::size_of;
 use std::time::Duration;
 
 use crate::env::Environment;
-use crate::lifed::{LifedArray, LifedSlice, LifedPtr};
+use crate::lifed::{LifedSlice, LifedPtr};
 use crate::pci::PciAddress;
 
 use super::pci_regs;
@@ -22,8 +22,14 @@ pub struct Descriptor {
 }
 
 #[repr(C)]
-pub struct PacketData<'a> {
-    pub data: LifedArray<'a, u8, 2048>,
+pub struct PacketData {
+    data: [u8; 2048],
+}
+impl PacketData {
+    pub fn write(&mut self, index: usize, value: u8) {
+        // we really just want a volatile write; but the inliner does a great job here
+        LifedPtr::new(&mut self.data[index]).write_volatile(value);
+    }
 }
 
 #[repr(C, align(64))]
@@ -194,7 +200,7 @@ impl<'a> Device<'a> {
             regs::clear(buffer, regs::TXPBSIZE(n));
         }
 
-        regs::write_field(buffer, regs::TXPBTHRESH(0), regs::TXPBTHRESH_::THRESH, 0xA0 - (size_of::<PacketData<'_>>() / 1024) as u32);
+        regs::write_field(buffer, regs::TXPBTHRESH(0), regs::TXPBTHRESH_::THRESH, 0xA0 - (size_of::<PacketData>() / 1024) as u32);
 
         regs::write_field(buffer, regs::DTXMXSZRQ, regs::DTXMXSZRQ_::MAX_BYTES_NUM_REQ, 0xFFF);
 
@@ -240,7 +246,7 @@ impl<'a> Device<'a> {
 
         regs::write(self.buffer, regs::RDLEN(queue_index), RING_SIZE as u32 * 16);
 
-        regs::write_field(self.buffer, regs::SRRCTL(queue_index), regs::SRRCTL_::BSIZEPACKET, (size_of::<PacketData<'_>>() / 1024) as u32);
+        regs::write_field(self.buffer, regs::SRRCTL(queue_index), regs::SRRCTL_::BSIZEPACKET, (size_of::<PacketData>() / 1024) as u32);
 
         regs::set_field(self.buffer, regs::SRRCTL(queue_index), regs::SRRCTL_::DROP_EN);
 
