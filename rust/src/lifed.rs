@@ -5,13 +5,15 @@ use std::ptr::NonNull;
 
 use crate::env::Environment;
 
-// All unsafe{} blocks in the impls are safe because the ptr must be valid over lifetime 'a
-#[derive(Clone, Copy)]
+// All unsafe{} blocks in the impls are safe because the pointers must be valid over lifetime 'a and we do bounds checks as necessary
+
+// We manually derive these as using #[derive] doesn't work if T isn't Clone even though this does not matter here
+// See https://github.com/rust-lang/rust/issues/26925
+
 pub struct LifedPtr<'a, T: ?Sized> {
     ptr: NonNull<T>,
     _lifetime: PhantomData<&'a mut T>,
 }
-
 impl <'a, T: ?Sized> LifedPtr<'a, T> {
     #[inline(always)]
     pub fn new(src: &'a mut T) -> LifedPtr<'a, T> {
@@ -22,10 +24,10 @@ impl <'a, T: ?Sized> LifedPtr<'a, T> {
         }
     }
 
-    // Safe IFF the pointer is non-null and valid for the lifetime 'a
+    // Safe IFF the pointer is non-null and valid for the lifetime 'a (but not public, so only we need to care)
     #[inline(always)]
-    fn new_unchecked(src: *mut T) -> LifedPtr<'a, T> {
-        unsafe { LifedPtr { ptr: NonNull::new_unchecked(src), _lifetime: PhantomData } }
+    unsafe fn new_unchecked(src: *mut T) -> LifedPtr<'a, T> {
+        LifedPtr { ptr: NonNull::new_unchecked(src), _lifetime: PhantomData }
     }
 
     // otherwise `instance.read_volatile().field` loads the whole `instance`
@@ -43,13 +45,11 @@ impl <'a, T: ?Sized> LifedPtr<'a, T> {
         }
     }
 }
-
 impl <'a, T> LifedPtr<'a, T> {
     pub fn get_physical_address(&self, env: &impl Environment<'a>) -> usize {
         env.get_physical_address(self.ptr.as_ptr())
     }
 }
-
 impl<'a, T: Copy> LifedPtr<'a, T> {
 // These are not needed in practice, even during init we need the _part ones for the agent
 /*    #[inline(always)]
@@ -80,13 +80,21 @@ impl<'a, T: Copy> LifedPtr<'a, T> {
         }
     }
 }
+impl<'a, T> Clone for LifedPtr<'a, T> {
+    fn clone(&self) -> Self {
+        LifedPtr { ptr: self.ptr, _lifetime: self._lifetime }
+    }
+    fn clone_from(&mut self, source: &Self) {
+        self.ptr = source.ptr
+    }
+}
+impl<'a, T> Copy for LifedPtr<'a, T> { }
 
 
 pub struct LifedArray<'a, T, const N: usize> {
     ptr: NonNull<T>,
     _lifetime: PhantomData<&'a mut T>,
 }
-
 impl<'a, T, const N: usize> LifedArray<'a, T, N> {
     pub fn new(src: &'a mut [T; N]) -> LifedArray<'a, T, N> {
         let nonnull_src = NonNull::new(src.as_mut_ptr()).unwrap();
@@ -109,7 +117,6 @@ impl<'a, T, const N: usize> LifedArray<'a, T, N> {
         }
     }
 }
-// Manually derive these as using #[derive] doesn't work if T isn't Clone even though this does not matter here
 impl<'a, T, const N: usize> Clone for LifedArray<'a, T, N> {
     fn clone(&self) -> Self {
         LifedArray { ptr: self.ptr, _lifetime: self._lifetime }
@@ -121,13 +128,11 @@ impl<'a, T, const N: usize> Clone for LifedArray<'a, T, N> {
 impl<'a, T, const N: usize> Copy for LifedArray<'a, T, N> { }
 
 
-#[derive(Clone, Copy)]
 pub struct LifedSlice<'a, T> {
     ptr: NonNull<T>,
     len: NonZeroUsize,
     _lifetime: PhantomData<&'a mut T>,
 }
-
 impl<'a, T> LifedSlice<'a, T> {
     pub fn new(src: &'a mut [T]) -> LifedSlice<'a, T> {
         let nonnull_src = NonNull::new(src.as_mut_ptr()).unwrap();
@@ -147,7 +152,6 @@ impl<'a, T> LifedSlice<'a, T> {
     #[inline(always)]
     pub fn index(&self, index: usize) -> LifedPtr<'a, T> {
         if index < self.len.get() {
-            // Safe because we just checked the index (no >=0, it's unsigned) and the value must be valid for the lifetime 'a
             unsafe {
                 let ptr = self.ptr.as_ptr().offset(index as isize);
                 LifedPtr::new_unchecked(ptr)
@@ -157,11 +161,10 @@ impl<'a, T> LifedSlice<'a, T> {
         }
     }
 }
-
 impl<'a, T: Copy> LifedSlice<'a, T> {
     #[inline(always)]
     pub fn first(&self) -> T {
-        // Safe because we know our length is >0, thus the pointer must be valid
+        // Length is >0 so this is fine
         unsafe {
             *self.ptr.as_ptr()
         }
@@ -170,7 +173,6 @@ impl<'a, T: Copy> LifedSlice<'a, T> {
     #[inline(always)]
     pub fn get(&self, index: usize) -> T {
         if index < self.len.get() {
-            // Safe for the same reason as above
             unsafe {
                 *self.ptr.as_ptr().offset(index as isize)
             }
@@ -182,7 +184,6 @@ impl<'a, T: Copy> LifedSlice<'a, T> {
     #[inline(always)]
     pub fn set(&self, index: usize, value: T) {
         if index < self.len.get() {
-            // Safe for the same reason as above
             unsafe {
                 *self.ptr.as_ptr().offset(index as isize) = value
             }
@@ -191,3 +192,13 @@ impl<'a, T: Copy> LifedSlice<'a, T> {
         }
     }
 }
+impl<'a, T> Clone for LifedSlice<'a, T> {
+    fn clone(&self) -> Self {
+        LifedSlice { ptr: self.ptr, len: self.len, _lifetime: self._lifetime }
+    }
+    fn clone_from(&mut self, source: &Self) {
+        self.ptr = source.ptr;
+        self.len = source.len;
+    }
+}
+impl<'a, T> Copy for LifedSlice<'a, T> { }

@@ -1,46 +1,54 @@
-use crate::PacketData;
 use crate::env::Environment;
+use crate::lifed::{LifedPtr, LifedSlice};
+use crate::PacketData;
 
 pub struct Buffer<'a> {
-    data: &'a mut PacketData,
+    data: LifedPtr<'a, PacketData>,
     phys_addr: usize,
     length: u16,
 }
 
-// This implementation is doing what the C impl does manually: a bounded stack.
-// (Internally, Rust's Vec type is a (data ptr, capacity, length) triple)
-
 pub struct BufferPool<'a> {
-    buffers: Vec<&'a mut Buffer<'a>>,
+    buffers: LifedSlice<'a, LifedPtr<'a, Buffer<'a>>>,
+    index: usize
 }
 
 impl<'a> BufferPool<'a> {
     pub fn allocate(env: &'a impl Environment<'a>, size: usize) -> BufferPool<'a> {
-        let mut buffers = Vec::with_capacity(size);
-        let buffers_data = env.allocate_slice::<PacketData>(size);
-        let mut n = 0;
-        for data in buffers_data {
-            let phys_addr = env.get_physical_address(data);
-            // allocate the data and then just keep it around forever :-)
-            buffers[n] = Box::leak(Box::new(Buffer { data: data, phys_addr: phys_addr, length: 0 }));
-            n = n + 1;
+        let buffers = env.allocate_slice::<LifedPtr<'a, Buffer<'a>>>(size);
+        let buffers_data = LifedSlice::new(env.allocate_slice::<PacketData>(size));
+        for n in 0..size {
+            let phys_addr = buffers_data.index(n).get_physical_address(env);
+            let buffer = env.allocate::<Buffer<'a>, 1>();
+            buffer[0] = Buffer { data: buffers_data.index(n), phys_addr: phys_addr, length: 0 };
+            buffers[n] = LifedPtr::new(&mut buffer[0]);
         }
 
         BufferPool {
-            buffers: buffers
+            buffers: LifedSlice::new(buffers),
+            index: size.wrapping_sub(1)
         }
     }
 
-    pub fn give(&mut self, buffer: &'a mut Buffer<'a>) -> bool {
-        if self.buffers.len() < self.buffers.capacity() {
-            self.buffers.push(buffer);
+    pub fn give(&mut self, buffer: LifedPtr<'a, Buffer<'a>>) -> bool {
+        self.index = self.index.wrapping_add(1);
+        if self.index < self.buffers.len() {
+            self.buffers.set(self.index, buffer);
             return true;
         }
+
+        self.index = self.index.wrapping_sub(1);
         return false;
     }
 
-    // Note that Rust has some compiler support for representing "None" as NULL for Options of pointers, avoiding overhead
-    pub fn take(&mut self) -> Option<&'a mut Buffer<'a>> {
-        return self.buffers.pop();
+    // Note that Rust has some compiler support for representing "None" as NULL for Options of non-null pointers, avoiding overhead
+    pub fn take(&mut self) -> Option<LifedPtr<'a, Buffer<'a>>> {
+        if self.index < self.buffers.len() {
+            let buffer = self.buffers.get(self.index);
+            self.index = self.index.wrapping_sub(1);
+            return Some(buffer);
+        }
+
+        return None;
     }
 }
