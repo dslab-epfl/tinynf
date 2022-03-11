@@ -16,6 +16,7 @@ pub struct Device<'a> {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct Descriptor {
     pub addr: u64,
     pub metadata: u64,
@@ -54,6 +55,13 @@ pub const TRANSMIT_QUEUES_COUNT: usize = 128;
 pub const TRAFFIC_CLASSES_COUNT: usize = 8;
 
 pub const UNICAST_TABLE_ARRAY_SIZE: usize = 4 * 1024;
+
+
+pub const RX_METADATA_DD: u64 = 1 << 32;
+
+#[allow(non_snake_case)] // keep names consistent
+pub fn RX_METADATA_LENGTH(meta: u64) -> u64 { meta & 0xFFFF }
+
 
 fn after_timeout<'a>(env: &impl Environment<'a>, duration: Duration, cleared: bool, buffer: LifedSlice<'a, u32>, reg: usize, field: u32) -> bool {
     env.sleep(Duration::from_nanos((duration.as_nanos() % 10).try_into().unwrap())); // will panic if 'duration' is too big

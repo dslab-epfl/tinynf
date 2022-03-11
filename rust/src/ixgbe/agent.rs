@@ -1,7 +1,7 @@
 use crate::env::Environment;
 use crate::lifed::{LifedArray, LifedPtr, LifedSlice};
 
-use super::device::{Device, Descriptor, TransmitHead, RING_SIZE, PacketData};
+use super::device::{Device, Descriptor, TransmitHead, RING_SIZE, PacketData, RX_METADATA_DD, RX_METADATA_LENGTH};
 
 pub const MAX_OUTPUTS: usize = 256; // so that an u8 can index into it without bounds checks
 
@@ -66,11 +66,11 @@ impl<'a> Agent<'a> {
         let mut n: u8 = 0;
         while n < FLUSH_PERIOD {
             let receive_metadata = u64::from_le(self.rings.first().index(self.process_delimiter as usize).read_volatile_part(|d| { &d.metadata }));
-            if (receive_metadata & (1 << 32)) == 0 {
+            if (receive_metadata & RX_METADATA_DD) == 0 {
                 break;
             }
 
-            let length = receive_metadata & 0xFFFF;
+            let length = RX_METADATA_LENGTH(receive_metadata);
             processor(&mut self.packets[self.process_delimiter as usize], length, self.outputs);
 
             let rs_bit: u64 = if self.process_delimiter % RECYCLE_PERIOD == (RECYCLE_PERIOD - 1) {

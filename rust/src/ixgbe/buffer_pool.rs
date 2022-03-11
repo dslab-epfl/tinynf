@@ -5,7 +5,7 @@ use crate::PacketData;
 pub struct Buffer<'a> {
     pub data: LifedPtr<'a, PacketData>,
     pub phys_addr: usize,
-    pub length: u16,
+    pub length: u64,
 }
 
 pub struct BufferPool<'a> {

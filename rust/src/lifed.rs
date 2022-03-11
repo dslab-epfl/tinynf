@@ -30,6 +30,20 @@ impl <'a, T: ?Sized> LifedPtr<'a, T> {
         LifedPtr { ptr: NonNull::new_unchecked(src), _lifetime: PhantomData }
     }
 
+    #[inline(always)]
+    pub fn read_part<U: Copy>(&self, f: fn(&T) -> &U) -> U {
+        unsafe {
+            *f(self.ptr.as_ref())
+        }
+    }
+
+    #[inline(always)]
+    pub fn write_part<U: Copy>(&self, value: U, f: fn(&mut T) -> &mut U) {
+        unsafe {
+            *f(&mut *self.ptr.as_ptr()) = value;
+        }
+    }
+
     // otherwise `instance.read_volatile().field` loads the whole `instance`
     #[inline(always)]
     pub fn read_volatile_part<U: Copy>(&self, f: fn(&T) -> &U) -> U {
@@ -42,6 +56,13 @@ impl <'a, T: ?Sized> LifedPtr<'a, T> {
     pub fn write_volatile_part<U: Copy>(&self, value: U, f: fn(&mut T) -> &mut U) {
         unsafe {
             ptr::write_volatile(f(&mut *self.ptr.as_ptr()), value);
+        }
+    }
+
+    #[inline(always)]
+    pub fn map<U>(&self, f: fn(&mut T) -> U) -> U {
+        unsafe {
+            f(&mut *self.ptr.as_ptr())
         }
     }
 }

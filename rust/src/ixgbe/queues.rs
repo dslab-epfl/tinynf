@@ -1,7 +1,7 @@
 use crate::env::Environment;
 use crate::lifed::{LifedArray, LifedPtr};
 
-use super::device::{Device, Descriptor, TransmitHead, RING_SIZE};
+use super::device::{Device, Descriptor, TransmitHead, RING_SIZE, RX_METADATA_DD, RX_METADATA_LENGTH};
 use super::buffer_pool::{Buffer, BufferPool};
 
 struct QueueRx<'a> {
@@ -34,5 +34,37 @@ impl<'a> QueueRx<'a> {
             receive_tail_addr,
             next: 0
         }
+    }
+
+    #[inline(always)]
+    pub fn batch(&mut self, buffers: &mut [LifedPtr<'a, Buffer<'a>>]) -> usize {
+        let mut rx_count: usize = 0;
+        while rx_count < buffers.len() {
+            let metadata = u64::from_le(self.ring.index(self.next as usize).read_volatile_part(|d| { &d.metadata }));
+            if (metadata & RX_METADATA_DD) == 0 {
+                break;
+            }
+
+            let new_buffer = match self.pool.map(|p| {p.take()}) {
+                Some(b) => b,
+                None => { break; }
+            };
+
+            buffers[rx_count] = self.buffers.get(self.next as usize);
+            buffers[rx_count].write_part(RX_METADATA_LENGTH(metadata), |b| { &mut b.length });
+
+            self.buffers.set(self.next as usize, new_buffer);
+            self.ring.index(self.next as usize).write_volatile(Descriptor {
+                addr: u64::to_le(new_buffer.read_part(|b| { &b.phys_addr }) as u64),
+                metadata: u64::to_le(0) }
+            );
+
+            self.next = self.next.wrapping_add(1); // modulo RING_SIZE implicit since it's an u8
+            rx_count = rx_count.wrapping_add(1);
+        }
+        if rx_count > 0 {
+            self.receive_tail_addr.write_volatile(self.next.wrapping_sub(1) as u32); // same, implicit modulo
+        }
+        rx_count
     }
 }

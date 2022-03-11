@@ -1,7 +1,7 @@
 use crate::env::Environment;
 use crate::lifed::{LifedArray, LifedPtr};
 
-use super::device::{Descriptor, Device, PacketData, TransmitHead, RING_SIZE};
+use super::device::{Descriptor, Device, PacketData, TransmitHead, RING_SIZE, RX_METADATA_DD, RX_METADATA_LENGTH};
 
 const FLUSH_PERIOD: u8 = 8;
 const RECYCLE_PERIOD: u8 = 64;
@@ -57,11 +57,11 @@ impl<'a, const OUTPUTS: usize> AgentConst<'a, OUTPUTS> {
         let mut n: u8 = 0;
         while n < FLUSH_PERIOD {
             let receive_metadata = u64::from_le(self.rings[0].index(self.process_delimiter as usize).read_volatile_part(|d| { &d.metadata }));
-            if (receive_metadata & (1 << 32)) == 0 {
+            if (receive_metadata & RX_METADATA_DD) == 0 {
                 break;
             }
 
-            let length = receive_metadata & 0xFFFF;
+            let length = RX_METADATA_LENGTH(receive_metadata);
             processor(&mut self.packets[self.process_delimiter as usize], length, self.outputs);
 
             let rs_bit: u64 = if self.process_delimiter % RECYCLE_PERIOD == (RECYCLE_PERIOD - 1) { 1 << (24 + 3) } else { 0 };
