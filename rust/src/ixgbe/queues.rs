@@ -1,7 +1,7 @@
 use crate::env::Environment;
 use crate::lifed::{LifedArray, LifedPtr};
 
-use super::device::{Device, Descriptor, TransmitHead, RING_SIZE, RX_METADATA_DD, RX_METADATA_LENGTH};
+use super::device::{Device, Descriptor, TransmitHead, RING_SIZE, RX_METADATA_DD, RX_METADATA_LENGTH, TX_METADATA_LENGTH, TX_METADATA_RS, TX_METADATA_IFCS, TX_METADATA_EOP};
 use super::buffer_pool::{Buffer, BufferPool};
 
 pub struct QueueRx<'a> {
@@ -55,7 +55,7 @@ impl<'a> QueueRx<'a> {
 
             self.buffers.set(self.next as usize, new_buffer);
             self.ring.index(self.next as usize).write_volatile(Descriptor {
-                addr: u64::to_le(new_buffer.read_part(|b| { &b.phys_addr }) as u64),
+                addr: u64::to_le(new_buffer.map(|b| { b.phys_addr }) as u64),
                 metadata: u64::to_le(0) }
             );
 
@@ -70,7 +70,7 @@ impl<'a> QueueRx<'a> {
 }
 
 
-const TX_FLUSH_PERIOD: u8 = 32;
+const TX_RECYCLE_PERIOD: u8 = 32;
 
 pub struct QueueTx<'a> {
     ring: LifedArray<'a, Descriptor, { RING_SIZE }>,
@@ -95,5 +95,40 @@ impl<'a> QueueTx<'a> {
             recycled_head: 0,
             next: 0
         }
+    }
+
+    #[inline(always)]
+    pub fn batch(&mut self, buffers: &mut [LifedPtr<'a, Buffer<'a>>]) -> usize {
+        if self.next.wrapping_sub(self.recycled_head) >= 2 * TX_RECYCLE_PERIOD {
+            let actual_transmit_head = self.transmit_head_addr.read_volatile_part(|h| { &h.value });
+            while self.recycled_head as u32 != actual_transmit_head {
+                if !self.pool.map(|p| {p.give(self.buffers.get(self.recycled_head as usize))}) {
+                    break;
+                }
+                self.recycled_head = self.recycled_head.wrapping_add(1); // implicit modulo RING_SIZE, u8
+            }
+        }
+
+        let mut tx_count: usize = 0;
+        while tx_count < buffers.len() {
+            if self.next == self.recycled_head.wrapping_sub(1) {
+                break;
+            }
+
+            let rs_bit = if (self.next % TX_RECYCLE_PERIOD) == TX_RECYCLE_PERIOD - 1 { TX_METADATA_RS } else { 0 };
+            self.ring.index(self.next as usize).write_volatile(Descriptor {
+                addr: u64::to_le(buffers[tx_count].map(|b| {b.phys_addr}) as u64),
+                metadata: u64::to_le(TX_METADATA_LENGTH(buffers[tx_count].map(|b| {b.length})) | rs_bit | TX_METADATA_IFCS | TX_METADATA_EOP)
+            });
+
+            self.buffers.set(self.next as usize, buffers[tx_count]);
+
+            self.next = self.next.wrapping_add(1); // implicit modulo
+            tx_count = tx_count + 1;
+        }
+        if tx_count > 0 {
+            self.transmit_tail_addr.write_volatile(u32::to_le(self.next as u32));
+        }
+        tx_count
     }
 }

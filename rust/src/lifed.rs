@@ -31,13 +31,6 @@ impl <'a, T: ?Sized> LifedPtr<'a, T> {
     }
 
     #[inline(always)]
-    pub fn read_part<U: Copy>(&self, f: fn(&T) -> &U) -> U {
-        unsafe {
-            *f(self.ptr.as_ref())
-        }
-    }
-
-    #[inline(always)]
     pub fn write_part<U: Copy>(&self, value: U, f: fn(&mut T) -> &mut U) {
         unsafe {
             *f(&mut *self.ptr.as_ptr()) = value;
@@ -60,7 +53,7 @@ impl <'a, T: ?Sized> LifedPtr<'a, T> {
     }
 
     #[inline(always)]
-    pub fn map<U>(&self, f: fn(&mut T) -> U) -> U {
+    pub fn map<U, F>(&self, f: F) -> U where F: FnOnce(&mut T) -> U {
         unsafe {
             f(&mut *self.ptr.as_ptr())
         }
@@ -125,6 +118,7 @@ impl<'a, T, const N: usize> LifedArray<'a, T, N> {
         }
     }
 
+    // TODO rename to get_ptr
     #[inline(always)]
     pub fn index(&self, index: usize) -> LifedPtr<'a, T> {
         if index < N {
@@ -192,6 +186,7 @@ impl<'a, T> LifedSlice<'a, T> {
         self.len.get()
     }
 
+    // TODO rename to get_ptr
     #[inline(always)]
     pub fn index(&self, index: usize) -> LifedPtr<'a, T> {
         if index < self.len.get() {

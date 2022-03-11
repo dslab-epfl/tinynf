@@ -1,7 +1,7 @@
 use crate::env::Environment;
 use crate::lifed::{LifedArray, LifedPtr, LifedSlice};
 
-use super::device::{Device, Descriptor, TransmitHead, RING_SIZE, PacketData, RX_METADATA_DD, RX_METADATA_LENGTH};
+use super::device::{Device, Descriptor, TransmitHead, RING_SIZE, PacketData, RX_METADATA_DD, RX_METADATA_LENGTH, TX_METADATA_LENGTH, TX_METADATA_EOP, TX_METADATA_IFCS, TX_METADATA_RS};
 
 pub const MAX_OUTPUTS: usize = 256; // so that an u8 can index into it without bounds checks
 
@@ -73,14 +73,10 @@ impl<'a> Agent<'a> {
             let length = RX_METADATA_LENGTH(receive_metadata);
             processor(&mut self.packets[self.process_delimiter as usize], length, self.outputs);
 
-            let rs_bit: u64 = if self.process_delimiter % RECYCLE_PERIOD == (RECYCLE_PERIOD - 1) {
-                1 << (24 + 3)
-            } else {
-                0
-            };
+            let rs_bit: u64 = if self.process_delimiter % RECYCLE_PERIOD == (RECYCLE_PERIOD - 1) { TX_METADATA_RS } else { 0 };
             for o in 0..self.rings.len() {
                 self.rings.get(o as usize).index(self.process_delimiter as usize).write_volatile_part(
-                    u64::to_le(self.outputs[o as u8 as usize] | rs_bit | (1 << (24 + 1)) | (1 << 24)),
+                    u64::to_le(TX_METADATA_LENGTH(self.outputs[o as u8 as usize]) | rs_bit | TX_METADATA_IFCS | TX_METADATA_EOP),
                     |d| { &mut d.metadata }
                 );
                 self.outputs[o as u8 as usize] = 0;

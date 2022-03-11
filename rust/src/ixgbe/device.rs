@@ -57,10 +57,16 @@ pub const TRAFFIC_CLASSES_COUNT: usize = 8;
 pub const UNICAST_TABLE_ARRAY_SIZE: usize = 4 * 1024;
 
 
-pub const RX_METADATA_DD: u64 = 1 << 32;
-
 #[allow(non_snake_case)] // keep names consistent
 pub fn RX_METADATA_LENGTH(meta: u64) -> u64 { meta & 0xFFFF }
+pub const RX_METADATA_DD: u64 = 1 << 32;
+
+#[allow(non_snake_case)] // same
+pub fn TX_METADATA_LENGTH(meta: u64) -> u64 { meta }
+pub const TX_METADATA_EOP: u64 = 1 << 24;
+pub const TX_METADATA_IFCS: u64 = 1 << (24 + 1);
+pub const TX_METADATA_RS: u64 = 1 << (24 + 3);
+
 
 
 fn after_timeout<'a>(env: &impl Environment<'a>, duration: Duration, cleared: bool, buffer: LifedSlice<'a, u32>, reg: usize, field: u32) -> bool {
