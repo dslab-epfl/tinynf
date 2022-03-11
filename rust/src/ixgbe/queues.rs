@@ -4,7 +4,7 @@ use crate::lifed::{LifedArray, LifedPtr};
 use super::device::{Device, Descriptor, TransmitHead, RING_SIZE, RX_METADATA_DD, RX_METADATA_LENGTH};
 use super::buffer_pool::{Buffer, BufferPool};
 
-struct QueueRx<'a> {
+pub struct QueueRx<'a> {
     ring: LifedArray<'a, Descriptor, { RING_SIZE }>,
     buffers: LifedArray<'a, LifedPtr<'a, Buffer<'a>>, { RING_SIZE }>,
     pool: LifedPtr<'a, BufferPool<'a>>,
@@ -66,5 +66,34 @@ impl<'a> QueueRx<'a> {
             self.receive_tail_addr.write_volatile(u32::to_le(self.next.wrapping_sub(1) as u32)); // same, implicit modulo
         }
         rx_count
+    }
+}
+
+
+const TX_FLUSH_PERIOD: u8 = 32;
+
+pub struct QueueTx<'a> {
+    ring: LifedArray<'a, Descriptor, { RING_SIZE }>,
+    buffers: LifedArray<'a, LifedPtr<'a, Buffer<'a>>, { RING_SIZE }>,
+    pool: LifedPtr<'a, BufferPool<'a>>,
+    transmit_head_addr: LifedPtr<'a, TransmitHead>,
+    transmit_tail_addr: LifedPtr<'a, u32>,
+    recycled_head: u8,
+    next: u8,
+}
+
+impl<'a> QueueTx<'a> {
+    pub fn new(env: &impl Environment<'a>, device: &mut Device<'a>, pool: &'a mut BufferPool<'a>) -> QueueTx<'a> {
+        let ring = LifedArray::new(env.allocate::<Descriptor, { RING_SIZE }>());
+        let transmit_head_addr = LifedPtr::new(&mut env.allocate::<TransmitHead, 1>()[0]);
+        QueueTx {
+            ring,
+            buffers: LifedArray::new(env.allocate::<LifedPtr<'a, Buffer<'a>>, { RING_SIZE }>()),
+            pool: LifedPtr::new(pool),
+            transmit_head_addr,
+            transmit_tail_addr: device.add_output(env, ring.index(0), transmit_head_addr),
+            recycled_head: 0,
+            next: 0
+        }
     }
 }
