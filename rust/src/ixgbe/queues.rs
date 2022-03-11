@@ -63,7 +63,7 @@ impl<'a> QueueRx<'a> {
             rx_count = rx_count.wrapping_add(1);
         }
         if rx_count > 0 {
-            self.receive_tail_addr.write_volatile(self.next.wrapping_sub(1) as u32); // same, implicit modulo
+            self.receive_tail_addr.write_volatile(u32::to_le(self.next.wrapping_sub(1) as u32)); // same, implicit modulo
         }
         rx_count
     }
