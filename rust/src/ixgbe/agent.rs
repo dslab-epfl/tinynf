@@ -38,7 +38,7 @@ impl<'a> Agent<'a> {
         for n in 0..packets.len() {
             let packet_phys_addr = u64::to_le(env.get_physical_address(&mut packets[n as usize]) as u64);
             for r in 0..outputs.len() {
-                rings[r].index(n as usize).write_volatile_part(packet_phys_addr, |d| { &mut d.buffer });
+                rings[r].index(n as usize).write_volatile_part(packet_phys_addr, |d| { &mut d.addr });
             }
         }
 

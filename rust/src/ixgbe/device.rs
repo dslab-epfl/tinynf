@@ -17,7 +17,7 @@ pub struct Device<'a> {
 
 #[repr(C)]
 pub struct Descriptor {
-    pub buffer: u64,
+    pub addr: u64,
     pub metadata: u64,
 }
 

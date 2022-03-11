@@ -3,9 +3,9 @@ use crate::lifed::{LifedPtr, LifedSlice};
 use crate::PacketData;
 
 pub struct Buffer<'a> {
-    data: LifedPtr<'a, PacketData>,
-    phys_addr: usize,
-    length: u16,
+    pub data: LifedPtr<'a, PacketData>,
+    pub phys_addr: usize,
+    pub length: u16,
 }
 
 pub struct BufferPool<'a> {

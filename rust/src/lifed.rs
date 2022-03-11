@@ -107,10 +107,32 @@ impl<'a, T, const N: usize> LifedArray<'a, T, N> {
     #[inline(always)]
     pub fn index(&self, index: usize) -> LifedPtr<'a, T> {
         if index < N {
-            // Safe because we just checked the index (no >=0, it's unsigned) and the value must be valid for the lifetime 'a
             unsafe {
                 let ptr = self.ptr.as_ptr().offset(index as isize);
                 LifedPtr::new_unchecked(ptr)
+            }
+        } else {
+            panic!("Out of bounds")
+        }
+    }
+}
+impl<'a, T: Copy, const N: usize> LifedArray<'a, T, N> {
+    #[inline(always)]
+    pub fn get(&self, index: usize) -> T {
+        if index < N {
+            unsafe {
+                *self.ptr.as_ptr().offset(index as isize)
+            }
+        } else {
+            panic!("Out of bounds")
+        }
+    }
+
+    #[inline(always)]
+    pub fn set(&self, index: usize, value: T) {
+        if index < N {
+            unsafe {
+                *self.ptr.as_ptr().offset(index as isize) = value
             }
         } else {
             panic!("Out of bounds")
