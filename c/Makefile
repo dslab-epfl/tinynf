@@ -65,4 +65,4 @@ endif
 
 .PHONY: tn_default
 tn_default:
-	$(TN_CC) $(TN_CFLAGS) $(TN_FILES) -o $(TN_APP)
+	@$(TN_CC) $(TN_CFLAGS) $(TN_FILES) -o $(TN_APP)
