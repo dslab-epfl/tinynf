@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 constgenerics = []
+queues = []
 
 [dependencies]
 libc = "0.2.119"

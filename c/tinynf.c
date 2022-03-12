@@ -116,17 +116,18 @@ int main(int argc, char** argv)
 
 #elif TN_MODE == 2
 
-#define TINYNF_QUEUE_BATCH 32u
-#define TINYNF_QUEUE_POOLSIZE 65535u
+#define TINYNF_QUEUE_BATCH_SIZE 32u
+#define TINYNF_QUEUE_POOL_SIZE 65535u
 
 // I haven't tested if this noinline is also necessary but since it is for the agent case let's just do it
+// TODO centralize the comment above, it's the same for all langs
 __attribute__((noinline))
 noreturn static void run(struct ixgbe_queue_rx* restrict rx0, struct ixgbe_queue_rx* restrict rx1, struct ixgbe_queue_tx* restrict tx0, struct ixgbe_queue_tx* restrict tx1)
 {
-	struct ixgbe_buffer* restrict buffers[TINYNF_QUEUE_BATCH];
+	struct ixgbe_buffer* restrict buffers[TINYNF_QUEUE_BATCH_SIZE];
 	uint8_t nb_rx, nb_tx;
 	while (true) {
-		nb_rx = ixgbe_queue_rx_batch(rx0, buffers, TINYNF_QUEUE_BATCH);
+		nb_rx = ixgbe_queue_rx_batch(rx0, buffers, TINYNF_QUEUE_BATCH_SIZE);
 		for (size_t n = 0; n < nb_rx; n++) {
 			packet_handler(buffers[n]->data);
 		}
@@ -136,7 +137,7 @@ noreturn static void run(struct ixgbe_queue_rx* restrict rx0, struct ixgbe_queue
 			ixgbe_buffer_pool_give(tx1->pool, buffers[n]);
 		}
 
-		nb_rx = ixgbe_queue_rx_batch(rx1, buffers, TINYNF_QUEUE_BATCH);
+		nb_rx = ixgbe_queue_rx_batch(rx1, buffers, TINYNF_QUEUE_BATCH_SIZE);
 		for (size_t n = 0; n < nb_rx; n++) {
 			packet_handler(buffers[n]->data);
 		}
@@ -155,8 +156,8 @@ int main(int argc, char** argv)
 		return ret;
 	}
 
-	struct ixgbe_buffer_pool* pool0 = ixgbe_buffer_pool_allocate(TINYNF_QUEUE_POOLSIZE);
-	struct ixgbe_buffer_pool* pool1 = ixgbe_buffer_pool_allocate(TINYNF_QUEUE_POOLSIZE);
+	struct ixgbe_buffer_pool* pool0 = ixgbe_buffer_pool_allocate(TINYNF_QUEUE_POOL_SIZE);
+	struct ixgbe_buffer_pool* pool1 = ixgbe_buffer_pool_allocate(TINYNF_QUEUE_POOL_SIZE);
 
 	struct ixgbe_queue_rx rx0, rx1;
 	if (!ixgbe_queue_rx_init(&device0, pool0, &rx0) || !ixgbe_queue_rx_init(&device1, pool1, &rx1)) {

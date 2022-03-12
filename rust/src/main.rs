@@ -5,18 +5,21 @@
 #![warn(unused)]
 
 mod env;
-use env::LinuxEnvironment;
+use env::{Environment, LinuxEnvironment};
 
 mod pci;
 use pci::PciAddress;
 
 mod lifed;
+use lifed::LifedPtr;
 
 mod ixgbe;
 use ixgbe::agent;
 use ixgbe::agent::Agent;
 use ixgbe::agent_const::AgentConst;
+use ixgbe::buffer_pool::{Buffer, BufferPool};
 use ixgbe::device::{Device, PacketData};
+use ixgbe::queues::{QueueRx, QueueTx};
 
 
 fn parse_pci_address(s: &str) -> PciAddress {
@@ -31,7 +34,8 @@ fn parse_pci_address(s: &str) -> PciAddress {
     }
 }
 
-fn proc<const N: usize>(data: &mut PacketData, length: u64, output_lengths: &mut [u64; N]) {
+#[inline(always)]
+fn packet_handler(data: &mut PacketData) {
     data.write(0, 0);
     data.write(1, 0);
     data.write(2, 0);
@@ -44,6 +48,10 @@ fn proc<const N: usize>(data: &mut PacketData, length: u64, output_lengths: &mut
     data.write(9, 0);
     data.write(10, 0);
     data.write(11, 0);
+}
+
+fn proc<const N: usize>(data: &mut PacketData, length: u64, output_lengths: &mut [u64; N]) {
+    packet_handler(data);
     output_lengths[0] = length;
 }
 
@@ -52,6 +60,21 @@ fn run_const<const N: usize>(agent0: &mut AgentConst<'_, N>, agent1: &mut AgentC
     loop {
         agent0.run(proc::<N>);
         agent1.run(proc::<N>);
+    }
+}
+
+#[inline(never)]
+fn run_queues<'a>(rx0: &mut QueueRx<'a>, rx1: &mut QueueRx<'a>, tx0: &mut QueueTx<'a>, tx1: &mut QueueTx<'a>, env: &impl Environment<'a>) {
+    const QUEUE_BATCH_SIZE: usize = 32;
+
+    let fake_buffers = env.allocate::<Buffer<'a>, 1>();
+    let mut buffers = [LifedPtr::new(&mut fake_buffers[0]); QUEUE_BATCH_SIZE];
+
+    loop {
+        let nb_rx = rx0.batch(&mut buffers);
+        for ptr in &buffers[0..nb_rx] {
+            ptr.map(|b| { b.data.map(packet_handler) });
+        }
     }
 }
 
@@ -87,8 +110,23 @@ fn main() {
         let mut agent1 = AgentConst::create(&env, &dev1, agent1outs);
 
         println!("All good, running with const generics...");
-
         run_const::<1>(&mut agent0, &mut agent1);
+    } else if cfg!(feature="queues") {
+        const QUEUE_POOL_SIZE: usize = 65535;
+
+        let mut pool0 = BufferPool::allocate(&env, QUEUE_POOL_SIZE);
+        let pool0ptr = LifedPtr::new(&mut pool0);
+        let mut pool1 = BufferPool::allocate(&env, QUEUE_POOL_SIZE);
+        let pool1ptr = LifedPtr::new(&mut pool1);
+
+        let mut rx0 = QueueRx::create(&env, &dev0, pool0ptr);
+        let mut rx1 = QueueRx::create(&env, &dev1, pool1ptr);
+
+        let mut tx0 = QueueTx::create(&env, &dev0, pool1ptr);
+        let mut tx1 = QueueTx::create(&env, &dev1, pool0ptr);
+
+        println!("All good, running with queues...");
+        run_queues(&mut rx0, &mut rx1, &mut tx0, &mut tx1, &env);
     } else {
         let mut agent0 = Agent::create(&env, &dev0, &agent0outs);
         let mut agent1 = Agent::create(&env, &dev1, &agent1outs);

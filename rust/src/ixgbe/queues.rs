@@ -13,12 +13,12 @@ pub struct QueueRx<'a> {
 }
 
 impl<'a> QueueRx<'a> {
-    pub fn new(env: &impl Environment<'a>, device: &mut Device<'a>, pool: &'a mut BufferPool<'a>) -> QueueRx<'a> {
+    pub fn create(env: &impl Environment<'a>, device: &Device<'a>, pool: LifedPtr<'a, BufferPool<'a>>) -> QueueRx<'a> {
         let ring = LifedArray::new(env.allocate::<Descriptor, { RING_SIZE }>());
         let buffers = LifedArray::new(env.allocate::<LifedPtr<'a, Buffer<'a>>, { RING_SIZE }>());
 
         for n in 0..RING_SIZE {
-            let buffer = pool.take().unwrap(); // panic if the pool does not have enough buffers
+            let buffer = pool.map(|p| {p.take()}).unwrap(); // panic if the pool does not have enough buffers
             ring.index(n).write_volatile_part(buffer.read_volatile_part(|d| { &d.phys_addr }) as u64, |d| { &mut d.addr });
             ring.index(n).write_volatile_part(0, |d| { &mut d.metadata });
             buffers.set(n, buffer);
@@ -30,7 +30,7 @@ impl<'a> QueueRx<'a> {
         QueueRx {
             ring,
             buffers,
-            pool: LifedPtr::new(pool),
+            pool,
             receive_tail_addr,
             next: 0
         }
@@ -83,13 +83,13 @@ pub struct QueueTx<'a> {
 }
 
 impl<'a> QueueTx<'a> {
-    pub fn new(env: &impl Environment<'a>, device: &mut Device<'a>, pool: &'a mut BufferPool<'a>) -> QueueTx<'a> {
+    pub fn create(env: &impl Environment<'a>, device: &Device<'a>, pool: LifedPtr<'a, BufferPool<'a>>) -> QueueTx<'a> {
         let ring = LifedArray::new(env.allocate::<Descriptor, { RING_SIZE }>());
         let transmit_head_addr = LifedPtr::new(&mut env.allocate::<TransmitHead, 1>()[0]);
         QueueTx {
             ring,
             buffers: LifedArray::new(env.allocate::<LifedPtr<'a, Buffer<'a>>, { RING_SIZE }>()),
-            pool: LifedPtr::new(pool),
+            pool,
             transmit_head_addr,
             transmit_tail_addr: device.add_output(env, ring.index(0), transmit_head_addr),
             recycled_head: 0,

@@ -14,7 +14,7 @@ pub struct BufferPool<'a> {
 }
 
 impl<'a> BufferPool<'a> {
-    pub fn allocate(env: &'a impl Environment<'a>, size: usize) -> BufferPool<'a> {
+    pub fn allocate(env: &impl Environment<'a>, size: usize) -> BufferPool<'a> {
         let buffers = env.allocate_slice::<LifedPtr<'a, Buffer<'a>>>(size);
         let buffers_data = LifedSlice::new(env.allocate_slice::<PacketData>(size));
         for n in 0..size {
