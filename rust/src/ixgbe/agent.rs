@@ -1,7 +1,7 @@
 use crate::env::Environment;
 use crate::lifed::{LifedArray, LifedPtr, LifedSlice};
 
-use super::device::{Device, Descriptor, TransmitHead, RING_SIZE, PacketData, RX_METADATA_DD, RX_METADATA_LENGTH, TX_METADATA_LENGTH, TX_METADATA_EOP, TX_METADATA_IFCS, TX_METADATA_RS};
+use super::device::{Descriptor, Device, PacketData, TransmitHead, RING_SIZE, RX_METADATA_DD, RX_METADATA_LENGTH, TX_METADATA_EOP, TX_METADATA_IFCS, TX_METADATA_LENGTH, TX_METADATA_RS};
 
 pub const MAX_OUTPUTS: usize = 256; // so that an u8 can index into it without bounds checks
 
@@ -38,7 +38,7 @@ impl<'a> Agent<'a> {
         for n in 0..packets.len() {
             let packet_phys_addr = u64::to_le(env.get_physical_address(&mut packets[n as usize]) as u64);
             for r in 0..outputs.len() {
-                rings[r].index(n as usize).write_volatile_part(packet_phys_addr, |d| { &mut d.addr });
+                rings[r].index(n as usize).write_volatile_part(packet_phys_addr, |d| &mut d.addr);
             }
         }
 
@@ -65,7 +65,7 @@ impl<'a> Agent<'a> {
     pub fn run(&mut self, processor: fn(&mut PacketData, u64, &mut [u64; MAX_OUTPUTS])) {
         let mut n: u8 = 0;
         while n < FLUSH_PERIOD {
-            let receive_metadata = u64::from_le(self.rings.first().index(self.process_delimiter as usize).read_volatile_part(|d| { &d.metadata }));
+            let receive_metadata = u64::from_le(self.rings.first().index(self.process_delimiter as usize).read_volatile_part(|d| &d.metadata));
             if (receive_metadata & RX_METADATA_DD) == 0 {
                 break;
             }
@@ -75,10 +75,12 @@ impl<'a> Agent<'a> {
 
             let rs_bit: u64 = if self.process_delimiter % RECYCLE_PERIOD == (RECYCLE_PERIOD - 1) { TX_METADATA_RS } else { 0 };
             for o in 0..self.rings.len() {
-                self.rings.get(o as usize).index(self.process_delimiter as usize).write_volatile_part(
-                    u64::to_le(TX_METADATA_LENGTH(self.outputs[o as u8 as usize]) | rs_bit | TX_METADATA_IFCS | TX_METADATA_EOP),
-                    |d| { &mut d.metadata }
-                );
+                self.rings
+                    .get(o as usize)
+                    .index(self.process_delimiter as usize)
+                    .write_volatile_part(u64::to_le(TX_METADATA_LENGTH(self.outputs[o as u8 as usize]) | rs_bit | TX_METADATA_IFCS | TX_METADATA_EOP), |d| {
+                        &mut d.metadata
+                    });
                 self.outputs[o as u8 as usize] = 0;
             }
 
@@ -88,7 +90,7 @@ impl<'a> Agent<'a> {
                 let mut earliest_transmit_head = self.process_delimiter as u32;
                 let mut min_diff = u64::MAX;
                 for h in 0..self.transmit_heads.len() {
-                    let head_value = u32::from_le(self.transmit_heads.index(h).read_volatile_part(|h| { &h.value }));
+                    let head_value = u32::from_le(self.transmit_heads.index(h).read_volatile_part(|h| &h.value));
                     let diff = (head_value as u64).wrapping_sub(self.process_delimiter as u64);
                     if diff <= min_diff {
                         earliest_transmit_head = head_value;

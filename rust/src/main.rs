@@ -21,7 +21,6 @@ use ixgbe::buffer_pool::{Buffer, BufferPool};
 use ixgbe::device::{Device, PacketData};
 use ixgbe::queues::{QueueRx, QueueTx};
 
-
 fn parse_pci_address(s: &str) -> PciAddress {
     let parts: Vec<&str> = s.split(&[':', '.'][..]).collect(); // technically too lax but that's fine
     if parts.len() != 3 {
@@ -74,27 +73,27 @@ fn run_queues<'a>(rx0: &mut QueueRx<'a>, rx1: &mut QueueRx<'a>, tx0: &mut QueueT
 
     loop {
         {
-            let nb_rx = rx0.batch(&mut buffers[0 .. QUEUE_BATCH_SIZE as usize]);
+            let nb_rx = rx0.batch(&mut buffers[0..QUEUE_BATCH_SIZE as usize]);
             for ptr in &buffers[0..nb_rx as usize] {
-                ptr.map(|b| { b.data.map(packet_handler) });
+                ptr.map(|b| b.data.map(packet_handler));
             }
-            let nb_tx = tx1.batch(&mut buffers[0 .. nb_rx as usize]);
+            let nb_tx = tx1.batch(&mut buffers[0..nb_rx as usize]);
             // Manual loop here, we would want 'for ptr in &buffers[nb_tx..nb_rx] but this adds a check+panic for nb_tx > nb_rx
             let mut n = nb_rx;
             while n < nb_tx {
-                tx1.pool.map(|p| { p.give(buffers[n as usize]) });
+                tx1.pool.map(|p| p.give(buffers[n as usize]));
                 n = n.wrapping_add(1);
             }
         }
         {
-            let nb_rx = rx1.batch(&mut buffers[0 .. QUEUE_BATCH_SIZE as usize]);
+            let nb_rx = rx1.batch(&mut buffers[0..QUEUE_BATCH_SIZE as usize]);
             for ptr in &buffers[0..nb_rx as usize] {
-                ptr.map(|b| { b.data.map(packet_handler) });
+                ptr.map(|b| b.data.map(packet_handler));
             }
-            let nb_tx = tx0.batch(&mut buffers[0 .. nb_rx as usize]);
+            let nb_tx = tx0.batch(&mut buffers[0..nb_rx as usize]);
             let mut n = nb_rx;
             while n < nb_tx {
-                tx0.pool.map(|p| { p.give(buffers[n as usize]) });
+                tx0.pool.map(|p| p.give(buffers[n as usize]));
                 n = n.wrapping_add(1);
             }
         }
@@ -128,13 +127,13 @@ fn main() {
     let agent0outs = [&dev1];
     let agent1outs = [&dev0];
 
-    if cfg!(feature="constgenerics") {
+    if cfg!(feature = "constgenerics") {
         let mut agent0 = AgentConst::create(&env, &dev0, agent0outs);
         let mut agent1 = AgentConst::create(&env, &dev1, agent1outs);
 
         println!("All good, running with const generics...");
         run_const::<1>(&mut agent0, &mut agent1);
-    } else if cfg!(feature="queues") {
+    } else if cfg!(feature = "queues") {
         const QUEUE_POOL_SIZE: usize = 65535;
 
         let mut pool0 = BufferPool::allocate(&env, QUEUE_POOL_SIZE);

@@ -3,7 +3,7 @@ use std::mem::size_of;
 use std::time::Duration;
 
 use crate::env::Environment;
-use crate::lifed::{LifedSlice, LifedPtr};
+use crate::lifed::{LifedPtr, LifedSlice};
 use crate::pci::PciAddress;
 
 use super::pci_regs;
@@ -56,18 +56,19 @@ pub const TRAFFIC_CLASSES_COUNT: usize = 8;
 
 pub const UNICAST_TABLE_ARRAY_SIZE: usize = 4 * 1024;
 
-
 #[allow(non_snake_case)] // keep names consistent
-pub fn RX_METADATA_LENGTH(meta: u64) -> u64 { meta & 0xFFFF }
+pub fn RX_METADATA_LENGTH(meta: u64) -> u64 {
+    meta & 0xFFFF
+}
 pub const RX_METADATA_DD: u64 = 1 << 32;
 
 #[allow(non_snake_case)] // same
-pub fn TX_METADATA_LENGTH(meta: u64) -> u64 { meta }
+pub fn TX_METADATA_LENGTH(meta: u64) -> u64 {
+    meta
+}
 pub const TX_METADATA_EOP: u64 = 1 << 24;
 pub const TX_METADATA_IFCS: u64 = 1 << (24 + 1);
 pub const TX_METADATA_RS: u64 = 1 << (24 + 3);
-
-
 
 fn after_timeout<'a>(env: &impl Environment<'a>, duration: Duration, cleared: bool, buffer: LifedSlice<'a, u32>, reg: usize, field: u32) -> bool {
     env.sleep(Duration::from_nanos((duration.as_nanos() % 10).try_into().unwrap())); // will panic if 'duration' is too big

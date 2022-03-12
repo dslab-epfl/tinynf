@@ -68,7 +68,7 @@ static mut MAPS: Vec<memmap::MmapMut> = Vec::new();
 
 pub struct LinuxEnvironment {
     allocated_page: RefCell<*mut u8>,
-    used_bytes: RefCell<usize>
+    used_bytes: RefCell<usize>,
 }
 
 impl LinuxEnvironment {

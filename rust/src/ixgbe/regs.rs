@@ -245,7 +245,6 @@ pub mod TXDCTL_ {
     pub const ENABLE: u32 = 1 << 25;
 }
 
-
 pub fn read(buffer: LifedSlice<'_, u32>, reg: usize) -> u32 {
     u32::from_le(buffer.index(reg).read_volatile())
 }

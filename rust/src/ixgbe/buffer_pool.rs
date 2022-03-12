@@ -10,7 +10,7 @@ pub struct Buffer<'a> {
 
 pub struct BufferPool<'a> {
     buffers: LifedSlice<'a, LifedPtr<'a, Buffer<'a>>>,
-    index: usize
+    index: usize,
 }
 
 impl<'a> BufferPool<'a> {
@@ -20,13 +20,17 @@ impl<'a> BufferPool<'a> {
         for n in 0..size {
             let phys_addr = buffers_data.index(n).get_physical_address(env);
             let buffer = env.allocate::<Buffer<'a>, 1>();
-            buffer[0] = Buffer { data: buffers_data.index(n), phys_addr: phys_addr, length: 0 };
+            buffer[0] = Buffer {
+                data: buffers_data.index(n),
+                phys_addr: phys_addr,
+                length: 0,
+            };
             buffers[n] = LifedPtr::new(&mut buffer[0]);
         }
 
         BufferPool {
             buffers: LifedSlice::new(buffers),
-            index: size.wrapping_sub(1)
+            index: size.wrapping_sub(1),
         }
     }
 
