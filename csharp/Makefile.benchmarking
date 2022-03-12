@@ -1,6 +1,12 @@
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-TN_CSHARP_MODE ?= extended
+RUN_ARG=extended
+ifeq ($(TN_MODE),2)
+RUN_ARG=queues
+endif
+ifeq ($(TN_MODE),3)
+RUN_ARG=safe
+endif
 
 ifdef TN_CSHARP_DEBUG
 CONFIG=Debug
@@ -25,7 +31,7 @@ build:
 	@$(DOTNET) publish -r linux-x64 -c $(CONFIG) --self-contained true $(BUILD_ARGS) $(THIS_DIR)
 
 run:
-	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/TinyNF/bin/Release/net6.0/linux-x64/publish/TinyNF $(TN_ARGS) $(TN_CSHARP_MODE)
+	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/TinyNF/bin/Release/net6.0/linux-x64/publish/TinyNF $(TN_ARGS) $(RUN_ARG)
 
 print-nf-name:
 	@echo TinyNF

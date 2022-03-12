@@ -47,7 +47,7 @@ namespace TinyNF
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void Run(Agent agent0, Agent agent1)
+        private static void Run(ref Agent agent0, ref Agent agent1)
         {
             var proc = new Processor();
             while (true)
@@ -58,7 +58,40 @@ namespace TinyNF
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void SafeRun(SafeAgent agent0, SafeAgent agent1)
+        private static void RunQueues(ref QueueRx rx0, ref QueueRx rx1, ref QueueTx tx0, ref QueueTx tx1)
+        {
+            const int BatchSize = 32;
+
+            var buffers = new RefArray256<Ixgbe.Buffer>(_ => ref Ixgbe.Buffer.Fake);
+            byte nbRx, nbTx;
+            while (true)
+            {
+                nbRx = rx0.Batch(buffers, BatchSize);
+                for (byte n = 0; n < nbRx; n++)
+                {
+                    HandleData(ref buffers.Get(n).Data.Get());
+                }
+                nbTx = tx1.Batch(buffers, nbRx);
+                for (byte n = nbTx; n < nbRx; n++)
+                {
+                    tx1.Pool.Get().Give(ref buffers.Get(n));
+                }
+
+                nbRx = rx1.Batch(buffers, BatchSize);
+                for (byte n = 0; n < nbRx; n++)
+                {
+                    HandleData(ref buffers.Get(n).Data.Get());
+                }
+                nbTx = tx0.Batch(buffers, nbRx);
+                for (byte n = nbTx; n < nbRx; n++)
+                {
+                    tx0.Pool.Get().Give(ref buffers.Get(n));
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void RunSafe(ref SafeAgent agent0, ref SafeAgent agent1)
         {
             var proc = new SafeProcessor();
             while (true)
@@ -97,17 +130,30 @@ namespace TinyNF
 
             if (args[2] == "safe")
             {
-                Console.WriteLine("Safe C# mode starting...");
                 var agent0 = new SafeAgent(env, dev0, new[] { dev1 });
                 var agent1 = new SafeAgent(env, dev1, new[] { dev0 });
-                SafeRun(agent0, agent1);
+                Console.WriteLine("Safe C# mode starting...");
+                RunSafe(ref agent0, ref agent1);
+            }
+            else if (args[2] == "queues")
+            {
+                const int PoolSize = 65536;
+
+                var pool0 = new BufferPool(env, PoolSize);
+                var pool1 = new BufferPool(env, PoolSize);
+                var rx0 = new QueueRx(env, dev0, ref pool0);
+                var rx1 = new QueueRx(env, dev1, ref pool1);
+                var tx0 = new QueueTx(env, dev0, ref pool1);
+                var tx1 = new QueueTx(env, dev1, ref pool0);
+                Console.WriteLine("Queues C# mode starting...");
+                RunQueues(ref rx0, ref rx1, ref tx0, ref tx1);
             }
             else
             {
-                Console.WriteLine("'Extended' C# mode starting...");
                 var agent0 = new Agent(env, dev0, new[] { dev1 });
                 var agent1 = new Agent(env, dev1, new[] { dev0 });
-                Run(agent0, agent1);
+                Console.WriteLine("'Extended' C# mode starting...");
+                Run(ref agent0, ref agent1);
             }
         }
     }

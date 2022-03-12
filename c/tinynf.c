@@ -143,7 +143,7 @@ noreturn static void run(struct ixgbe_queue_rx* restrict rx0, struct ixgbe_queue
 		}
 		nb_tx = ixgbe_queue_tx_batch(tx0, buffers, nb_rx);
 		for (size_t n = nb_tx; n < nb_rx; n++) {
-			ixgbe_buffer_pool_give(tx1->pool, buffers[n]);
+			ixgbe_buffer_pool_give(tx0->pool, buffers[n]);
 		}
 	}
 }

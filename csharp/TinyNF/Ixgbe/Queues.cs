@@ -80,7 +80,7 @@ namespace TinyNF.Ixgbe
 
         private readonly Array256<Descriptor> _ring;
         private readonly RefArray256<Buffer> _buffers;
-        private readonly Ref<BufferPool> _pool;
+        public readonly Ref<BufferPool> Pool;
         private readonly Ref<TransmitHead> _transmitHeadAddr;
         private readonly Ref<uint> _transmitTailAddr;
         private byte _recycledHead;
@@ -90,7 +90,7 @@ namespace TinyNF.Ixgbe
         {
             _ring = new(env.Allocate<Descriptor>);
             _buffers = new(_ => ref Buffer.Fake);
-            _pool = new(ref pool);
+            Pool = new(ref pool);
             _transmitHeadAddr = new(ref env.Allocate<TransmitHead>(1).Span[0]);
             _transmitTailAddr = new(ref device.AddOutput(env, _ring.AsSpan(), ref _transmitHeadAddr.Get()).Span[0]);
             _recycledHead = 0;
@@ -105,7 +105,7 @@ namespace TinyNF.Ixgbe
                 uint actualTransmitHead = Endianness.FromLittle(Volatile.Read(ref _transmitHeadAddr.Get().Value));
                 while (_recycledHead != actualTransmitHead)
                 {
-                    if (!_pool.Get().Give(ref _buffers.Get(_recycledHead)))
+                    if (!Pool.Get().Give(ref _buffers.Get(_recycledHead)))
                     {
                         break;
                     }
