@@ -7,7 +7,7 @@ namespace TinyNF.Unsafe
     /// This struct is safe iff:
     /// - it is constructed using the explicit constructor, not the default one.
     /// </summary>
-    public readonly ref struct Array256Array<T>
+    public readonly struct Array256Array<T>
         where T : unmanaged
     {
         private readonly RefArray<T> _values;

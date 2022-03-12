@@ -9,7 +9,7 @@ namespace TinyNF.Ixgbe
     [StructLayout(LayoutKind.Sequential)]
     internal struct Descriptor
     {
-        public ulong Buffer;
+        public ulong Addr;
         public ulong Metadata;
     }
 
@@ -51,6 +51,9 @@ namespace TinyNF.Ixgbe
     internal sealed class Device
     {
         public const int RingSize = 256;
+
+        public const ulong RxMetadataDD = 1ul << 32;
+        public static ushort RxMetadataLength(ulong metadata) => (ushort)metadata;
 
 
         private const uint FiveTupleFiltersCount = 128u;

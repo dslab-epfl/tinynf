@@ -7,7 +7,7 @@
     /// - it is constructed using the explicit constructor, not the default one; and
     /// - the references are all to pinned blocks of memory.
     /// </summary>
-    public readonly unsafe ref struct RefArray<T>
+    public readonly unsafe struct RefArray<T>
         where T : unmanaged
     {
         public delegate ref T Initializer(int n);

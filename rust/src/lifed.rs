@@ -67,21 +67,13 @@ impl<'a, T> LifedPtr<'a, T> {
     }
 }
 impl<'a, T: Copy> LifedPtr<'a, T> {
-    // These are not needed in practice, even during init we need the _part ones for the agent
-    /*    #[inline(always)]
-        pub fn read(&self) -> T {
-            unsafe {
-                *self.ptr.as_ptr()
-            }
+    #[inline(always)]
+    pub fn write(&self, value: T) {
+        unsafe {
+            *self.ptr.as_ptr() = value
         }
+    }
 
-        #[inline(always)]
-        pub fn write(&self, value: T) {
-            unsafe {
-                *self.ptr.as_ptr() = value
-            }
-        }
-    */
     #[inline(always)]
     pub fn read_volatile(&self) -> T {
         unsafe { ptr::read_volatile(self.ptr.as_ptr()) }

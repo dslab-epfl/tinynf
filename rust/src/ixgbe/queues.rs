@@ -19,8 +19,10 @@ impl<'a> QueueRx<'a> {
 
         for n in 0..RING_SIZE {
             let buffer = pool.map(|p| p.take()).unwrap(); // panic if the pool does not have enough buffers
-            ring.index(n).write_volatile_part(buffer.read_volatile_part(|d| &d.phys_addr) as u64, |d| &mut d.addr);
-            ring.index(n).write_volatile_part(0, |d| &mut d.metadata);
+            ring.index(n).write(Descriptor {
+                addr: buffer.read_volatile_part(|d| &d.phys_addr) as u64,
+                metadata: 0,
+            });
             buffers.set(n, buffer);
         }
 

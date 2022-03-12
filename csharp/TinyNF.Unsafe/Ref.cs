@@ -5,7 +5,7 @@ namespace TinyNF.Unsafe
     /// <summary>
     /// A reference to a value, i.e., a way to get a 'ref T' field.
     /// This struct is safe iff:
-    /// - it is constructed using the explicit constructor, not the default one; and
+    /// - it is constructed using an explicit constructor, not the default one; and
     /// - it is constructed from a (ref or IntPtr) to a pinned value
     /// </summary>
     /// <remarks>
@@ -17,25 +17,24 @@ namespace TinyNF.Unsafe
     /// but needed for arrays of ref to ref structs (see e.g. the buffer pool)
     /// </remarks>
     public readonly unsafe ref struct Ref<T>
-        where T : unmanaged
     {
-        private readonly T* _value;
+        private readonly IntPtr _value;
 
         public IntPtr Ptr => (IntPtr)_value;
 
         public Ref(ref T value)
         {
-            _value = (T*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref value);
+            _value = (IntPtr)System.Runtime.CompilerServices.Unsafe.AsPointer(ref value);
         }
 
         public Ref(IntPtr value)
         {
-            _value = (T*)value;
+            _value = value;
         }
 
         public readonly ref T Get()
         {
-            return ref System.Runtime.CompilerServices.Unsafe.AsRef<T>(_value);
+            return ref System.Runtime.CompilerServices.Unsafe.AsRef<T>((void*)_value);
         }
     }
 }

@@ -19,6 +19,7 @@ namespace TinyNF.Ixgbe
         private static uint _fakeTail; // default value when initiailizing TransmitTails
 
         private readonly Array256<PacketData> _packets;
+        // OVERHEAD: keep a separate reference to the receive ring to avoid bounds checks during run
         private readonly Array256<Descriptor> _receiveRing;
         private readonly Array256Array<Descriptor> _transmitRings;
         private readonly Ref<uint> _receiveTail;
@@ -40,7 +41,7 @@ namespace TinyNF.Ixgbe
             {
                 for (int n = 0; n < _transmitRings[r].Length; n++)
                 {
-                    _transmitRings[r][(byte)n].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[(byte)n]));
+                    _transmitRings[r][(byte)n].Addr = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[(byte)n]));
                 }
             }
 
@@ -65,12 +66,12 @@ namespace TinyNF.Ixgbe
             for (n = 0; n < FlushPeriod; n++)
             {
                 ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _receiveRing[_processDelimiter].Metadata));
-                if ((receiveMetadata & (1ul << 32)) == 0)
+                if ((receiveMetadata & Device.RxMetadataDD) == 0)
                 {
                     break;
                 }
 
-                ulong length = receiveMetadata & 0xFFFFu;
+                ulong length = Device.RxMetadataLength(receiveMetadata);
                 processor.Process(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;

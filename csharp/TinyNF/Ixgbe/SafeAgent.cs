@@ -41,7 +41,7 @@ namespace TinyNF.Ixgbe
                 _transmitRings[n] = env.Allocate<Descriptor>(Device.RingSize);
                 for (int m = 0; m < _transmitRings[n].Length; m++)
                 {
-                    _transmitRings[n].Span[m].Buffer = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[m]));
+                    _transmitRings[n].Span[m].Addr = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[m]));
                 }
             }
 
@@ -63,12 +63,12 @@ namespace TinyNF.Ixgbe
             for (n = 0; n < FlushPeriod; n++)
             {
                 ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _receiveRing[_processDelimiter].Metadata));
-                if ((receiveMetadata & (1ul << 32)) == 0)
+                if ((receiveMetadata & Device.RxMetadataDD) == 0)
                 {
                     break;
                 }
 
-                ulong length = receiveMetadata & 0xFFFFu;
+                ulong length = Device.RxMetadataLength(receiveMetadata);
                 processor.Process(ref _packets[_processDelimiter], length, _outputs);
 
                 ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;

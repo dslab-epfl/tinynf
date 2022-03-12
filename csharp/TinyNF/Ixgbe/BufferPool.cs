@@ -6,6 +6,10 @@ namespace TinyNF.Ixgbe
 {
     internal struct Buffer
     {
+        private static readonly PacketData _data;
+        // Valid buffer that can be used as a default for non-null references
+        public static Buffer Fake = new() { Data = new(ref _data) };
+
         // This is very hacky, but storing a Ref<Buffer> directly requires making this a ref struct,
         // and then we can no longer use it as a generic parameter or through an unsafe pointer,
         // which basically prevents us from doing anything useful with it beyond the absolute basics
@@ -19,10 +23,10 @@ namespace TinyNF.Ixgbe
         public ulong Length;
     }
 
-    internal ref struct BufferPool
+    internal struct BufferPool
     {
-        public readonly RefArray<Buffer> Buffers;
-        public uint Index;
+        private readonly RefArray<Buffer> Buffers;
+        private uint Index;
 
         public BufferPool(IEnvironment environment, int size)
         {
@@ -72,13 +76,7 @@ namespace TinyNF.Ixgbe
             }
 
             valid = false;
-            return ref RefCache.FakeBuffer;
-        }
-
-        private static class RefCache
-        {
-            private static readonly PacketData _data;
-            public static Buffer FakeBuffer = new() { Data = new(ref _data) };
+            return ref Buffer.Fake;
         }
     }
 }
