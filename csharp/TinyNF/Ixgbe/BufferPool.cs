@@ -35,7 +35,7 @@ namespace TinyNF.Ixgbe
             var allBuffers = environment.Allocate<Buffer>(size);
 
             Buffers = new(size, n => ref allBuffers.Span[n]);
-            Index = (uint)size - 1;
+            Index = (uint)(size - 1);
 
             for (int n = 0; n < size; n++)
             {
@@ -74,7 +74,7 @@ namespace TinyNF.Ixgbe
             if (index < (uint)buffers.Length)
             {
                 ref var result = ref buffers.Get((int)index);
-                Index++;
+                Index--;
                 valid = true;
                 return ref result;
             }

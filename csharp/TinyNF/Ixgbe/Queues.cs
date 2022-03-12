@@ -60,8 +60,8 @@ namespace TinyNF.Ixgbe
                 returnedBuffer.Length = Device.RxMetadataLength(metadata);
 
                 _buffers.Set(_next, ref newBuffer);
-                _ring[_next].Addr = Endianness.ToLittle(newBuffer.PhysAddr);
-                _ring[_next].Metadata = Endianness.ToLittle(0);
+                Volatile.Write(ref _ring[_next].Addr, Endianness.ToLittle(newBuffer.PhysAddr));
+                Volatile.Write(ref _ring[_next].Metadata, Endianness.ToLittle(0));
 
                 _next++; // implicit modulo since it's a byte
                 rxCount++;
@@ -100,7 +100,7 @@ namespace TinyNF.Ixgbe
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public byte Batch(RefArray256<Buffer> buffers, byte buffersCount)
         {
-            if (_next - _recycledHead >= 2 * RecyclePeriod)
+            if ((byte)(_next - _recycledHead) >= 2 * RecyclePeriod)
             {
                 uint actualTransmitHead = Endianness.FromLittle(Volatile.Read(ref _transmitHeadAddr.Get().Value));
                 while (_recycledHead != actualTransmitHead)
@@ -122,8 +122,8 @@ namespace TinyNF.Ixgbe
                 }
 
                 ulong rsBit = _next % RecyclePeriod == RecyclePeriod - 1 ? Device.TxMetadataRS : 0;
-                _ring[_next].Addr = Endianness.ToLittle(buffers.Get(txCount).PhysAddr);
-                _ring[_next].Metadata = Endianness.ToLittle(Device.TxMetadataLength(buffers.Get(txCount).Length) | rsBit | Device.TxMetadataIFCS | Device.TxMetadataEOP);
+                Volatile.Write(ref _ring[_next].Addr, Endianness.ToLittle(buffers.Get(txCount).PhysAddr));
+                Volatile.Write(ref _ring[_next].Metadata, Endianness.ToLittle(Device.TxMetadataLength(buffers.Get(txCount).Length) | rsBit | Device.TxMetadataIFCS | Device.TxMetadataEOP));
 
                 _buffers.Set(_next, ref buffers.Get(txCount));
 

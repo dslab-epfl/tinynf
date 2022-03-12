@@ -113,9 +113,9 @@ namespace TinyNF
 
         public static void Main(string[] args)
         {
-            if (args.Length != 3 || (args[2] != "safe" && args[2] != "extended"))
+            if (args.Length != 3)
             {
-                throw new Exception("Expected exactly 3 args: <pci dev> <pci dev> <safe/extended>");
+                throw new Exception("Expected exactly 3 args: <pci dev> <pci dev> <mode>");
             }
 
             var env = new LinuxEnvironment();
@@ -148,12 +148,16 @@ namespace TinyNF
                 Console.WriteLine("Queues C# mode starting...");
                 RunQueues(ref rx0, ref rx1, ref tx0, ref tx1);
             }
-            else
+            else if (args[2] == "extended")
             {
                 var agent0 = new Agent(env, dev0, new[] { dev1 });
                 var agent1 = new Agent(env, dev1, new[] { dev0 });
                 Console.WriteLine("'Extended' C# mode starting...");
                 Run(ref agent0, ref agent1);
+            }
+            else
+            {
+                throw new Exception("Unknown mode");
             }
         }
     }
