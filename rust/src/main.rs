@@ -65,15 +65,38 @@ fn run_const<const N: usize>(agent0: &mut AgentConst<'_, N>, agent1: &mut AgentC
 
 #[inline(never)]
 fn run_queues<'a>(rx0: &mut QueueRx<'a>, rx1: &mut QueueRx<'a>, tx0: &mut QueueTx<'a>, tx1: &mut QueueTx<'a>, env: &impl Environment<'a>) {
-    const QUEUE_BATCH_SIZE: usize = 32;
+    // We use u8 throughout + a 256-sized array of buffers to avoid bounds checks
+    // (since we cannot propagate the info that nb_rx/nb_tx are always <= buffers.len())
+    const QUEUE_BATCH_SIZE: u8 = 32;
 
     let fake_buffers = env.allocate::<Buffer<'a>, 1>();
-    let mut buffers = [LifedPtr::new(&mut fake_buffers[0]); QUEUE_BATCH_SIZE];
+    let mut buffers = [LifedPtr::new(&mut fake_buffers[0]); 256];
 
     loop {
-        let nb_rx = rx0.batch(&mut buffers);
-        for ptr in &buffers[0..nb_rx] {
-            ptr.map(|b| { b.data.map(packet_handler) });
+        {
+            let nb_rx = rx0.batch(&mut buffers[0 .. QUEUE_BATCH_SIZE as usize]);
+            for ptr in &buffers[0..nb_rx as usize] {
+                ptr.map(|b| { b.data.map(packet_handler) });
+            }
+            let nb_tx = tx1.batch(&mut buffers[0 .. nb_rx as usize]);
+            // Manual loop here, we would want 'for ptr in &buffers[nb_tx..nb_rx] but this adds a check+panic for nb_tx > nb_rx
+            let mut n = nb_rx;
+            while n < nb_tx {
+                tx1.pool.map(|p| { p.give(buffers[n as usize]) });
+                n = n.wrapping_add(1);
+            }
+        }
+        {
+            let nb_rx = rx1.batch(&mut buffers[0 .. QUEUE_BATCH_SIZE as usize]);
+            for ptr in &buffers[0..nb_rx as usize] {
+                ptr.map(|b| { b.data.map(packet_handler) });
+            }
+            let nb_tx = tx0.batch(&mut buffers[0 .. nb_rx as usize]);
+            let mut n = nb_rx;
+            while n < nb_tx {
+                tx0.pool.map(|p| { p.give(buffers[n as usize]) });
+                n = n.wrapping_add(1);
+            }
         }
     }
 }

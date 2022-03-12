@@ -37,9 +37,9 @@ impl<'a> QueueRx<'a> {
     }
 
     #[inline(always)]
-    pub fn batch(&mut self, buffers: &mut [LifedPtr<'a, Buffer<'a>>]) -> usize {
-        let mut rx_count: usize = 0;
-        while rx_count < buffers.len() {
+    pub fn batch(&mut self, buffers: &mut [LifedPtr<'a, Buffer<'a>>]) -> u8 {
+        let mut rx_count: u8 = 0;
+        while (rx_count as usize) < buffers.len() {
             let metadata = u64::from_le(self.ring.index(self.next as usize).read_volatile_part(|d| { &d.metadata }));
             if (metadata & RX_METADATA_DD) == 0 {
                 break;
@@ -50,8 +50,8 @@ impl<'a> QueueRx<'a> {
                 None => { break; }
             };
 
-            buffers[rx_count] = self.buffers.get(self.next as usize);
-            buffers[rx_count].write_part(RX_METADATA_LENGTH(metadata), |b| { &mut b.length });
+            buffers[rx_count as usize] = self.buffers.get(self.next as usize);
+            buffers[rx_count as usize].write_part(RX_METADATA_LENGTH(metadata), |b| { &mut b.length });
 
             self.buffers.set(self.next as usize, new_buffer);
             self.ring.index(self.next as usize).write_volatile(Descriptor {
@@ -75,7 +75,7 @@ const TX_RECYCLE_PERIOD: u8 = 32;
 pub struct QueueTx<'a> {
     ring: LifedArray<'a, Descriptor, { RING_SIZE }>,
     buffers: LifedArray<'a, LifedPtr<'a, Buffer<'a>>, { RING_SIZE }>,
-    pool: LifedPtr<'a, BufferPool<'a>>,
+    pub pool: LifedPtr<'a, BufferPool<'a>>,
     transmit_head_addr: LifedPtr<'a, TransmitHead>,
     transmit_tail_addr: LifedPtr<'a, u32>,
     recycled_head: u8,
@@ -98,7 +98,7 @@ impl<'a> QueueTx<'a> {
     }
 
     #[inline(always)]
-    pub fn batch(&mut self, buffers: &mut [LifedPtr<'a, Buffer<'a>>]) -> usize {
+    pub fn batch(&mut self, buffers: &mut [LifedPtr<'a, Buffer<'a>>]) -> u8 {
         if self.next.wrapping_sub(self.recycled_head) >= 2 * TX_RECYCLE_PERIOD {
             let actual_transmit_head = self.transmit_head_addr.read_volatile_part(|h| { &h.value });
             while self.recycled_head as u32 != actual_transmit_head {
@@ -109,22 +109,22 @@ impl<'a> QueueTx<'a> {
             }
         }
 
-        let mut tx_count: usize = 0;
-        while tx_count < buffers.len() {
+        let mut tx_count: u8 = 0;
+        while (tx_count as usize) < buffers.len() {
             if self.next == self.recycled_head.wrapping_sub(1) {
                 break;
             }
 
             let rs_bit = if (self.next % TX_RECYCLE_PERIOD) == TX_RECYCLE_PERIOD - 1 { TX_METADATA_RS } else { 0 };
             self.ring.index(self.next as usize).write_volatile(Descriptor {
-                addr: u64::to_le(buffers[tx_count].map(|b| {b.phys_addr}) as u64),
-                metadata: u64::to_le(TX_METADATA_LENGTH(buffers[tx_count].map(|b| {b.length})) | rs_bit | TX_METADATA_IFCS | TX_METADATA_EOP)
+                addr: u64::to_le(buffers[tx_count as usize].map(|b| {b.phys_addr}) as u64),
+                metadata: u64::to_le(TX_METADATA_LENGTH(buffers[tx_count as usize].map(|b| {b.length})) | rs_bit | TX_METADATA_IFCS | TX_METADATA_EOP)
             });
 
-            self.buffers.set(self.next as usize, buffers[tx_count]);
+            self.buffers.set(self.next as usize, buffers[tx_count as usize]);
 
             self.next = self.next.wrapping_add(1); // implicit modulo
-            tx_count = tx_count + 1;
+            tx_count = tx_count.wrapping_add(1);
         }
         if tx_count > 0 {
             self.transmit_tail_addr.write_volatile(u32::to_le(self.next as u32));
