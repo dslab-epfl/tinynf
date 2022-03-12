@@ -52,7 +52,7 @@ namespace TinyNF.Ixgbe
             _transmitTails = new Memory<uint>[outputDevices.Length];
             for (byte n = 0; n < outputDevices.Length; n++)
             {
-                _transmitTails[n] = outputDevices[n].AddOutput(env, _transmitRings[n].Span, ref _transmitHeads[n].Value);
+                _transmitTails[n] = outputDevices[n].AddOutput(env, _transmitRings[n].Span, ref _transmitHeads[n]);
             }
         }
 
@@ -71,11 +71,14 @@ namespace TinyNF.Ixgbe
                 ulong length = Device.RxMetadataLength(receiveMetadata);
                 processor.Process(ref _packets[_processDelimiter], length, _outputs);
 
-                ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
+                ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? Device.TxMetadataRS : 0;
                 var transmitRings = _transmitRings;
                 for (int r = 0; r < transmitRings.Length; r++)
                 {
-                    Volatile.Write(ref transmitRings[r].Span[_processDelimiter].Metadata, Endianness.ToLittle(_outputs[r] | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                    Volatile.Write(
+                        ref transmitRings[r].Span[_processDelimiter].Metadata,
+                        Endianness.ToLittle(Device.TxMetadataLength(_outputs[r]) | rsBit | Device.TxMetadataIFCS | Device.TxMetadataEOP)
+                    );
                     _outputs[r] = 0;
                 }
 

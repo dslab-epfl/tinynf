@@ -52,7 +52,7 @@ namespace TinyNF.Ixgbe
             _transmitTails = new RefArray<uint>(outputDevices.Length, n => ref _fakeTail);
             for (byte n = 0; n < outputDevices.Length; n++)
             {
-                _transmitTails.Set(n, ref outputDevices[n].AddOutput(env, _transmitRings[n].AsSpan(), ref _transmitHeads[n].Value).Span[0]);
+                _transmitTails.Set(n, ref outputDevices[n].AddOutput(env, _transmitRings[n].AsSpan(), ref _transmitHeads[n]).Span[0]);
             }
         }
 
@@ -74,13 +74,16 @@ namespace TinyNF.Ixgbe
                 ulong length = Device.RxMetadataLength(receiveMetadata);
                 processor.Process(ref _packets[_processDelimiter], length, _outputs);
 
-                ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? (1ul << (24 + 3)) : 0ul;
+                ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? Device.TxMetadataRS : 0;
 
                 // not clear why we have to copy _transmitRings here (its only member is an array), but this is necessary for the bounds check to be eliminated
                 var _transmitRings = this._transmitRings;
                 for (int b = 0; b < _transmitRings.Length; b++)
                 {
-                    Volatile.Write(ref _transmitRings[b][_processDelimiter].Metadata, Endianness.ToLittle(_outputs[(byte)b] | rsBit | (1ul << (24 + 1)) | (1ul << 24)));
+                    Volatile.Write(
+                        ref _transmitRings[b][_processDelimiter].Metadata,
+                        Endianness.ToLittle(Device.TxMetadataLength(_outputs[(byte)b]) | rsBit | Device.TxMetadataIFCS | Device.TxMetadataEOP)
+                    );
                     _outputs[(byte)b] = 0;
                 }
 

@@ -73,4 +73,68 @@ namespace TinyNF.Ixgbe
             return rxCount;
         }
     }
+
+    internal ref struct QueueTx
+    {
+        private const byte RecyclePeriod = 32;
+
+        private readonly Array256<Descriptor> _ring;
+        private readonly RefArray256<Buffer> _buffers;
+        private readonly Ref<BufferPool> _pool;
+        private readonly Ref<TransmitHead> _transmitHeadAddr;
+        private readonly Ref<uint> _transmitTailAddr;
+        private byte _recycledHead;
+        private byte _next;
+
+        public QueueTx(IEnvironment env, Device device, ref BufferPool pool)
+        {
+            _ring = new(env.Allocate<Descriptor>);
+            _buffers = new(_ => ref Buffer.Fake);
+            _pool = new(ref pool);
+            _transmitHeadAddr = new(ref env.Allocate<TransmitHead>(1).Span[0]);
+            _transmitTailAddr = new(ref device.AddOutput(env, _ring.AsSpan(), ref _transmitHeadAddr.Get()).Span[0]);
+            _recycledHead = 0;
+            _next = 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public byte Batch(RefArray256<Buffer> buffers, byte buffersCount)
+        {
+            if (_next - _recycledHead >= 2 * RecyclePeriod)
+            {
+                uint actualTransmitHead = Endianness.FromLittle(Volatile.Read(ref _transmitHeadAddr.Get().Value));
+                while (_recycledHead != actualTransmitHead)
+                {
+                    if (!_pool.Get().Give(ref _buffers.Get(_recycledHead)))
+                    {
+                        break;
+                    }
+                    _recycledHead++; // implicit modulo ring size since it's a byte
+                }
+            }
+
+            byte txCount = 0;
+            while (txCount < buffersCount)
+            {
+                if (_next == _recycledHead - 1)
+                {
+                    break;
+                }
+
+                ulong rsBit = _next % RecyclePeriod == RecyclePeriod - 1 ? Device.TxMetadataRS : 0;
+                _ring[_next].Addr = Endianness.ToLittle(buffers.Get(txCount).PhysAddr);
+                _ring[_next].Metadata = Endianness.ToLittle(Device.TxMetadataLength(buffers.Get(txCount).Length) | rsBit | Device.TxMetadataIFCS | Device.TxMetadataEOP);
+
+                _buffers.Set(_next, ref buffers.Get(txCount));
+
+                _next++; // implicit modulo
+                txCount++;
+            }
+            if (txCount > 0)
+            {
+                Volatile.Write(ref _transmitTailAddr.Get(), Endianness.ToLittle(_next));
+            }
+            return txCount;
+        }
+    }
 }

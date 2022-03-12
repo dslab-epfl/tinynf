@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using TinyNF.Environment;
 using TinyNF.Unsafe;
 
@@ -43,6 +44,7 @@ namespace TinyNF.Ixgbe
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Give(ref Buffer buffer)
         {
             Index++;
@@ -62,6 +64,8 @@ namespace TinyNF.Ixgbe
         // OVERHEAD: .NET has no concept of zero-overhead option of pointer like Rust,
         // so we pass an extra bool, and we need a ref to something in case the ref is "invalid"
         // (i.e., it should still be safe to deref, just not the correct thing to do in terms of functional correctness)
+        // Hopefully inlining takes care of this (but we cannot rely on it)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref Buffer Take(out bool valid)
         {
             // Local variables again

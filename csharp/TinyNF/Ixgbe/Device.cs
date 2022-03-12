@@ -55,6 +55,11 @@ namespace TinyNF.Ixgbe
         public const ulong RxMetadataDD = 1ul << 32;
         public static ushort RxMetadataLength(ulong metadata) => (ushort)metadata;
 
+        public const ulong TxMetadataEOP = 1ul << 24;
+        public const ulong TxMetadataIFCS = 1ul << (24 + 1);
+        public const ulong TxMetadataRS = 1ul << (24 + 3);
+        public static ulong TxMetadataLength(ulong length) => length;
+
 
         private const uint FiveTupleFiltersCount = 128u;
         private const uint InterruptRegistersCount = 3u;
@@ -316,7 +321,7 @@ namespace TinyNF.Ixgbe
             return _buffer.Slice((int)Regs.RDT(queueIndex), 1);
         }
 
-        internal Memory<uint> AddOutput(IEnvironment env, Span<Descriptor> ring, ref uint transmitHead)
+        internal Memory<uint> AddOutput(IEnvironment env, Span<Descriptor> ring, ref TransmitHead transmitHead)
         {
             uint queueIndex = 0;
             for (; queueIndex < TransmitQueuesCount; queueIndex++)
@@ -341,7 +346,7 @@ namespace TinyNF.Ixgbe
             Regs.WriteField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.PTHRESH, 60);
             Regs.WriteField(_buffer, Regs.TXDCTL(queueIndex), Regs.TXDCTL_.HTHRESH, 4);
 
-            nuint headPhysAddr = env.GetPhysicalAddress(ref transmitHead);
+            nuint headPhysAddr = env.GetPhysicalAddress(ref transmitHead.Value);
 
             if (headPhysAddr % 16u != 0)
             {
