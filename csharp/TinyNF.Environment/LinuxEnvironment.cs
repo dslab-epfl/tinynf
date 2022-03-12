@@ -52,8 +52,10 @@ namespace TinyNF.Environment
             [DllImport("libc")]
             public static extern void* mmap(nuint addr, nuint length, int prot, int flags, int fd, nint offset);
 
+#pragma warning disable CA2101 // https://github.com/dotnet/roslyn-analyzers/issues/2886
             [DllImport("libc")]
             public static extern int open(string pathName, int flags);
+#pragma warning restore CA2101
 
             [DllImport("libc")]
             public static extern nint lseek(int fd, nint offset, int whence);
@@ -81,7 +83,7 @@ namespace TinyNF.Environment
         }
 
         private Memory<byte> _allocatedPage;
-        private ulong _usedBytes;
+        private long _usedBytes;
 
         public unsafe LinuxEnvironment()
         {
@@ -101,29 +103,24 @@ namespace TinyNF.Environment
             _usedBytes = 0;
         }
 
-        public unsafe Memory<T> Allocate<T>(nuint count)
+        public unsafe Memory<T> Allocate<T>(int count)
             where T : struct
         {
-            var alignDiff = _usedBytes % (ulong)(Unsafe.SizeOf<T>() + 64 - (Unsafe.SizeOf<T>() % 64));
-            _allocatedPage = _allocatedPage.Slice((int)alignDiff);
+            long alignDiff = _usedBytes % (Unsafe.SizeOf<T>() + 64 - (Unsafe.SizeOf<T>() % 64));
+            _allocatedPage = _allocatedPage[(int)alignDiff..];
             _usedBytes += alignDiff;
 
-            var fullSize = count * (uint)Unsafe.SizeOf<T>();
-            var result = _allocatedPage.Slice(0, (int)fullSize);
-            _allocatedPage = _allocatedPage.Slice((int)fullSize);
+            int fullSize = count * Unsafe.SizeOf<T>();
+            var result = _allocatedPage[0..fullSize];
+            _allocatedPage = _allocatedPage[fullSize..];
             _usedBytes += fullSize;
 
             return new CastMemoryManager<byte, T>(result).Memory;
         }
 
-        public unsafe Memory<T> MapPhysicalMemory<T>(ulong addr, uint count)
+        public unsafe Memory<T> MapPhysicalMemory<T>(ulong addr, int count)
             where T : unmanaged
         {
-            if (count > int.MaxValue)
-            {
-                throw new Exception("Cannot handle this much memory");
-            }
-
             int memFd = OSInterop.open("/dev/mem", OSInterop.O_SYNC | OSInterop.O_RDWR);
             if (memFd == -1)
             {
@@ -132,7 +129,7 @@ namespace TinyNF.Environment
 
             void* mapped = OSInterop.mmap(
                 0,
-                count * (uint)Unsafe.SizeOf<T>(),
+                (uint) (count * Unsafe.SizeOf<T>()),
                 OSInterop.PROT_READ | OSInterop.PROT_WRITE,
                 OSInterop.MAP_SHARED,
                 memFd,
@@ -143,7 +140,7 @@ namespace TinyNF.Environment
                 throw new Exception("Phys-to-virt mmap failed");
             }
 
-            return new UnmanagedMemoryManager<T>((T*)mapped, (int)count).Memory;
+            return new UnmanagedMemoryManager<T>((T*)mapped, count).Memory;
         }
 
         public unsafe nuint GetPhysicalAddress<T>(ref T value)
@@ -164,7 +161,7 @@ namespace TinyNF.Environment
                 throw new Exception("Could not open the pagemap");
             }
 
-            if (OSInterop.lseek(mapFd, (nint)mapOffset, OSInterop.SEEK_SET) == -1)
+            if (OSInterop.lseek(mapFd, mapOffset, OSInterop.SEEK_SET) == -1)
             {
                 throw new Exception("Could not seek the pagemap");
             }
@@ -173,7 +170,10 @@ namespace TinyNF.Environment
             fixed (byte* bs = readBytes)
             {
                 var readResult = OSInterop.read(mapFd, bs, sizeof(ulong));
-                OSInterop.close(mapFd);
+                if (OSInterop.close(mapFd) != 0)
+                {
+                    throw new Exception("Close failed, all hope is lost");
+                }
                 if (readResult != readBytes.Length)
                 {
                     throw new Exception("Could not read enough bytes from the pagemap");

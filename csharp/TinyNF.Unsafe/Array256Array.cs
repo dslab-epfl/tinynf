@@ -14,7 +14,7 @@ namespace TinyNF.Unsafe
 
         public readonly int Length => _values.Length;
 
-        public Array256Array(int length, Func<nuint, Memory<T>> allocator)
+        public Array256Array(int length, Func<int, Memory<T>> allocator)
         {
             _values = new RefArray<T>(length, n => ref new Array256<T>(allocator).AsRef());
         }

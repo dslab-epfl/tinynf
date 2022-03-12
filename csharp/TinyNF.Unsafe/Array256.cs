@@ -16,7 +16,7 @@ namespace TinyNF.Unsafe
 
         public readonly int Length => 256;
 
-        public Array256(Func<nuint, Memory<T>> allocator)
+        public Array256(Func<int, Memory<T>> allocator)
         {
             var allocated = allocator(256);
             if (allocated.Length < 256)

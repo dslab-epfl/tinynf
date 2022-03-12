@@ -47,7 +47,7 @@ namespace TinyNF.Ixgbe
             _receiveRing = _transmitRings[0];
             _receiveTail = new Ref<uint>(ref inputDevice.SetInput(env, _receiveRing.AsSpan()).Span[0]);
 
-            _transmitHeads = env.Allocate<TransmitHead>((uint)outputDevices.Length).Span;
+            _transmitHeads = env.Allocate<TransmitHead>(outputDevices.Length).Span;
             _transmitTails = new RefArray<uint>(outputDevices.Length, n => ref _fakeTail);
             for (byte n = 0; n < outputDevices.Length; n++)
             {

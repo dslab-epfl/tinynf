@@ -15,7 +15,7 @@ namespace TinyNF.Unsafe
 
         public readonly int Length => 65536;
 
-        public Array65536(Func<nuint, Memory<T>> allocator)
+        public Array65536(Func<int, Memory<T>> allocator)
         {
             var allocated = allocator(65536);
             if (allocated.Length < 65536)

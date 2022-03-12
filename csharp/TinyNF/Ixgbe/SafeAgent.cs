@@ -31,7 +31,7 @@ namespace TinyNF.Ixgbe
         public SafeAgent(IEnvironment env, Device inputDevice, Device[] outputDevices)
         {
             _processDelimiter = 0;
-            _outputs = env.Allocate<ulong>((uint)outputDevices.Length).Span;
+            _outputs = env.Allocate<ulong>(outputDevices.Length).Span;
 
             _packets = env.Allocate<PacketData>(Device.RingSize).Span;
 
@@ -48,7 +48,7 @@ namespace TinyNF.Ixgbe
             _receiveRing = _transmitRings[0].Span;
             _receiveTail = inputDevice.SetInput(env, _receiveRing).Span;
 
-            _transmitHeads = env.Allocate<TransmitHead>((uint)outputDevices.Length).Span;
+            _transmitHeads = env.Allocate<TransmitHead>(outputDevices.Length).Span;
             _transmitTails = new Memory<uint>[outputDevices.Length];
             for (byte n = 0; n < outputDevices.Length; n++)
             {

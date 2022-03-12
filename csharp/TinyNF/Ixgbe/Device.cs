@@ -50,7 +50,7 @@ namespace TinyNF.Ixgbe
 
     internal sealed class Device
     {
-        public const uint RingSize = 256;
+        public const int RingSize = 256;
 
 
         private const uint FiveTupleFiltersCount = 128u;
