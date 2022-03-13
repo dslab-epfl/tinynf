@@ -5,10 +5,6 @@ with Environment;
 with Ixgbe_Device; use Ixgbe_Device;
 
 package body Ixgbe_Buffer_Pool is
-  -- Fake data for the default value of non-null access types
-  Fake_Data: aliased Packet_Data;
-  Fake_Buffer: aliased Buffer := (Data => Fake_Data'Access, Phys_Addr => 0, Length => 0);
-
   function Create_Buffer_Pool(Size: in UnsignedInteger) return Buffer_Pool is
     type Buffer_Range is new UnsignedInteger range 0 .. Size - 1;
 

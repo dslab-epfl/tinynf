@@ -10,6 +10,10 @@ package Ixgbe_Buffer_Pool is
     Length: Packet_Length;
   end record;
 
+  -- Fake data for the default value of non-null access types
+  Fake_Data: aliased Packet_Data;
+  Fake_Buffer: aliased Buffer := (Data => Fake_Data'Access, Phys_Addr => 0, Length => 0);
+
   type UnsignedInteger is mod Integer'Last;
 
   type Buffer_Access is not null access all Buffer;
