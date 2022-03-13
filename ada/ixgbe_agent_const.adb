@@ -72,7 +72,7 @@ package body Ixgbe_Agent_Const is
       exit when not Receive_Metadata.Descriptor_Done;
 
       Length := Receive_Metadata.Length;
-      Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
+      Proc(This.Packets(This.Process_Delimiter)'Access, Length, This.Outputs);
 
       RS_Bit := (if (This.Process_Delimiter mod Recycle_Period) = (Recycle_Period - 1) then Tx_Metadata_RS else 0);
 

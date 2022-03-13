@@ -37,7 +37,7 @@ package body Ixgbe_Queues is
             Next => 0);
   end;
 
-  function Rx_Batch(Queue: in out Queue_Rx; Buffers: in out Buffer_Sub_Array) return Delimiter_Range is
+  function Rx_Batch(Queue: in out Queue_Rx; Buffers: out Buffer_Sub_Array) return Delimiter_Range is
     Rx_Count: Delimiter_Range := 0;
     Metadata: Rx_Metadata;
     New_Buffer: access Buffer;
@@ -88,7 +88,7 @@ package body Ixgbe_Queues is
             Next => 0);
   end;
 
-  function Tx_Batch(Queue: in out Queue_Tx; Buffers: in out Buffer_Sub_Array) return Delimiter_Range is
+  function Tx_Batch(Queue: in out Queue_Tx; Buffers: in Buffer_Sub_Array) return Delimiter_Range is
     Actual_Transmit_Head: Interfaces.Unsigned_32;
     Tx_Count: Delimiter_Range := 0;
     RS_Bit: Interfaces.Unsigned_64;

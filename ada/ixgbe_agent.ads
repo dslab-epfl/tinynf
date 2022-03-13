@@ -11,9 +11,9 @@ package Ixgbe_Agent is
 
   type Packet_Outputs is array(UnsignedInteger range <>) of Packet_Length;
 
-  type Processor is not null access procedure(Data: in out Packet_Data;
+  type Processor is not null access procedure(Data: not null access Packet_Data;
                                               Length: in Packet_Length;
-                                              Output_Lengths: in out Packet_Outputs);
+                                              Output_Lengths: out Packet_Outputs);
 
   type Packet_Array is array(Delimiter_Range) of aliased Packet_Data;
   type Descriptor_Ring_Array is array(UnsignedInteger range <>) of not null access Descriptor_Ring;

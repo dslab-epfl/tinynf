@@ -6,9 +6,9 @@ generic
 package NF_Const is
   package Agent is new Ixgbe_Agent_Const(Outputs_Range);
 
-  procedure Processor(Data: in out Packet_Data;
+  procedure Processor(Data: not null access Packet_Data;
                       Length: in Packet_Length;
-                      Output_Lengths: not null access Agent.Packet_Outputs)
+                      Output_Lengths: not null access Agent.Packet_Outputs) -- TODO 'out' instead here?
             with Inline;
 
   procedure Run(Agent0: in out Agent.Agent;

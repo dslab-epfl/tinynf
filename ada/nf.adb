@@ -1,5 +1,5 @@
 package body NF is
-  procedure Handle_Data(Data: in out Packet_Data) is
+  procedure Handle_Data(Data: not null access Packet_Data) is
   begin
     Data(0) := 0;
     Data(1) := 0;
@@ -15,9 +15,9 @@ package body NF is
     Data(11) := 0;
    end;
 
-  procedure Processor(Data: in out Packet_Data;
+  procedure Processor(Data: not null access Packet_Data;
                       Length: in Packet_Length;
-                      Output_Lengths: in out Ixgbe_Agent.Packet_Outputs) is
+                      Output_Lengths: out Ixgbe_Agent.Packet_Outputs) is
   begin
     Handle_Data(Data);
     Output_Lengths(Output_Lengths'First) := Length;

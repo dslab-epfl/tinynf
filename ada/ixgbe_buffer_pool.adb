@@ -9,7 +9,7 @@ package body Ixgbe_Buffer_Pool is
   Fake_Data: aliased Packet_Data;
   Fake_Buffer: aliased Buffer := (Data => Fake_Data'Access, Phys_Addr => 0, Length => 0);
 
-  function Buffer_Pool_Allocate(Size: in UnsignedInteger) return Buffer_Pool is
+  function Create_Buffer_Pool(Size: in UnsignedInteger) return Buffer_Pool is
     type Buffer_Range is new UnsignedInteger range 0 .. Size - 1;
 
     type Buffer_Array is array(Buffer_Range) of aliased Buffer;

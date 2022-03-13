@@ -2,11 +2,11 @@ with Ixgbe_Device; use Ixgbe_Device;
 with Ixgbe_Agent;
 
 package NF is
-  procedure Handle_Data(Data: in out Packet_Data) with Inline_Always;
+  procedure Handle_Data(Data: not null access Packet_Data) with Inline_Always;
 
-  procedure Processor(Data: in out Packet_Data;
+  procedure Processor(Data: not null access Packet_Data;
                       Length: in Packet_Length;
-                      Output_Lengths: in out Ixgbe_Agent.Packet_Outputs)
+                      Output_Lengths: out Ixgbe_Agent.Packet_Outputs)
             with Inline;
 
   procedure Run(Agent0: in out Ixgbe_Agent.Agent;

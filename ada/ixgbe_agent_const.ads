@@ -9,7 +9,7 @@ package Ixgbe_Agent_Const is
 
   type Packet_Outputs is array(Outputs_Range) of Packet_Length;
 
-  type Processor is not null access procedure(Data: in out Packet_Data;
+  type Processor is not null access procedure(Data: not null access Packet_Data;
                                               Length: in Packet_Length;
                                               Output_Lengths: not null access Packet_Outputs);
 

@@ -1,7 +1,7 @@
 with NF;
 
 package body NF_Const is
-  procedure Processor(Data: in out Packet_Data;
+  procedure Processor(Data: not null access Packet_Data;
                       Length: in Packet_Length;
                       Output_Lengths: not null access Agent.Packet_Outputs) is
   begin
