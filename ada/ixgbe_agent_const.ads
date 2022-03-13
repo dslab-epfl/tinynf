@@ -7,8 +7,6 @@ package Ixgbe_Agent_Const is
   Flush_Period: constant := 8;
   Recycle_Period: constant := 64;
 
-  -- WEIRD: This MUST be of size 64, otherwise the card locks up quickly (even the heatup in the benchmarks doesn't finish)
-  type Packet_Length is mod 2 ** 16 with Size => 64;
   type Packet_Outputs is array(Outputs_Range) of Packet_Length;
 
   type Processor is not null access procedure(Data: in out Packet_Data;

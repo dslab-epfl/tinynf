@@ -9,8 +9,6 @@ package Ixgbe_Agent is
   -- when indexing Rings(Rings'First), even though they are unneeded; using a mod type instead avoids that.
   type UnsignedInteger is mod Integer'Last;
 
-  -- WEIRD: This MUST be of size 64, otherwise the card locks up quickly (even the heatup in the benchmarks doesn't finish)
-  type Packet_Length is mod 2 ** 16 with Size => 64;
   type Packet_Outputs is array(UnsignedInteger range <>) of Packet_Length;
 
   type Processor is not null access procedure(Data: in out Packet_Data;

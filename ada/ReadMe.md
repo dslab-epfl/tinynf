@@ -6,7 +6,7 @@ TODO: auto-format? or at least sort with/use and make them consistent (avoid dup
 
 TODO: combine the common "put_line; os_abort" pattern into something on e.g. environment?
 
-TODO: use object-oriented syntax if possible?
+TODO: use object-oriented syntax if possible? also avoid "This" as name it's a bit misleading (e.g. agents)
 
 To get the annotated source of agent run, use `gnatclean tinynf.adb >/dev/null; gnatmake -g -O3 tinynf.adb -cargs -Wa,-adhln 2>/dev/null | sed '0,/procedure Run/d' | sed -E '/end Run;/,$d'`
 

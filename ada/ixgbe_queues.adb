@@ -37,8 +37,31 @@ package body Ixgbe_Queues is
             Next => 0);
   end;
 
-  function Rx_Batch(Queue: in out Queue_Rx; Buffers: Buffer_Sub_Array) return Delimiter_Range is
+  function Rx_Batch(Queue: in out Queue_Rx; Buffers: in out Buffer_Sub_Array) return Delimiter_Range is
+    Rx_Count: Delimiter_Range := 0;
+    Metadata: Rx_Metadata;
+    New_Buffer: access Buffer;
   begin
-    null;
+    while Rx_Count < Buffers.Values'Length loop
+      Metadata := To_Rx_Metadata(From_Little(Queue.Ring(Queue.Next).Metadata));
+      exit when not Metadata.Descriptor_Done;
+
+      New_Buffer := Buffer_Pool_Take(Queue.Pool);
+      exit when New_Buffer = null;
+
+      Buffers.Values(Rx_Count) := Queue.Buffers(Queue.Next);
+      Buffers.Values(Rx_Count).Length := Metadata.Length;
+
+      Queue.Buffers(Queue.Next) := Buffer_Access(New_Buffer);
+      Queue.Ring(Queue.Next).Addr := To_Little(Interfaces.Unsigned_64(New_Buffer.Phys_Addr));
+      Queue.Ring(Queue.Next).Metadata := To_Little(0);
+
+      Queue.Next := Queue.Next + 1;
+      Rx_Count := Rx_Count + 1;
+    end loop;
+    if Rx_Count > 0 then
+      Queue.Receive_Tail_Addr.all := VolatileUInt32(To_Little(Interfaces.Unsigned_32(Queue.Next - 1)));
+    end if;
+    return Rx_Count;
   end;
 end Ixgbe_Queues;

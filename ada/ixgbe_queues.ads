@@ -6,7 +6,11 @@ package Ixgbe_Queues is
   -- for the queue itself
   type Buffer_Array is array(Delimiter_Range) of Buffer_Access;
   -- for RX/TX, we may not want a batch as large as Delimiter_Range itself
-  type Buffer_Sub_Array is array(Delimiter_Range range <>) of Buffer_Access;
+  -- but we want a lower bound for perf, thus we use a workaround as suggested in https://github.com/AdaCore/ada-spark-rfcs/blob/ec8f4066ce8302d2c0831a8cf8bb79cb8479b195/considered/rfc-lower-bound.rst
+  type Buffer_Sub_Array_Inner is array(Delimiter_Range range <>) of Buffer_Access;
+  type Buffer_Sub_Array(Last: Delimiter_Range) is record
+    Values: Buffer_Sub_Array_Inner(0 .. Last);
+  end record;
 
   type Queue_Rx is record
     Ring: not null access Descriptor_Ring;
@@ -17,5 +21,5 @@ package Ixgbe_Queues is
   end record;
 
   function Create_Queue_Rx(Dev: in out Device; Pool: not null access Buffer_Pool) return Queue_Rx;
-  function Rx_Batch(Queue: in out Queue_Rx; Buffers: Buffer_Sub_Array) return Delimiter_Range with Inline_Always;
+  function Rx_Batch(Queue: in out Queue_Rx; Buffers: in out Buffer_Sub_Array) return Delimiter_Range with Inline_Always;
 end Ixgbe_Queues;

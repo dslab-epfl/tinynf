@@ -1,5 +1,6 @@
 with Interfaces;
 with System;
+with Ada.Unchecked_Conversion;
 
 with Environment; use Environment;
 with Ixgbe; use Ixgbe;
@@ -47,6 +48,23 @@ package Ixgbe_Device is
   Transmit_Queues_Count: constant := 128;
   Traffic_Classes_Count: constant := 8;
   Unicast_Table_Array_Size: constant := 4 * 1024;
+
+  -- WEIRD: This MUST be of size 64, otherwise the card locks up quickly (even the heatup in the benchmarks doesn't finish)
+  type Packet_Length is mod 2 ** 16 with Size => 64;
+
+  -- This seems to be necessary to not generate any checks when truncating the 16-bit length from the rest of the metadata...
+  -- Might as well use it for Descriptor Done while we're at it
+  type Rx_Metadata is record
+    Length: Packet_Length;
+    Descriptor_Done: Boolean;
+    end record
+  with Bit_Order => System.Low_Order_First,
+       Size => 64;
+  for Rx_Metadata use record
+    Length at 0 range 0 .. 15;
+    Descriptor_Done at 0 range 32 .. 32;
+  end record;
+  function To_Rx_Metadata is new Ada.Unchecked_Conversion(Source => Interfaces.Unsigned_64, Target => Rx_Metadata);
 
   function Init_Device(Addr: in Pci_Address) return Device;
   procedure Set_Promiscuous(Dev: in out Device);

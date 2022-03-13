@@ -58,34 +58,20 @@ package body Ixgbe_Agent_Const is
                 Proc: in Processor)
   is
     N: Integer range 0 .. Flush_Period;
-    Receive_Metadata: Interfaces.Unsigned_64;
+    Receive_Metadata: Rx_Metadata;
     RS_Bit: Interfaces.Unsigned_64;
     Length: Packet_Length;
     Earliest_Transmit_Head: Interfaces.Unsigned_32;
     Min_Diff: Interfaces.Unsigned_64;
     Head: Interfaces.Unsigned_32;
     Diff: Interfaces.Unsigned_64;
-
-    -- This seems to be necessary to not generate any checks when truncating the 16-bit length from the rest of the metadata...
-    -- Might as well use it for Descriptor Done while we're at it
-    type Meta_Read is record
-      Length: Packet_Length;
-      DescriptorDone: Boolean;
-    end record
-      with Bit_Order => System.Low_Order_First,
-           Size => 64;
-    for Meta_Read use record
-      Length at 0 range 0 .. 15;
-      DescriptorDone at 0 range 32 .. 32;
-    end record;
-    function Meta_To_Read is new Ada.Unchecked_Conversion(Source => Interfaces.Unsigned_64, Target => Meta_Read);
   begin
     N := 0;
     while N < Flush_Period loop
-      Receive_Metadata := From_Little(This.Rings(Outputs_Range'First)(This.Process_Delimiter).Metadata);
-      exit when not Meta_To_Read(Receive_Metadata).DescriptorDone;
+      Receive_Metadata := To_Rx_Metadata(From_Little(This.Rings(Outputs_Range'First)(This.Process_Delimiter).Metadata));
+      exit when not Receive_Metadata.Descriptor_Done;
 
-      Length := Meta_To_Read(Receive_Metadata).Length;
+      Length := Receive_Metadata.Length;
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
       RS_Bit := (if (This.Process_Delimiter mod Recycle_Period) = (Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);

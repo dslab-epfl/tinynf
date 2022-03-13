@@ -7,7 +7,7 @@ package NF_Const is
   package Agent is new Ixgbe_Agent_Const(Outputs_Range);
 
   procedure Processor(Data: in out Packet_Data;
-                      Length: in Agent.Packet_Length;
+                      Length: in Packet_Length;
                       Output_Lengths: not null access Agent.Packet_Outputs)
             with Inline;
 

@@ -7,7 +7,7 @@ package Ixgbe_Buffer_Pool is
   type Buffer is record
     Data: not null access Packet_Data;
     Phys_Addr: System.Storage_Elements.Integer_Address;
-    Length: Interfaces.Unsigned_64;
+    Length: Packet_Length;
   end record;
 
   type UnsignedInteger is mod Integer'Last;
