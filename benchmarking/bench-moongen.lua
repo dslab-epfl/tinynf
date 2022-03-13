@@ -258,7 +258,11 @@ function heatUp(queuePair, layer, flows, ignoreloss)
   io.flush()
   local task = startMeasureThroughput(queuePair.tx, queuePair.rx, HEATUP_RATE, layer, HEATUP_DURATION, queuePair.direction, flows, HEATUP_BATCH_SIZE)
   local loss = task:wait()
-  if not ignoreloss and loss > 0.01 then
+  if loss < 0 then
+    io.write("[FATAL] More packets received than sent!\n")
+    os.exit(1)
+  end
+  if not ignoreloss and loss > 0.001 then
     io.write("[FATAL] Heatup lost " .. (loss * 100) .. "% of packets!\n")
     os.exit(1)
   end

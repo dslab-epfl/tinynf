@@ -4,7 +4,7 @@ with Ixgbe_Device; use Ixgbe_Device;
 with Interfaces; use Interfaces;
 
 package body Ixgbe_Queues_Tx is
-  function Tx_Batch(Queue: in out Queue_Tx; Buffers: in out B) return UnsignedInteger is
+  function Tx_Batch(Queue: in out Queue_Tx; Buffers: in B) return UnsignedInteger is
     Actual_Transmit_Head: Interfaces.Unsigned_32;
     Tx_Count: UnsignedInteger := 0;
     RS_Bit: Interfaces.Unsigned_64;
@@ -17,6 +17,8 @@ package body Ixgbe_Queues_Tx is
       end loop;
     end if;
 
+    -- Because Buffers must have at least one element... we want to use a do-while loop... but then GNAT inserts bounds checks :(
+    -- even though it can figure out the Rx version just fine; this sounds like a bug.
     while Tx_Count <= UnsignedInteger(R'Last) loop
       exit when Queue.Next = Queue.Recycled_Head - 1;
 

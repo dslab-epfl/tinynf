@@ -27,13 +27,13 @@ package body NF_Queues is
           N_Rx := N_Rx + 1;
         end loop;
         declare
-          package Tx is new Ixgbe_Queues_Tx(Size => UnsignedInteger(Nb_Rx));
+          package Tx is new Ixgbe_Queues_Tx(Max => UnsignedInteger(Nb_Rx)-1);
           use Tx;
           Nb_Tx: UnsignedInteger;
         begin
           -- The semantics we'd like here are for Batch(0 .. Nb_Rx-1) to be an empty slice.
           -- But we cannot get that because the index has to be an Rx.R and -1 is not a valid Rx.R
-          -- So we insert the check ourselves, which would need to be performed anyway
+          -- So we insert the check ourselves, which would need to be performed anyway if the semantics were the ones we want
           if Nb_Rx > 0 then
             Nb_Tx := Tx.Tx_Batch(Tx1, Tx.B(Batch(0 .. Rx.R(Nb_Rx-1))));
             while Nb_Tx < UnsignedInteger(Nb_Rx) loop
@@ -52,7 +52,7 @@ package body NF_Queues is
           N_Rx := N_Rx + 1;
         end loop;
         declare
-          package Tx is new Ixgbe_Queues_Tx(Size => UnsignedInteger(Nb_Rx));
+          package Tx is new Ixgbe_Queues_Tx(Max => UnsignedInteger(Nb_Rx)-1);
           use Tx;
           Nb_Tx: UnsignedInteger;
         begin
