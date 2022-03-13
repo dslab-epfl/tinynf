@@ -16,11 +16,6 @@ package Ixgbe_Queues is
   end record;
 
   function Create_Queue_Rx(Dev: in out Device; Pool: not null access Buffer_Pool) return Queue_Rx;
-  generic
-    type R is range <>;
-    type B is array(R) of Buffer_Access;
-  function Rx_Batch(Queue: in out Queue_Rx; Buffers: out B) return R with Inline_Always;
-
 
   Recycle_Period: constant := 32;
 
@@ -35,8 +30,4 @@ package Ixgbe_Queues is
   end record;
 
   function Create_Queue_Tx(Dev: in out Device; Pool: not null access Buffer_Pool) return Queue_Tx;
-  generic
-    type R is range <>;
-    type B is array(R) of Buffer_Access;
-  function Tx_Batch(Queue: in out Queue_Tx; Buffers: in B) return R with Inline_Always;
 end Ixgbe_Queues;
