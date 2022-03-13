@@ -37,8 +37,8 @@ package body Ixgbe_Queues is
             Next => 0);
   end;
 
-  function Rx_Batch(Queue: in out Queue_Rx; Buffers: out Buffer_Sub_Array) return Delimiter_Range is
-    Rx_Count: Delimiter_Range := Buffers'First;
+  function Rx_Batch(Queue: in out Queue_Rx; Buffers: out B) return R is
+    Rx_Count: R := Buffers'First;
     Metadata: Rx_Metadata;
     New_Buffer: access Buffer;
   begin
@@ -62,7 +62,7 @@ package body Ixgbe_Queues is
     if Rx_Count /= Buffers'First then
       Queue.Receive_Tail_Addr.all := VolatileUInt32(To_Little(Interfaces.Unsigned_32(Queue.Next - 1)));
     end if;
-    return Rx_Count - 1;
+    return Rx_Count;
   end;
 
 
@@ -88,9 +88,9 @@ package body Ixgbe_Queues is
             Next => 0);
   end;
 
-  function Tx_Batch(Queue: in out Queue_Tx; Buffers: in Buffer_Sub_Array) return Delimiter_Range is
+  function Tx_Batch(Queue: in out Queue_Tx; Buffers: in B) return R is
     Actual_Transmit_Head: Interfaces.Unsigned_32;
-    Tx_Count: Delimiter_Range := Buffers'First;
+    Tx_Count: R := Buffers'First;
     RS_Bit: Interfaces.Unsigned_64;
   begin
     if Queue.Next - Queue.Recycled_Head >= 2 * Recycle_Period then
@@ -116,6 +116,6 @@ package body Ixgbe_Queues is
     if Tx_Count /= Buffers'First then
       Queue.Transmit_Tail_Addr.all := VolatileUInt32(To_Little(Interfaces.Unsigned_32(Queue.Next)));
     end if;
-    return Tx_Count - 1;
+    return Tx_Count;
   end;
 end Ixgbe_Queues;
