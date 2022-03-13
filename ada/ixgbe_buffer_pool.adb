@@ -40,11 +40,11 @@ package body Ixgbe_Buffer_Pool is
     return false;
   end;
 
-  function Buffer_Pool_Take(Pool: not null access Buffer_Pool) return access Buffer is
+  function Buffer_Pool_Take(Pool: not null access Buffer_Pool) return Buffer_Nullable_Access is
   begin
     if Pool.Index <= Pool.Max then
       declare
-        Buf: not null access Buffer := Pool.Buffers(Pool.Index);
+        Buf: Buffer_Nullable_Access := Buffer_Nullable_Access(Pool.Buffers(Pool.Index));
       begin
         Pool.Index := Pool.Index - 1;
         return Buf;

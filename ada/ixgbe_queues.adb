@@ -17,7 +17,7 @@ package body Ixgbe_Queues is
   begin
     for N in Delimiter_Range loop
       declare
-        Buf: access Buffer := Buffer_Pool_Take(Pool);
+        Buf: Buffer_Nullable_Access := Buffer_Pool_Take(Pool);
       begin
         if Buf /= null then
           Buffers(N) := Buffer_Access(Buf);

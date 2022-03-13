@@ -37,7 +37,7 @@ package body Ixgbe_Agent_Const is
     end loop;
 
     for N in Outputs_Range loop
-      Transmit_Heads(N) := All_Heads(N)'Access;
+      Transmit_Heads(N) := All_Heads(N)'Unchecked_Access;
     end loop;
 
     for N in Outputs_Range loop
