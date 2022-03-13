@@ -1,4 +1,4 @@
-TODO: audit use of 'Unchecked_Access (`grep -Fir Unchecked_Access *.ads *.adb`)
+TODO: audit use of 'Unchecked_Access (`grep -Fir Unchecked_Access *.ads *.adb`) (can we use 'access all' to avoid this somehow?)
 
 TODO: move to subfolders like the rest
 

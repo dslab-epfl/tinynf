@@ -30,9 +30,9 @@ package body Ixgbe_Queues is
       end;
     end loop;
 
-    return (Ring => Ring,
-            Buffers => Buffers,
-            Pool => Pool,
+    return (Ring => Ring.all'Unchecked_Access,
+            Buffers => Buffers.all'Unchecked_Access,
+            Pool => Pool.all'Unchecked_Access,
             Receive_Tail_Addr => Ixgbe_Device.Set_Input(Dev, Ring),
             Next => 0);
   end;
@@ -79,9 +79,9 @@ package body Ixgbe_Queues is
     Heads: not null access Single_Transmit_Head := Allocate_Head;
     Head: not null access Transmit_Head := Heads(Heads'First)'Access;
   begin
-    return (Ring => Ring,
-            Buffers => Buffers,
-            Pool => Pool,
+    return (Ring => Ring.all'Unchecked_Access,
+            Buffers => Buffers.all'Unchecked_Access,
+            Pool => Pool.all'Unchecked_Access,
             Transmit_Head_Addr => Head,
             Transmit_Tail_Addr => Ixgbe_Device.Add_Output(Dev, Ring, Head),
             Recycled_Head => 0,
