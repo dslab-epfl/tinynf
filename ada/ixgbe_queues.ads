@@ -22,4 +22,20 @@ package Ixgbe_Queues is
 
   function Create_Queue_Rx(Dev: in out Device; Pool: not null access Buffer_Pool) return Queue_Rx;
   function Rx_Batch(Queue: in out Queue_Rx; Buffers: in out Buffer_Sub_Array) return Delimiter_Range with Inline_Always;
+
+
+  Recycle_Period: constant := 32;
+
+  type Queue_Tx is record
+    Ring: not null access Descriptor_Ring;
+    Buffers: not null access Buffer_Array;
+    Pool: not null access Buffer_Pool;
+    Transmit_Head_Addr: not null access Transmit_Head;
+    Transmit_Tail_Addr: Register_Access;
+    Recycled_Head: Delimiter_Range;
+    Next: Delimiter_Range;
+  end record;
+
+  function Create_Queue_Tx(Dev: in out Device; Pool: not null access Buffer_Pool) return Queue_Tx;
+  function Tx_Batch(Queue: in out Queue_Tx; Buffers: in out Buffer_Sub_Array) return Delimiter_Range with Inline_Always;
 end Ixgbe_Queues;

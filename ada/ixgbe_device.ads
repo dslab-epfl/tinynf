@@ -66,6 +66,11 @@ package Ixgbe_Device is
   end record;
   function To_Rx_Metadata is new Ada.Unchecked_Conversion(Source => Interfaces.Unsigned_64, Target => Rx_Metadata);
 
+  Tx_Metadata_RS: constant   := 16#00_00_00_00_08_00_00_00#;
+  Tx_Metadata_IFCS: constant := 16#00_00_00_00_02_00_00_00#;
+  Tx_Metadata_EOP: constant  := 16#00_00_00_00_01_00_00_00#;
+  function Tx_Metadata_Length(Len: in Packet_Length) return Interfaces.Unsigned_64 is (Interfaces.Unsigned_64(Len)) with Inline_Always;
+
   function Init_Device(Addr: in Pci_Address) return Device;
   procedure Set_Promiscuous(Dev: in out Device);
   function Set_Input(Dev: in out Device; Ring: not null access Descriptor_Ring) return Register_Access;

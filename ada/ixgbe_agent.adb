@@ -79,10 +79,10 @@ package body Ixgbe_Agent is
       Length := Receive_Metadata.Length;
       Proc(This.Packets(This.Process_Delimiter), Length, This.Outputs);
 
-      RS_Bit := (if (This.Process_Delimiter mod Recycle_Period) = (Recycle_Period - 1) then 16#00_00_00_00_08_00_00_00# else 0);
+      RS_Bit := (if (This.Process_Delimiter mod Recycle_Period) = (Recycle_Period - 1) then Tx_Metadata_RS else 0);
 
       for M in This.Rings'Range loop --0 .. This.Outputs_Max loop
-        This.Rings(M)(This.Process_Delimiter).Metadata := To_Little(Interfaces.Unsigned_64(This.Outputs(M)) or RS_Bit or 16#00_00_00_00_03_00_00_00#);
+        This.Rings(M)(This.Process_Delimiter).Metadata := To_Little(Tx_Metadata_Length(This.Outputs(M)) or RS_Bit or Tx_Metadata_IFCS or Tx_Metadata_EOP);
         This.Outputs(M) := 0;
       end loop;
 

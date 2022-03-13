@@ -99,7 +99,7 @@ static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct 
 {
 	// 2* period so we are much more likely to recycle something since the last "batch" before an RS bit was likely not fully sent yet
 	if ((uint8_t) (queue->next - queue->recycled_head) >= 2 * IXGBE_QUEUE_TX_RECYCLE_PERIOD) {
-		uint32_t actual_transmit_head = queue->transmit_head_addr->value;
+		uint32_t actual_transmit_head = tn_le_to_cpu32(queue->transmit_head_addr->value);
 		// !=, not <, since it's really "< modulo ring size"
 		while (queue->recycled_head != actual_transmit_head) {
 			if (!ixgbe_buffer_pool_give(queue->pool, queue->buffers[queue->recycled_head])) {

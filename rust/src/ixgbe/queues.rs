@@ -104,7 +104,7 @@ impl<'a> QueueTx<'a> {
     #[inline(always)]
     pub fn batch(&mut self, buffers: &mut [LifedPtr<'a, Buffer<'a>>]) -> u8 {
         if self.next.wrapping_sub(self.recycled_head) >= 2 * TX_RECYCLE_PERIOD {
-            let actual_transmit_head = self.transmit_head_addr.read_volatile_part(|h| &h.value);
+            let actual_transmit_head = u32::from_le(self.transmit_head_addr.read_volatile_part(|h| &h.value));
             while self.recycled_head as u32 != actual_transmit_head {
                 if !self.pool.map(|p| p.give(self.buffers.get(self.recycled_head as usize))) {
                     break;
