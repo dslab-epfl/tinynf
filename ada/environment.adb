@@ -117,6 +117,8 @@ package body Environment is
       OS_Abort;
     end if;
 
+    Close(Page_Map_FD);
+
     return Integer_Address(PFN) * Page_Size + (Addr mod Page_Size);
   end;
 
