@@ -1,6 +1,7 @@
 with Interfaces;
 with System.Storage_Elements;
 
+with Ixgbe; use Ixgbe;
 with Ixgbe_Device; use Ixgbe_Device;
 
 package Ixgbe_Buffer_Pool is
@@ -13,8 +14,6 @@ package Ixgbe_Buffer_Pool is
   -- Fake data for the default value of non-null access types
   Fake_Data: aliased Packet_Data;
   Fake_Buffer: aliased Buffer := (Data => Fake_Data'Access, Phys_Addr => 0, Length => 0);
-
-  type UnsignedInteger is mod Integer'Last;
 
   type Buffer_Access is not null access all Buffer;
   type Buffer_Access_Array is array(UnsignedInteger range <>) of Buffer_Access;

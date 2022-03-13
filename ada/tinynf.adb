@@ -7,14 +7,15 @@ with Ada.Command_Line;
 with Text_IO;
 with GNAT.OS_Lib;
 
-with Ixgbe_Device; use Ixgbe_Device;
-with Ixgbe_Agent;
 with NF;
 with NF_Const;
 with NF_Queues;
 with Pci_Parse;
 
+with Ixgbe; use Ixgbe;
+with Ixgbe_Agent; use Ixgbe_Agent;
 with Ixgbe_Buffer_Pool; use Ixgbe_Buffer_Pool;
+with Ixgbe_Device; use Ixgbe_Device;
 with Ixgbe_Queues; use Ixgbe_Queues;
 
 procedure TinyNF is
@@ -34,10 +35,10 @@ begin
 
     if Mode = 0 then
       declare
-        Outs0: Ixgbe_Agent.Output_Devices(0..0) := (0 => Dev1);
-        Outs1: Ixgbe_Agent.Output_Devices(0..0) := (0 => Dev0);
-        Agent0: Ixgbe_Agent.Agent := Ixgbe_Agent.Create_Agent(Dev0, Outs0);
-        Agent1: Ixgbe_Agent.Agent := Ixgbe_Agent.Create_Agent(Dev1, Outs1);
+        Outs0: Output_Devices(0..0) := (0 => Dev1);
+        Outs1: Output_Devices(0..0) := (0 => Dev0);
+        Agent0: Agent := Create_Agent(Dev0, Outs0);
+        Agent1: Agent := Create_Agent(Dev1, Outs1);
       begin
         Text_IO.Put_Line("Ada TinyNF starting...");
         NF.Run(Agent0, Agent1);

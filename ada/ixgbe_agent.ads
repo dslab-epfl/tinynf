@@ -5,10 +5,6 @@ package Ixgbe_Agent is
   Flush_Period: constant := 8;
   Recycle_Period: constant := 64;
 
-  -- Ideally we'd just use the predefined Natural type, but it leads GNAT to insert validity checks
-  -- when indexing Rings(Rings'First), even though they are unneeded; using a mod type instead avoids that.
-  type UnsignedInteger is mod Integer'Last;
-
   type Packet_Outputs is array(UnsignedInteger range <>) of Packet_Length;
 
   type Processor is not null access procedure(Data: not null access Packet_Data;

@@ -6,6 +6,10 @@ package Ixgbe is
   type VolatileUInt32 is mod 2 ** 32
     with Volatile, Size => 32;
 
+  -- Ideally we'd just use the predefined Natural type, but it leads GNAT to insert validity checks
+  -- sometimes even though they are unneeded; using a mod type instead avoids that.
+  type UnsignedInteger is mod Integer'Last;
+
   -- little-endian only for now
   function From_Little(Value: in Interfaces.Unsigned_32) return Interfaces.Unsigned_32 is (Value) with Inline_Always;
   function From_Little(Value: in Interfaces.Unsigned_64) return Interfaces.Unsigned_64 is (Value) with Inline_Always;

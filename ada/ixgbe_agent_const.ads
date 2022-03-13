@@ -1,6 +1,7 @@
 with Ixgbe; use Ixgbe;
 with Ixgbe_Device; use Ixgbe_Device;
 
+-- TODO: what if instead of type outputs_range we do Outputs_Max: in UnsignedInteger? and then declare outputs_range as a type is new, can we have only 1 agent type?
 generic
   type Outputs_Range is (<>);
 package Ixgbe_Agent_Const is

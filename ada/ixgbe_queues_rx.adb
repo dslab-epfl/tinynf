@@ -5,7 +5,7 @@ with Ixgbe_Device; use Ixgbe_Device;
 with Interfaces; use Interfaces;
 
 package body Ixgbe_Queues_Rx is
-  function Rx_Batch(Queue: in out Queue_Rx; Buffers: out B) return R_Full is
+  function Rx_Batch(Queue: in out Queue_Rx; Buffers: in out B) return R_Full is
     Rx_Count: R_Full := 0;
     Metadata: Rx_Metadata;
     New_Buffer: access Buffer;
@@ -27,7 +27,7 @@ package body Ixgbe_Queues_Rx is
       Queue.Next := Queue.Next + 1;
       Rx_Count := Rx_Count + 1;
     end loop;
-    if Rx_Count /= 0 then
+    if Rx_Count > 0 then
       Queue.Receive_Tail_Addr.all := VolatileUInt32(To_Little(Interfaces.Unsigned_32(Queue.Next - 1)));
     end if;
     return Rx_Count;
