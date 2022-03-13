@@ -14,6 +14,7 @@ with NF_Const;
 with Pci_Parse;
 
 with Ixgbe_Buffer_Pool;
+with Ixgbe_Queues;
 
 procedure TinyNF is
 begin

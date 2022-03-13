@@ -32,7 +32,7 @@ package body Ixgbe_Agent_Const is
     for R in Rings'Range loop
       Rings(R) := Allocate_Ring.all'Unchecked_Access; -- why???
       for N in Delimiter_Range loop
-        Rings(R)(N).Buffer := To_Little(Interfaces.Unsigned_64(Get_Packet_Address(Packets(N)'Access)));
+        Rings(R)(N).Addr := To_Little(Interfaces.Unsigned_64(Get_Packet_Address(Packets(N)'Access)));
       end loop;
     end loop;
 

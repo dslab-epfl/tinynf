@@ -12,7 +12,7 @@ package Ixgbe_Device is
   end record;
 
   type Descriptor is record
-    Buffer: Interfaces.Unsigned_64;
+    Addr: Interfaces.Unsigned_64;
     Metadata: Interfaces.Unsigned_64;
   end record
     with Pack,

@@ -29,8 +29,8 @@ static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe
 		if (out_queue->buffers[n] == NULL) {
 			return false;
 		}
-		out_queue->ring[n].addr = out_queue->buffers[n]->phys_addr;
-		out_queue->ring[n].metadata = 0;
+		out_queue->ring[n].addr = tn_cpu_to_le64(out_queue->buffers[n]->phys_addr);
+		out_queue->ring[n].metadata = tn_cpu_to_le64(0);
 	}
 	if (!ixgbe_device_add_input(device, out_queue->ring, &(out_queue->receive_tail_addr))) {
 		return false;

@@ -26,8 +26,8 @@ namespace TinyNF.Ixgbe
                 {
                     throw new Exception("Could not get a buffer to initialize the RX queue");
                 }
-                _ring[(byte)n].Addr = buffer.PhysAddr;
-                _ring[(byte)n].Metadata = 0;
+                _ring[(byte)n].Addr = Endianness.ToLittle(buffer.PhysAddr);
+                _ring[(byte)n].Metadata = Endianness.ToLittle(0);
                 _buffers.Set((byte)n, ref buffer);
             }
 

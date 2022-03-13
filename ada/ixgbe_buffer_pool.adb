@@ -32,11 +32,11 @@ package body Ixgbe_Buffer_Pool is
 
   -- Note the <= Max, since Max is inclusive here!
 
-  function Buffer_Pool_Give(Pool: in out Buffer_Pool; Buf: not null access Buffer) return Boolean is
+  function Buffer_Pool_Give(Pool: not null access Buffer_Pool; Buf: Buffer_Access) return Boolean is
   begin
     Pool.Index := Pool.Index + 1;
     if Pool.Index <= Pool.Max then
-      Pool.Buffers(Pool.Index) := Buffer_Access(Buf);
+      Pool.Buffers(Pool.Index) := Buf;
       return true;
     end if;
 
@@ -44,7 +44,7 @@ package body Ixgbe_Buffer_Pool is
     return false;
   end;
 
-  function Buffer_Pool_Take(Pool: in out Buffer_Pool) return access Buffer is
+  function Buffer_Pool_Take(Pool: not null access Buffer_Pool) return access Buffer is
   begin
     if Pool.Index <= Pool.Max then
       declare
