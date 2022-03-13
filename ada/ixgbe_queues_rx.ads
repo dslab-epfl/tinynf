@@ -7,5 +7,5 @@ package Ixgbe_Queues_Rx is
   type R_Full is new Integer range 0 .. Size;
   type R is new Integer range 0 .. Size-1;
   type B is array(R) of Buffer_Access;
-  function Rx_Batch(Queue: in out Queue_Rx; Buffers: in out B) return R_Full with No_Inline;
+  function Rx_Batch(Queue: in out Queue_Rx; Buffers: in out B) return R_Full with Inline_Always;
 end Ixgbe_Queues_Rx;
