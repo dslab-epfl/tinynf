@@ -2,6 +2,7 @@ with System.Storage_Elements;
 with Interfaces;
 
 package Environment is
+  -- TODO: needs an initializer to not create uninitialized Ts
   generic
     type T is private;
     type R is (<>);

@@ -6,7 +6,7 @@ with Ixgbe; use Ixgbe;
 
 package Ixgbe_Device is
   type Device is record
-    Buffer: access Device_Buffer;
+    Buffer: not null access Device_Buffer;
     RX_Enabled: Boolean;
     TX_Enabled: Boolean;
   end record;

@@ -13,6 +13,8 @@ with NF;
 with NF_Const;
 with Pci_Parse;
 
+with Ixgbe_Buffer_Pool;
+
 procedure TinyNF is
 begin
   if Ada.Command_Line.Argument_Count /= 3 then
