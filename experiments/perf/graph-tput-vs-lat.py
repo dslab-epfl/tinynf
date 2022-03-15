@@ -85,8 +85,6 @@ for nf in nfs:
   # Record all that
   numbers[nf] = (lats_5, lats_95, lats_median, tput)
 
-# We want a straight line up to tput, then a dashed line after that, so we draw 2 lines
-# And we want the lines to be opaque while the dots should be non-opaque, for clarity, so we draw them separately
 for nf, val in numbers.items():
   (lats_5, lats_95, lats_med, _) = val
   x = [t for (t, l) in lats_med]
