@@ -54,6 +54,16 @@ fn proc<const N: usize>(data: &mut PacketData, length: u64, output_lengths: &mut
     output_lengths[0] = length;
 }
 
+// We add no_mangle so that we can easily find the functions in the assembly
+
+#[inline(never)]
+fn run(agent0: &mut Agent<'_>, agent1: &mut Agent<'_>) {
+    loop {
+        agent0.run(proc::<{ agent::MAX_OUTPUTS }>);
+        agent1.run(proc::<{ agent::MAX_OUTPUTS }>);
+    }
+}
+
 #[inline(never)]
 fn run_const<const N: usize>(agent0: &mut AgentConst<'_, N>, agent1: &mut AgentConst<'_, N>) {
     loop {
@@ -97,14 +107,6 @@ fn run_queues<'a>(rx0: &mut QueueRx<'a>, rx1: &mut QueueRx<'a>, tx0: &mut QueueT
                 n = n.wrapping_add(1);
             }
         }
-    }
-}
-
-#[inline(never)]
-fn run(agent0: &mut Agent<'_>, agent1: &mut Agent<'_>) {
-    loop {
-        agent0.run(proc::<{ agent::MAX_OUTPUTS }>);
-        agent1.run(proc::<{ agent::MAX_OUTPUTS }>);
     }
 }
 
