@@ -8,7 +8,7 @@ package body Ixgbe_Queues_Rx is
   function Rx_Batch(Queue: in out Queue_Rx; Buffers: out B) return R_Full is
     Rx_Count: R_Full := 0;
     Metadata: Rx_Metadata;
-    New_Buffer: access Buffer;
+    New_Buffer: Buffer_Nullable_Access;
   begin
     -- Because Buffers must have at least one element, we use a do-while loop here
     loop
