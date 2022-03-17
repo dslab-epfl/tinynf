@@ -1,3 +1,5 @@
+TODO: https://docs.adacore.com/gnat_ugn-docs/html/gnat_ugn/gnat_ugn/building_executable_programs_with_gnat.html#style-checking
+
 TODO: audit use of 'Unchecked_Access (`grep -Fir Unchecked_Access *.ads *.adb`) (can we use 'access all' to avoid this somehow?)
 
 TODO: move to subfolders like the rest
