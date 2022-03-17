@@ -35,15 +35,25 @@ namespace TinyNF.Ixgbe
                 // We would like the following, which has bounds checks, because the compiler should be smart enough to remove them:
                 // return Volatile.Read(ref MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index]);
                 // But it currently does not; this depends on https://github.com/dotnet/runtime/pull/62864
-                // TODO: replace this once it's done
-                return Volatile.Read(ref System.Runtime.CompilerServices.Unsafe.Add(ref System.Runtime.CompilerServices.Unsafe.As<PacketData, byte>(ref this), index));
+                // It was merged but will only be in a later preview
+                // TODO: replace this once the code has gotten downstream
+                // (instead we bounds-check manually, which the compiler will remove since the index is always known to be <Size)
+                if ((uint)index < (uint)Size) {
+                    return Volatile.Read(ref System.Runtime.CompilerServices.Unsafe.Add(ref System.Runtime.CompilerServices.Unsafe.As<PacketData, byte>(ref this), index));
+                } else {
+                    throw new Exception("Out of bounds");
+                }
             }
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set
             {
                 // TODO: same as above
                 // Volatile.Write(ref MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index], value);
-                Volatile.Write(ref System.Runtime.CompilerServices.Unsafe.Add(ref System.Runtime.CompilerServices.Unsafe.As<PacketData, byte>(ref this), index), value);
+                if ((uint)index < (uint)Size) {
+                    Volatile.Write(ref System.Runtime.CompilerServices.Unsafe.Add(ref System.Runtime.CompilerServices.Unsafe.As<PacketData, byte>(ref this), index), value);
+                } else {
+                    throw new Exception("Out of bounds");
+                }
             }
         }
     }

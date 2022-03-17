@@ -11,19 +11,19 @@ cd '../..'
 # Prints the count of lines of code
 loc_count()
 {
-  cloc $1 --quiet | tail -n 2 | head -n 1 | awk '{print $5}'
+  cloc --exclude-lang=make,Markdown,JSON,'MSBuild script' --quiet $1 | tail -n 2 | head -n 1 | awk '{print $5}'
 }
 
-loc_c="$(loc_count '--force-lang=C,h --include-lang=C c')"
+loc_c="$(loc_count 'c')"
 
 loc_rust="$(loc_count '--not-match-f=agent_const.rs --not-match-f=lifed.rs rust/src')"
 loc_rust_ext="$(loc_count '--match-f=lifed.rs rust/src')"
 
-loc_cwrapper="$(loc_count '--exclude-lang=make csharp/cwrapper')"
-loc_csharp="$(loc_count '--include-lang=C# --not-match-f=SafeAgent.cs csharp/TinyNF csharp/TinyNF.Environment')"
-loc_csharp_ext="$(loc_count '--include-lang=C# csharp/TinyNF.Unsafe')"
+loc_cwrapper="$(loc_count 'csharp/cwrapper')"
+loc_csharp="$(loc_count '--not-match-f=SafeAgent.cs csharp/TinyNF csharp/TinyNF.Environment')"
+loc_csharp_ext="$(loc_count 'csharp/TinyNF.Unsafe')"
 
-loc_ada="$(loc_count '--include-lang=Ada --not-match-f=ixgbe_agent_const ada')"
+loc_ada="$(loc_count '--not-match-f=ixgbe_agent_const ada')"
 
 
 # $1: function name
@@ -31,8 +31,14 @@ loc_ada="$(loc_count '--include-lang=Ada --not-match-f=ixgbe_agent_const ada')"
 # Prints the count of assembly instructions
 asm_count()
 {
+  # this is the easy way but sometimes it aborts on the Ada binary with no other message than 'Aborted' so...
   # skip 1st and last line, which state beginning/end of dump
-  gdb -batch -ex 'set disassembly-flavor intel' -ex "disassemble $1" "$2" | tail -n+2 | head -n-1 | wc -l
+  #gdb -batch -ex 'set disassembly-flavor intel' -ex "disassemble $1" "$2" | tail -n+2 | head -n-1 | wc -l
+
+  # let's do it the hard way: https://stackoverflow.com/a/31138400
+  # set insn-width otherwise we get newlines for no good reason (seems to default to just 1 less than some 'mov' instructions)
+  # (and skip the 1st line which is the function name)
+  objdump --insn-width=30 -d "$2" | awk -v RS= '/^[[:xdigit:]]+ <'"$1"'>/' | tail -n+2 | wc -l
 }
 
 # C

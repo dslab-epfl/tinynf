@@ -1,3 +1,7 @@
+NOTE: obviously the x86 insns metrics will change depending on your exact compiler version
+
+
+
 # Experiments
 
 This folder contains experiments.
@@ -29,13 +33,10 @@ Assuming a 2-CPU machine whose second CPU has cores 8 to 15, we recommend the fo
 - `idle=poll cpuidle.off=1`: Force the CPU to spin instead of using waits for idling
 - `intel_pstate=disable`: Allow Linux to set the CPU frequency via `cpupower` instead of letting the Intel driver choose
 
-You will also need the following software:
-- GCC 10 (any version should work, but that is the one we used for the paper)
-- The build tools Make and CMake, available under these names in most package repositories
-- The development versions of libC and libNUMA, for instance available in the `libc-dev` and `libnuma-dev` packages in Ubuntu
+You will also need the following software, in addition to the compilers for each language:
+- The build tool `make`, available under that names in most package repositories
 - The shell utility  `cloc` available under that names in most package repositories
 - The shell utility `cpupower`, available under names such as `linux-tools-common` (Ubuntu) or `kernel-tools` (Fedora) in package repositories
-- Python 3 with the `matplotlib` package
 
 Due to how long some of these scripts take, if you are running them via SSH, you may want to use an utility such as `byobu`, `tmux`, or `screen`,
 allowing you to detach from the SSH session while keeping the scripts running.
