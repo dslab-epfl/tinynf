@@ -61,8 +61,8 @@ begin
     elsif Mode = 2 then
 
       declare
-        Pool0: aliased Buffer_Pool := Create_Buffer_Pool(NF_Queues.Pool_Size - 1);
-        Pool1: aliased Buffer_Pool := Create_Buffer_Pool(NF_Queues.Pool_Size - 1);
+        Pool0: aliased Buffer_Pool := Create_Buffer_Pool(NF_Queues.Pool_Size);
+        Pool1: aliased Buffer_Pool := Create_Buffer_Pool(NF_Queues.Pool_Size);
         Rx0: Queue_Rx := Create_Queue_Rx(Dev0, Pool0'Access);
         Rx1: Queue_Rx := Create_Queue_Rx(Dev1, Pool1'Access);
         Tx0: Queue_Tx := Create_Queue_Tx(Dev0, Pool1'Access);
