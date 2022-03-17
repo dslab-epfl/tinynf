@@ -20,6 +20,19 @@ mpl.rc('font', **{'size': 11})
 mpl.rcParams['pdf.fonttype'] = 42
 mpl.rcParams['ps.fonttype'] = 42
 
+# The max Y, so we don't waste space showing some extreme 95% percentile
+YLIM = 10 # us
+
+if len(sys.argv) < 3:
+  print('Args: [--intro] <name> <folder name in results/>*')
+  sys.exit(1)
+INTRO=False
+if sys.argv[1] == '--intro':
+  INTRO=True
+  del sys.argv[1]
+filename = sys.argv[1]
+nfs = sys.argv[2:]
+
 # The labels/colors we'll use
 def get_color_label_marker(nf):
   if nf == 'ada' or nf == 'ada-queues':
@@ -39,25 +52,17 @@ def get_color_label_marker(nf):
     raise "unused"
 
   if nf == 'csharp' or nf == 'csharp-queues':
-    return ('#28477E', 'C#', 'X')
+    name = 'Extended C#' if INTRO else 'C#'
+    return ('#28477E', name, 'X')
   if nf == 'csharp-safe':
     return ('#28477E', 'C# without extensions', 'X')
 
   if nf == 'rust' or nf == 'rust-queues':
-    return ('#7D31ED', 'Rust', '.')
+    name = 'Extended Rust' if INTRO else 'Rust'
+    return ('#7D31ED', name, '.')
   if nf == 'rust-const':
     return ('#7D31ED', 'Rust, static output count', '.')
 
-
-# The max Y, so we don't waste space showing some extreme 95% percentile
-YLIM = 10 # us
-
-if len(sys.argv) < 4:
-  print('Args: <filename> <name> <folder name in results/>*')
-  sys.exit(1)
-filename = sys.argv[1]
-name = sys.argv[2]
-nfs = sys.argv[3:]
 
 numbers = {}
 all_vals = []

@@ -1,14 +1,14 @@
-NOTE: obviously the x86 insns metrics will change depending on your exact compiler version
-
-
-
 # Experiments
 
-This folder contains experiments.
+This folder contains experiments from the paper.
 
-Subfolders:
-- `perf`: performance across languages
-- `code-metrics`: scripts on code metrics
+**Table 2**:
+`cd code-metrics ; ./tabulate-metrics.sh`
+(this may slightly differ from the paper depending on your exact compiler versions)
+
+**Figures**:
+Check out the prerequisites below, then `cd perf ; ./bench-all.sh`, which will take a few hours.
+Then `./plot-all.sh` assuming you have Python with Matplotlib; run `. setup-virtualenv-graphing.sh` on Ubuntu to create a virtualenv with it if needed.
 
 
 ## Prerequisites
