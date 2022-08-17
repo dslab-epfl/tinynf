@@ -50,7 +50,7 @@ allowing you to detach from the SSH session while keeping the scripts running.
 
 ## Reproducing figures and tables
 
-All figures and tables in the paper can be reproduced by running scripts, except those for illustration purposes only, and Figure 9 which requires some more setup.
+All figures and tables in the paper can be reproduced by running scripts, except those for illustration purposes only.
 
 
 ### Figure 1
