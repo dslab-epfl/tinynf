@@ -17,7 +17,7 @@ The second machine is the "tester" machine, which runs the MoonGen packet genera
 
 - Create a `Makefile.benchmarking` file in your NF's folder, with the following targets:
   - `build` to build the NF, e.g. compile it
-  - `run` to run the NF, with the PCI addresses of the network cards to use passed as `$(TN_ARGS)`
+  - `run` to run the NF, with the PCI addresses of the network cards to use passed as `$(NF_ARGS)`
   - `print-nf-name` to print the name of the NF process, e.g. `@echo my-nf`
   - If your NF is based on DPDK, create an empty target `is-dpdk`
   - If your NF needs something done after it starts, such as sleeping for a while because it is slow to start, put this in a target `init`
@@ -34,4 +34,4 @@ The second machine is the "tester" machine, which runs the MoonGen packet genera
       (By default, the script measures latency from 0 to max throughput in 1 Gb/s increments)
     - `--acceptableloss X` where `X` is the fraction of loss that is acceptable in the throughput benchmark, `0.003` by default.
     - `--flows X` where `X` is the number of different flows the packets should belong to
-    - `--reverseheatup` for `standard-single` to also heat up in the other direction, useful for some NFs like a load balancer that gets heartbeat packets from backends
+    - `--maglev` for `standard-single` to also heat up in the other direction, useful for Maglev which gets heartbeat packets from backends

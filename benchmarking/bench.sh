@@ -50,26 +50,26 @@ sudo rm -f "$(grep hugetlbfs /proc/mounts  | awk '{print $2}')"/*
 # Initialize DPDK if needed
 make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" -q is-dpdk >/dev/null 2>&1
 if [ $? -eq 2 ]; then
-  ./unbind-devices.sh $DUT_DEVS
+  "$THIS_DIR/unbind-devices.sh" $DUT_DEVS
 else
-  ./bind-devices-to-uio.sh $DUT_DEVS
+  "$THIS_DIR/bind-devices-to-uio.sh" $DUT_DEVS
 fi
 
-if [ ! -d 'moongen' ]; then
-  git clone --recurse-submodules 'https://github.com/emmericp/MoonGen' 'moongen'
+if [ ! -d "$THIS_DIR/moongen" ]; then
+  git clone --recurse-submodules 'https://github.com/emmericp/MoonGen' "$THIS_DIR/moongen"
   if [ $? -ne 0 ]; then
     echo '[FATAL] Could not clone MoonGen'
     exit 1
   fi
 
-  git -C 'moongen' checkout '525d9917c98a4760db72bb733cf6ad30550d6669'
+  git -C "$THIS_DIR/moongen" checkout '525d9917c98a4760db72bb733cf6ad30550d6669'
   if [ $? -ne 0 ]; then
     echo '[FATAL] Could not check out the MoonGen commit'
     exit 1
   fi
 fi
 
-rsync -a -q . "$TESTER_HOST:$REMOTE_FOLDER_NAME"
+rsync -a -q "$THIS_DIR" "$TESTER_HOST:$REMOTE_FOLDER_NAME"
 if [ $? -ne 0 ]; then
   echo '[FATAL] Could not copy scripts'
   exit 1
@@ -77,7 +77,7 @@ fi
 
 echo '[bench] Building and running the NF...'
 
-TN_ARGS="$DUT_DEVS" make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" build >"$LOG_FILE" 2>&1
+NF_ARGS="$DUT_DEVS" make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" build >"$THIS_DIR/$LOG_FILE" 2>&1
 if [ $? -ne 0 ]; then
   echo "[FATAL] Could not build; the $LOG_FILE file in the same directory as $0 may be useful"
   exit 1
@@ -92,7 +92,7 @@ trap_cleanup()
 }
 trap 'trap_cleanup' 2
 
-TN_ARGS="$DUT_DEVS" taskset -c "$DUT_CPUS" make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" run >>"$LOG_FILE" 2>&1 &
+NF_ARGS="$DUT_DEVS" taskset -c "$DUT_CPUS" make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" run >>"$THIS_DIR/$LOG_FILE" 2>&1 &
 # Initialize if needed, but ignore all output including a missing target
 make -C "$NF_DIR" -f "$BENCH_MAKEFILE_NAME" init >'/dev/null' 2>&1
 # Sleep (as little as possible) if the NF needs a while to start
@@ -110,7 +110,7 @@ fi
 
 ssh "$TESTER_HOST" "cd $REMOTE_FOLDER_NAME; ./bench-tester.sh $@"
 if [ $? -eq 0 ]; then
-  scp -r "$TESTER_HOST:$REMOTE_FOLDER_NAME/results" . >/dev/null 2>&1
+  scp -r "$TESTER_HOST:$REMOTE_FOLDER_NAME/results" "$THIS_DIR" >/dev/null 2>&1
   if [ $? -eq 0 ]; then
     echo "[bench] Done! Results are in the results/ folder, and the log in $LOG_FILE, in the same directory as $0"
     RESULT=0

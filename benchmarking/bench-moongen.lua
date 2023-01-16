@@ -41,7 +41,7 @@ function configure(parser)
   parser:option("-a --acceptableloss", "Acceptable loss for the throughput test, defaults to 0.003 or .3%"):default(0.003):convert(tonumber)
   parser:option("-f --flows", "Number of flows to use, defaults to 60,000"):default(60000):convert(tonumber)
   parser:flag("-x --xchange", "Exchange order of devices, in case you messed up your wiring")
-  parser:flag("-r --reverseheatup", "Add heatup in reverse, for Maglev-like load balancers; only for standard-single")
+  parser:flag("-m --maglev", "Handle Maglev: add heatup in reverse, so it gets heartbeats, and reverse order of devices; only for standard-single")
 end
 
 -- Helper function to summarize latencies: min, max, median, stdev, 99th
@@ -262,7 +262,7 @@ function heatUp(queuePair, layer, flows, ignoreloss)
     io.write("[FATAL] More packets received than sent!\n")
     os.exit(1)
   end
-  if not ignoreloss and loss > 0.001 then
+  if not ignoreloss and loss > 0.01 then
     io.write("[FATAL] Heatup lost " .. (loss * 100) .. "% of packets!\n")
     os.exit(1)
   end
@@ -274,7 +274,7 @@ end
 -- Measure max throughput with less than 0.1% loss,
 -- and latency at lower rates up to max throughput minus 100Mbps
 function measureStandard(queuePairs, extraPair, args)
-  if args.reverseheatup then
+  if args.maglev then
     heatUp(queuePairs[99], args.layer, args.flows, true) -- 99 is a hack, see master function
   end
   heatUp(queuePairs[1], args.layer, args.flows, false)
@@ -307,12 +307,15 @@ function measureStandard(queuePairs, extraPair, args)
     end
 
     io.write("loss = " .. loss)
-    if not increased and loss - lastLoss > 0.1 then
-      io.write(", the loss did not go down significantly even though the rate went down, something is wrong!\n")
+    if loss == 1 then
+      io.write(", something is wrong!\n")
+      os.exit(1)
+    end
+    if not increased and (lastLoss - loss) < -0.05 then
+      io.write(", the loss went up significantly even though the rate went down, something is wrong!\n")
       os.exit(1)
     end
     lastLoss = loss
-
     io.write("\n")
     io.flush()
 
@@ -328,7 +331,7 @@ function measureStandard(queuePairs, extraPair, args)
       increased = false
     end
 
-    -- Stop if the first step is already successful, let's not do pointless iterations
+    -- Also stop if the first step is already successful, let's not do pointless iterations
     if (i == THROUGHPUT_STEPS_COUNT) or (loss <= args.acceptableloss and bestRate == upperBound) then
       -- Note that we write 'bestRate' here, i.e. the last rate with acceptable loss, not the current one
       -- (which may cause unacceptable loss since our binary search is bounded in steps)
@@ -350,7 +353,7 @@ function measureStandard(queuePairs, extraPair, args)
     latencyRates[#latencyRates+1] = currentGuess
     currentGuess = currentGuess + LATENCY_LOAD_INCREMENT
   end
-  if currentGuess - LATENCY_LOAD_INCREMENT ~= bestRate then
+  if bestRate - LATENCY_LOAD_PADDING >= latencyRates[#latencyRates] then
     latencyRates[#latencyRates+1] = bestRate
   end
 
@@ -427,9 +430,11 @@ function master(args)
 
   local port0 = 0
   local port1 = 1
+  if args.maglev then
+    port0, port1 = port1, port0
+  end
   if args.xchange then
-    port0 = 1
-    port1 = 0
+    port0, port1 = port1, port0
   end
 
   -- Thus we need 1 TX + 1 RX queue in each device for throughput, and 1 TX in device 0 / 1 RX in device 1 for latency
@@ -460,7 +465,7 @@ function master(args)
     os.exit(1)
   end
 
-  if args.reverseheatup and args.type ~= "standard-single" then
+  if args.maglev and args.type ~= "standard-single" then
     print("Reverse heatup is only for standard-single")
     os.exit(1)
   end

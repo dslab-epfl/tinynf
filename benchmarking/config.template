@@ -1,6 +1,6 @@
 # Notes:
 # If using multiple ports on the same NIC, ensure PCIe bandwidth doesn't become the bottleneck
-# PCI addresses should be listed in ascending order so that their order matches in programs that do not sort them, e.g. TinyNF
+# PCI addresses should be listed in ascending order so that their order matches in programs that do not sort them
 
 # 0-based index of the CPU(s) on which the NF will run
 export DUT_CPUS=8,9

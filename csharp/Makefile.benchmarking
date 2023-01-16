@@ -31,7 +31,7 @@ build:
 	@$(DOTNET) publish -r linux-x64 -c $(CONFIG) --self-contained true $(BUILD_ARGS) $(THIS_DIR)
 
 run:
-	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/TinyNF/bin/Release/net6.0/linux-x64/publish/TinyNF $(TN_ARGS) $(RUN_ARG)
+	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(THIS_DIR)/TinyNF/bin/Release/net6.0/linux-x64/publish/TinyNF $(NF_ARGS) $(RUN_ARG)
 
 print-nf-name:
 	@echo TinyNF

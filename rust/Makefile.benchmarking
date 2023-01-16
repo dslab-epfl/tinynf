@@ -13,7 +13,7 @@ build:
 	@cargo build --manifest-path=$(THIS_DIR)/Cargo.toml $(CARGO_FLAGS) --release
 
 run:
-	@sudo $(THIS_DIR)/target/release/tinynf $(TN_ARGS)
+	@sudo $(THIS_DIR)/target/release/tinynf $(NF_ARGS)
 
 print-nf-name:
 	@echo tinynf

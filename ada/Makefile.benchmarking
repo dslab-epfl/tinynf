@@ -19,7 +19,7 @@ build:
 	@gnatmake $(APP) $(TN_CFLAGS)
 
 run:
-	@sudo ./$(APP) $(TN_MODE) $(TN_ARGS)
+	@sudo ./$(APP) $(TN_MODE) $(NF_ARGS)
 
 print-nf-name:
 	@echo $(APP)
