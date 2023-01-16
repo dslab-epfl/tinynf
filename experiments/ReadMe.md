@@ -24,7 +24,7 @@ As a first step, go to the `benchmarking` folder at the root of this repository,
 Assuming a 2-CPU machine whose second CPU has cores 8 to 15, we recommend the following Linux kernel parameters for the two machines (add to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`):
 - `nosmt`: Disable HyperThreading, to avoid contention among threads in benchmarks
 - `intel_iommu=off`: Disable the IOMMU, we don't need it
-- `hugepages=4096`: preallocate 4K hugepages of the default 2MB size
+- `default_hugepagesz=1G hugepagesz=1G hugepages=8`: preallocate 8 hugepages of 1GB each
 - `isolcpus=8-15 nohz_full=8-15 rcu_nocbs=8-15`: Isolate the second CPU entirely
 - `nosoftlockup`: No backtraces for processes that appear to hang, such as NFs that run for a long time
 - `processor.ignore_ppc=1`: Do not listen to the BIOS about CPU frequency limitations
