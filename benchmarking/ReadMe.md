@@ -13,6 +13,7 @@ The second machine is the "tester" machine, which runs the MoonGen packet genera
   - Create an SSH key on the DUT and add it to the authorized keys of the tester, to avoid entering your password during script execution
   - Ensure that your user can run "sudo" without a password, since this is necessary to run NFs
   - Ensure that you are starting these scripts from the DUT
+  - Ensure that you have a C and C++ compiler available, as well as `libtbb2` (necessary for MoonGen)
 
 - Create a `Makefile.benchmarking` file in your NF's folder, with the following targets:
   - `build` to build the NF, e.g. compile it

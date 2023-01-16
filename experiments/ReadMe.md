@@ -34,8 +34,9 @@ Assuming a 2-CPU machine whose second CPU has cores 8 to 15, we recommend the fo
 - `intel_pstate=disable`: Allow Linux to set the CPU frequency via `cpupower` instead of letting the Intel driver choose
 
 You will also need the following software, in addition to the compilers for each language:
-- The build tool `make`, available under that names in most package repositories
-- The shell utility  `cloc` available under that names in most package repositories
+- The library `libtbb2`, available under that name in most package repositories
+- The build tool `make`, available under that name in most package repositories
+- The shell utility `cloc`, available under that name in most package repositories
 - The shell utility `cpupower`, available under names such as `linux-tools-generic` (Ubuntu) in package repositories
 
 Due to how long some of these scripts take, if you are running them via SSH, you may want to use an utility such as `byobu`, `tmux`, or `screen`,
