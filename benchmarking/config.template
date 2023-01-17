@@ -8,7 +8,7 @@ export DUT_CPUS=8,9
 export DUT_DEVS='83:00.0 85:00.0'
 
 # Hostname of the tester, such that the DUT can SSH to it
-export TESTER_HOST='icnalsp3s3'
+export TESTER_HOST='icnalsp3s2'
 # 0-based index of the CPUs on which the packet generator can run
 # As many as possible, but should be on the same socket as the NICs
 export TESTER_CPUS=8,9,10,11,12,13,14,15

@@ -30,7 +30,8 @@ TN_MODE ?= 0
 ifneq (,$(findstring clang,$(TN_CC)))
 # Ignore cast warnings, we know what we're doing
 # Also ignore unused CLI args, this triggers due to -rdynamic in debug mode
-TN_CFLAGS += -Weverything -Wno-cast-qual -Wno-cast-align -Wno-unused-command-line-argument
+# And packing/padding warnings for stuff like "you don't need to explicitly say this struct should be packed"
+TN_CFLAGS += -Weverything -Wno-cast-qual -Wno-cast-align -Wno-unused-command-line-argument -Wno-packed -Wno-padded
 endif
 ifneq (,$(findstring gcc,$(TN_CC)))
 TN_CFLAGS += -Wall -Wextra -Wshadow -Wstrict-aliasing -Wunused-macros -pedantic

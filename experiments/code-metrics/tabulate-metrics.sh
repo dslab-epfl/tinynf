@@ -7,6 +7,8 @@ fi
 
 cd '../..'
 
+printf 'This should take less than a minute...\n\n'
+
 # $1: the cloc arguments
 # Prints the count of lines of code
 loc_count()
@@ -42,9 +44,9 @@ asm_count()
 }
 
 # C
-if ! TN_MODE=0 make -f Makefile.benchmarking -C c >/dev/null ; then exit $? ; fi
+if ! TN_MODE=0 TN_CC=clang make -f Makefile.benchmarking -C c >/dev/null ; then exit $? ; fi
 asm_c="$(asm_count 'run' 'c/tinynf')"
-if ! TN_MODE=2 make -f Makefile.benchmarking -C c >/dev/null ; then exit $? ; fi
+if ! TN_MODE=2 TN_CC=clang make -f Makefile.benchmarking -C c >/dev/null ; then exit $? ; fi
 asm_c_queues="$(asm_count 'run' 'c/tinynf')"
 
 # Rust is harder due to name mangling, we find the symbol first
@@ -59,8 +61,8 @@ asm_rust_queues="$(asm_count "$run_queues_symbol" 'rust/target/release/tinynf')"
 # CSharp always has both compiled so we only compile once
 # There's also like 3 asm lines for the lambda initializing the default value of the buffer references for queues; it does not matter at this scale
 if ! TN_CSHARP_AOT=y make -f Makefile.benchmarking -C csharp >/dev/null 2>&1 ; then exit $? ; fi
-asm_csharp="$(asm_count 'TinyNF_TinyNF_Program__Run' csharp/TinyNF/bin/Release/*/*/publish/TinyNF)"
-asm_csharp_queues="$(asm_count 'TinyNF_TinyNF_Program__RunQueues' csharp/TinyNF/bin/Release/*/*/publish/TinyNF)"
+asm_csharp="$(asm_count 'TinyNF_TinyNF_Program__Run' csharp/out/TinyNF)"
+asm_csharp_queues="$(asm_count 'TinyNF_TinyNF_Program__RunQueues' csharp/out/TinyNF)"
 
 # Ada also has both
 if ! make -f Makefile.benchmarking -C ada >/dev/null 2>&1 ; then exit $? ; fi

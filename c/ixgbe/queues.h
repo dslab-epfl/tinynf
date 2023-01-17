@@ -39,6 +39,7 @@ static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe
 	return true;
 }
 
+__attribute__((always_inline))
 static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct ixgbe_buffer* restrict* buffers, uint8_t buffers_count)
 {
 	uint8_t rx_count = 0;
@@ -95,6 +96,7 @@ static inline bool ixgbe_queue_tx_init(struct ixgbe_device* device, struct ixgbe
 	return ixgbe_device_add_output(device, out_queue->ring, out_queue->transmit_head_addr, &(out_queue->transmit_tail_addr));
 }
 
+__attribute__((always_inline))
 static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct ixgbe_buffer* restrict* buffers, uint8_t buffers_count)
 {
 	// 2* period so we are much more likely to recycle something since the last "batch" before an RS bit was likely not fully sent yet
