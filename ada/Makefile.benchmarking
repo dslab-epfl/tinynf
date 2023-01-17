@@ -1,25 +1,11 @@
-APP := tinynf
+THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
+include $(THIS_DIR)/Makefile
 
 TN_MODE ?= 0
 
-# Use -g for debug symbols, or -gnatD for detailed debugging stuff... not sure it's actually better, though
-
-# Basic optimization stuff, same as C version
-TN_CFLAGS += -O3 -march=native -flto
-# Turn on overflow checks, required by the Ada spec, but GNAT doesn't do it by default (?!)
-TN_CFLAGS += -gnato
-# -gnatn turns on some inlining
-TN_CFLAGS += -gnatn
-# remove unused stuff
-TN_CFLAGS += -cargs -ffunction-sections -fdata-sections -largs -Wl,--gc-sections
-
-# Always clean, just in case
-build:
-	@gnatclean $(APP)
-	@gnatmake $(APP) $(TN_CFLAGS)
-
 run:
-	@sudo ./$(APP) $(TN_MODE) $(NF_ARGS)
+	@sudo $(THIS_DIR)/$(APP) $(TN_MODE) $(NF_ARGS)
 
 print-nf-name:
 	@echo $(APP)

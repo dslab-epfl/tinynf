@@ -1,45 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <!-- Ignore startup latency, optimize for throughput / stability -->
-    <!-- In practice this doesn't seem to have much effect though -->
-    <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\TinyNF.Environment\TinyNF.Environment.csproj" />
     <ProjectReference Include="..\TinyNF.Unsafe\TinyNF.Unsafe.csproj" />
   </ItemGroup>
-
-  <!-- Use JIT by default (faster to compile, so faster to prototype) -->
-  <ItemGroup Condition="'$(UseAOT)' != ''">
-    <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="7.0.0-*" />
-  </ItemGroup>
-
-  <!-- Direct P/Invoke calls in AOT -->
-  <ItemGroup Condition="'$(UseAOT)' != ''">
-    <DirectPInvoke Include="libc" />
-    <DirectPInvoke Include="cwrapper" />
-    <NativeLibrary Include="../cwrapper/cwrapper.a" />
-  </ItemGroup>
-
-  <!-- Disable everything possible in AOT, not really for speed (unlikely to matter) but to make code inspection easier; also, optimize for speed -->
-  <PropertyGroup Condition="'$(UseAOT)' != ''">
-    <TrimmerDefaultAction>link</TrimmerDefaultAction>
-    <DebuggerSupport>false</DebuggerSupport>
-    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
-    <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
-    <EventSourceSupport>false</EventSourceSupport>
-    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <UseSystemResourceKeys>true</UseSystemResourceKeys>
-    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
-    <IlcDisableReflection>true</IlcDisableReflection>
-
-    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
-    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
-    <IlcDisableUnhandledExceptionExperience>true</IlcDisableUnhandledExceptionExperience>
-  </PropertyGroup>
 </Project>

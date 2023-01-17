@@ -63,6 +63,7 @@ ifeq ($(TN_DIR)/env/linux-x86,$(TN_ENV))
 TN_CFLAGS += -D_DEFAULT_SOURCE # for MAP_* constants and the syscall function
 endif
 
-.PHONY: tn_default
-tn_default:
+# Always rebuild since the flags might have changed
+.PHONY: build
+build:
 	@$(TN_CC) $(TN_CFLAGS) $(TN_FILES) -o $(TN_APP)

@@ -1,15 +1,9 @@
-# Benchmarking-only makefile
+THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-# Current directory
-TN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-
-# Include the normal one, for compilation
-include $(TN_DIR)/Makefile
-
-build: tn_default
+include $(THIS_DIR)/Makefile
 
 run:
-	@sudo ./tinynf $(NF_ARGS)
+	@sudo $(THIS_DIR)/tinynf $(NF_ARGS)
 
 print-nf-name:
 	@echo tinynf

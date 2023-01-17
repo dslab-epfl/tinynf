@@ -1,0 +1,35 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <Features>strict</Features>
+    <!-- Ignore startup latency, optimize for throughput / stability -->
+    <!-- In practice this doesn't seem to have much effect though -->
+    <TieredCompilation>false</TieredCompilation>
+  </PropertyGroup>
+
+  <!-- Disable everything possible in AOT, not really for speed (unlikely to matter) but to make code inspection easier; also, optimize for speed -->
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
+    <DebuggerSupport>false</DebuggerSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    <IlcDisableReflection>true</IlcDisableReflection>
+    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+    <IlcDisableUnhandledExceptionExperience>true</IlcDisableUnhandledExceptionExperience>
+
+    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
+  </PropertyGroup>
+
+  <!-- Direct P/Invoke calls in AOT -->
+  <ItemGroup Condition="'$(PublishAot)' == 'true'">
+    <DirectPInvoke Include="libc" />
+    <DirectPInvoke Include="cwrapper" />
+    <NativeLibrary Include="$(MSBuildThisFileDirectory)/cwrapper/cwrapper.a" />
+  </ItemGroup>
+</Project>
