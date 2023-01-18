@@ -1,15 +1,13 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <stddef.h>
-
 #include "buffer_pool.h"
 #include "device.h"
 
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
-struct ixgbe_queue_rx
-{
+struct ixgbe_queue_rx {
 	volatile struct ixgbe_descriptor* restrict ring;
 	struct ixgbe_buffer* restrict* buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
@@ -39,8 +37,8 @@ static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe
 	return true;
 }
 
-__attribute__((always_inline))
-static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct ixgbe_buffer* restrict* buffers, uint8_t buffers_count)
+__attribute__((always_inline)) static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct ixgbe_buffer* restrict* buffers,
+									  uint8_t buffers_count)
 {
 	uint8_t rx_count = 0;
 	while (rx_count < buffers_count) {
@@ -71,11 +69,9 @@ static inline uint8_t ixgbe_queue_rx_batch(struct ixgbe_queue_rx* queue, struct 
 	return rx_count;
 }
 
-
 #define IXGBE_QUEUE_TX_RECYCLE_PERIOD 32u
 
-struct ixgbe_queue_tx
-{
+struct ixgbe_queue_tx {
 	volatile struct ixgbe_descriptor* restrict ring;
 	struct ixgbe_buffer* restrict* buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
@@ -96,8 +92,8 @@ static inline bool ixgbe_queue_tx_init(struct ixgbe_device* device, struct ixgbe
 	return ixgbe_device_add_output(device, out_queue->ring, out_queue->transmit_head_addr, &(out_queue->transmit_tail_addr));
 }
 
-__attribute__((always_inline))
-static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct ixgbe_buffer* restrict* buffers, uint8_t buffers_count)
+__attribute__((always_inline)) static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct ixgbe_buffer* restrict* buffers,
+									  uint8_t buffers_count)
 {
 	// 2* period so we are much more likely to recycle something since the last "batch" before an RS bit was likely not fully sent yet
 	if ((uint8_t) (queue->next - queue->recycled_head) >= 2 * IXGBE_QUEUE_TX_RECYCLE_PERIOD) {
@@ -121,7 +117,8 @@ static inline uint8_t ixgbe_queue_tx_batch(struct ixgbe_queue_tx* queue, struct 
 
 		uint64_t rs_bit = (queue->next % IXGBE_QUEUE_TX_RECYCLE_PERIOD) == (IXGBE_QUEUE_TX_RECYCLE_PERIOD - 1) ? IXGBE_TX_METADATA_RS : 0;
 		queue->ring[queue->next].addr = tn_cpu_to_le64(buffers[tx_count]->phys_addr);
-		queue->ring[queue->next].metadata = tn_cpu_to_le64(IXGBE_TX_METADATA_LENGTH(buffers[tx_count]->length) | rs_bit | IXGBE_TX_METADATA_IFCS | IXGBE_TX_METADATA_EOP);
+		queue->ring[queue->next].metadata =
+		    tn_cpu_to_le64(IXGBE_TX_METADATA_LENGTH(buffers[tx_count]->length) | rs_bit | IXGBE_TX_METADATA_IFCS | IXGBE_TX_METADATA_EOP);
 
 		queue->buffers[queue->next] = buffers[tx_count];
 

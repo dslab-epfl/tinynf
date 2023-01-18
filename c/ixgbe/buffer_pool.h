@@ -1,33 +1,27 @@
 #pragma once
 
+#include "device.h"
+#include "env/memory.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
-#include "env/memory.h"
-
-#include "device.h"
 
 // This implementation uses optimistic logic in `give` so that when ported to safe languages without ranged integers compilers are allowed to elide bounds checks.
 // The cost is an extra decrement operation if `give` fails, which is not expected to happen since that means giving more buffers than one has taken.
 // Of course, having `index` be in the range `0 .. size` would be better, but not all languages have cool features :-)
 
-
-struct ixgbe_buffer
-{
+struct ixgbe_buffer {
 	volatile struct ixgbe_packet_data* data;
 	uintptr_t phys_addr;
 	uint16_t length;
 };
 
-
-struct ixgbe_buffer_pool
-{
+struct ixgbe_buffer_pool {
 	struct ixgbe_buffer* restrict* buffers;
 	size_t size;
 	size_t index;
 };
-
 
 static inline struct ixgbe_buffer_pool* ixgbe_buffer_pool_allocate(size_t size)
 {

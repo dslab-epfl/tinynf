@@ -7,10 +7,8 @@
 #include "util/log.h"
 
 #include <inttypes.h>
-#include <unistd.h>
-
 #include <sys/syscall.h>
-
+#include <unistd.h>
 
 bool tn_numa_is_current_node(uint64_t node)
 {
@@ -42,7 +40,8 @@ bool tn_numa_get_addr_node(void* addr, uint64_t* out_node)
 bool tn_numa_get_device_node(const struct tn_pci_address address, uint64_t* out_node)
 {
 	char node_str[3] = {0};
-	if (!tn_fs_readline(node_str, sizeof(node_str)/sizeof(char), "/sys/bus/pci/devices/0000:%02" PRIx8 ":%02" PRIx8 ".%" PRIx8 "/numa_node", address.bus, address.device, address.function)) {
+	if (!tn_fs_readline(node_str, sizeof(node_str) / sizeof(char), "/sys/bus/pci/devices/0000:%02" PRIx8 ":%02" PRIx8 ".%" PRIx8 "/numa_node", address.bus,
+			    address.device, address.function)) {
 		TN_DEBUG("Could not read PCI numa node");
 		return false;
 	}

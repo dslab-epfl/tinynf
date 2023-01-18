@@ -7,10 +7,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
-
 // Should be big enough
 #define PATH_SIZE 1024
-
 
 bool tn_fs_readline(char* line, unsigned line_size, const char* path_format, ...)
 {

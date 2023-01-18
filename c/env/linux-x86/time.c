@@ -6,15 +6,13 @@
 #include <stdlib.h>
 #include <time.h>
 
-
 #define MAX_SLEEP_ATTEMPTS 1000
-
 
 void tn_sleep_us(uint64_t microseconds)
 {
 	struct timespec request;
-	request.tv_sec = (int64_t)(microseconds / 1000000);
-	request.tv_nsec = (int64_t)(microseconds % 1000000) * 1000;
+	request.tv_sec = (int64_t) (microseconds / 1000000);
+	request.tv_nsec = (int64_t) (microseconds % 1000000) * 1000;
 
 	for (uint64_t n = 0; n < MAX_SLEEP_ATTEMPTS; n++) {
 		// We don't care if we end up sleeping more than requested due to interrupts and restarts.

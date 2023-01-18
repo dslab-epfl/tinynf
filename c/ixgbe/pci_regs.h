@@ -1,12 +1,11 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stdint.h>
-
 #include "env/bits.h"
 #include "env/pci.h"
 #include "util/log.h"
 
+#include <stdbool.h>
+#include <stdint.h>
 
 // Section 9.3.2 PCIe Configuration Space Summary: "0x10 Base Address Register 0" (32 bit), "0x14 Base Address Register 1" (32 bit)
 // Section 9.3.6.1 Memory and IO Base Address Registers: BAR 0 is 64-bits, thus it's 0-low and 0-high, not 0 and 1
@@ -33,8 +32,7 @@
 // Section 9.3.7.1.5 PMCSR_BSE Bridge Support Extensions Register (8 bit, hardwired to 0)
 // Section 9.3.7.1.6 Data Register (8 bit, unused)
 #define PCIREG_PMCSR 0x44u
-#define PCIREG_PMCSR_POWER_STATE BITS(0,1)
-
+#define PCIREG_PMCSR_POWER_STATE BITS(0, 1)
 
 // Get the value of PCI register 'reg' on the device at address 'addr'
 static inline uint32_t pcireg_read(struct tn_pci_address addr, uint8_t reg)

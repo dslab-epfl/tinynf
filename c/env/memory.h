@@ -7,7 +7,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-
 // Allocates a pinned, zero-initialized memory block of the given size, aligned to the size, or crashes.
 // "Pinned" here means "the virtual-to-physical mapping will never change", not just that it will always be in memory.
 // This allows the allocated memory's physical address to be given to a device for DMA.

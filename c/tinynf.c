@@ -3,16 +3,14 @@
 #define IXGBE_AGENT_OUTPUTS_COUNT 1
 #endif
 
-#include <stdnoreturn.h>
-
 #include "env/pci.h"
 #include "ixgbe/agent.h"
 #include "ixgbe/device.h"
+#include "ixgbe/queues.h"
 #include "util/log.h"
 #include "util/parse.h"
 
-#include "ixgbe/queues.h"
-
+#include <stdnoreturn.h>
 
 // Three options for the TN_MODE variable:
 // - 0 for the agent-based original TinyNF
@@ -78,8 +76,7 @@ static void agent_packet_handler(volatile struct ixgbe_packet_data* restrict pac
 // This noinline function is there so GCC realizes it can use all registers
 // (otherwise it keeps some regs unused, presumably because initialization
 //  makes it think they will be used later...)
-__attribute__((noinline))
-noreturn static void run(struct ixgbe_agent* restrict agent0, struct ixgbe_agent* restrict agent1)
+__attribute__((noinline)) noreturn static void run(struct ixgbe_agent* restrict agent0, struct ixgbe_agent* restrict agent1)
 {
 	while (true) {
 		ixgbe_run(agent0, &agent_packet_handler);
@@ -121,8 +118,8 @@ int main(int argc, char** argv)
 
 // I haven't tested if this noinline is also necessary but since it is for the agent case let's just do it
 // TODO centralize the comment above, it's the same for all langs
-__attribute__((noinline))
-noreturn static void run(struct ixgbe_queue_rx* restrict rx0, struct ixgbe_queue_rx* restrict rx1, struct ixgbe_queue_tx* restrict tx0, struct ixgbe_queue_tx* restrict tx1)
+__attribute__((noinline)) noreturn static void run(struct ixgbe_queue_rx* restrict rx0, struct ixgbe_queue_rx* restrict rx1,
+						   struct ixgbe_queue_tx* restrict tx0, struct ixgbe_queue_tx* restrict tx1)
 {
 	struct ixgbe_buffer* restrict buffers[TINYNF_QUEUE_BATCH_SIZE];
 	uint8_t nb_rx, nb_tx;

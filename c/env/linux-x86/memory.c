@@ -10,9 +10,8 @@
 
 #include <fcntl.h>
 #include <stdlib.h>
-#include <unistd.h>
-
 #include <sys/mman.h>
+#include <unistd.h>
 
 // We only support 2MB hugepages
 #define HUGEPAGE_SIZE_POWER (10 + 10 + 10)
@@ -23,31 +22,28 @@
 #define MAP_HUGE_SHIFT 26
 #endif
 
-
 static bool page_allocated;
 static uint8_t* page_addr;
 static size_t page_used_len;
-
 
 void* tn_mem_allocate(size_t size)
 {
 	if (!page_allocated) {
 		page_addr = mmap(
-			// No specific address
-			NULL,
-			// Size of the mapping
-			HUGEPAGE_SIZE,
-			// R/W page
-			PROT_READ | PROT_WRITE,
-			// Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
-			// MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
-			// which is required if the calling code tries to get the physical address of the page without accessing it first.
-			MAP_HUGETLB | (HUGEPAGE_SIZE_POWER << MAP_HUGE_SHIFT) | MAP_ANONYMOUS | MAP_SHARED | MAP_POPULATE,
-			// Required on MAP_ANONYMOUS
-			-1,
-			// Required on MAP_ANONYMOUS
-			0
-		);
+		    // No specific address
+		    NULL,
+		    // Size of the mapping
+		    HUGEPAGE_SIZE,
+		    // R/W page
+		    PROT_READ | PROT_WRITE,
+		    // Hugepage, not backed by a file (and thus zero-initialized); note that without MAP_SHARED the call fails
+		    // MAP_POPULATE means the page table will be populated already (without the need for a page fault later),
+		    // which is required if the calling code tries to get the physical address of the page without accessing it first.
+		    MAP_HUGETLB | (HUGEPAGE_SIZE_POWER << MAP_HUGE_SHIFT) | MAP_ANONYMOUS | MAP_SHARED | MAP_POPULATE,
+		    // Required on MAP_ANONYMOUS
+		    -1,
+		    // Required on MAP_ANONYMOUS
+		    0);
 		if (page_addr == MAP_FAILED) {
 			TN_DEBUG("Allocate mmap failed");
 			abort();
@@ -103,19 +99,18 @@ void* tn_mem_phys_to_virt(const uint64_t addr, const size_t size)
 	}
 
 	void* mapped = mmap(
-		// No specific address
-		NULL,
-		// Size of the mapping
-		size,
-		// R/W page
-		PROT_READ | PROT_WRITE,
-		// Send updates to the underlying "file"
-		MAP_SHARED,
-		// /dev/mem
-		mem_fd,
-		// Offset is the address (cast OK because we checked above)
-		(off_t) addr
-	);
+	    // No specific address
+	    NULL,
+	    // Size of the mapping
+	    size,
+	    // R/W page
+	    PROT_READ | PROT_WRITE,
+	    // Send updates to the underlying "file"
+	    MAP_SHARED,
+	    // /dev/mem
+	    mem_fd,
+	    // Offset is the address (cast OK because we checked above)
+	    (off_t) addr);
 
 	// nothing we can do if this fails, since we didn't write don't even bother checking
 	close(mem_fd);

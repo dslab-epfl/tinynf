@@ -8,7 +8,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-
 static bool tn_util_parse_hex_digit(char h, uint8_t* out_d)
 {
 	if (h >= 'a' && h <= 'f') {
@@ -58,7 +57,6 @@ static bool tn_util_parse_hex8(char** ref_value, char end, uint8_t* out_result)
 	return false;
 }
 
-
 // Parses PCI addresses in Bus:Device.Function format; out_devices must be pre-allocated
 static bool tn_util_parse_pci(uint64_t count, char** values, struct tn_pci_address* out_addresses)
 {
@@ -78,7 +76,7 @@ static bool tn_util_parse_pci(uint64_t count, char** values, struct tn_pci_addre
 			return false;
 		}
 
-		out_addresses[n] = (struct tn_pci_address) { .bus = bus, .device = device, .function = function };
+		out_addresses[n] = (struct tn_pci_address){.bus = bus, .device = device, .function = function};
 	}
 
 	return true;

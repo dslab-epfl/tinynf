@@ -1,12 +1,11 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stdint.h>
-
 #include "env/bits.h"
 #include "env/endian.h"
 #include "util/log.h"
 
+#include <stdbool.h>
+#include <stdint.h>
 
 // Section 8.2.3.1.1 Device Control Register
 #define REG_CTRL (0x00000u / 4u)
@@ -18,12 +17,12 @@
 #define REG_CTRLEXT_NSDIS BIT(16)
 
 // Section 8.2.3.11.1 Rx DCA Control Register
-#define REG_DCARXCTRL(n) ((n) <= 63u ? (0x0100Cu / 4u + 0x10u*(n)) : (0x0D00Cu / 4u + 0x10u*((n)-64u)))
+#define REG_DCARXCTRL(n) ((n) <= 63u ? (0x0100Cu / 4u + 0x10u * (n)) : (0x0D00Cu / 4u + 0x10u * ((n) -64u)))
 // This bit is reserved, has no name, but must be used anyway
 #define REG_DCARXCTRL_UNKNOWN BIT(12)
 
 // Section 8.2.3.11.2 Tx DCA Control Registers
-#define REG_DCATXCTRL(n) (0x0600Cu / 4u + 0x10u*(n))
+#define REG_DCATXCTRL(n) (0x0600Cu / 4u + 0x10u * (n))
 #define REG_DCATXCTRL_TX_DESC_WB_RO_EN BIT(11)
 
 // Section 8.2.3.9.2 DMA Tx Control
@@ -32,7 +31,7 @@
 
 // Section 8.2.3.9.1 DMA Tx TCP Max Allow Size Requests
 #define REG_DTXMXSZRQ (0x08100u / 4u)
-#define REG_DTXMXSZRQ_MAX_BYTES_NUM_REQ BITS(0,11)
+#define REG_DTXMXSZRQ_MAX_BYTES_NUM_REQ BITS(0, 11)
 
 // Section 8.2.3.2.1 EEPROM/Flash Control Register
 #define REG_EEC (0x10010u / 4u)
@@ -44,11 +43,11 @@
 
 // Section 8.2.3.3.7 Flow Control Configuration
 #define REG_FCCFG (0x03D00u / 4u)
-#define REG_FCCFG_TFCE BITS(3,4)
+#define REG_FCCFG_TFCE BITS(3, 4)
 
 // Section 8.2.3.3.4 Flow Control Receive Threshold High
 #define REG_FCRTH(n) (0x03260u / 4u + (n))
-#define REG_FCRTH_RTH BITS(5,18)
+#define REG_FCRTH_RTH BITS(5, 18)
 
 // Section 8.2.3.7.1 Filter Control Register (FCTRL)
 #define REG_FCTRL (0x05080u / 4u)
@@ -61,7 +60,7 @@
 
 // Section 8.2.3.4.10 Firmware Semaphore Register
 #define REG_FWSM (0x10148u / 4u)
-#define REG_FWSM_EXT_ERR_IND BITS(19,24)
+#define REG_FWSM_EXT_ERR_IND BITS(19, 24)
 
 // Section 8.2.3.4.12 PCIe Control Extended Register
 #define REG_GCREXT (0x11050u / 4u)
@@ -91,25 +90,25 @@
 #define REG_PFVLVFB(n) (0x0F200u / 4u + (n))
 
 // Section 8.2.3.8.2 Receive Descriptor Base Address High
-#define REG_RDBAH(n) ((n) <= 63u ? (0x01004u / 4u + 0x10u*(n)) : (0x0D004u / 4u + 0x10u*((n)-64u)))
+#define REG_RDBAH(n) ((n) <= 63u ? (0x01004u / 4u + 0x10u * (n)) : (0x0D004u / 4u + 0x10u * ((n) -64u)))
 
 // Section 8.2.3.8.1 Receive Descriptor Base Address Low
-#define REG_RDBAL(n) ((n) <= 63u ? (0x01000u / 4u + 0x10u*(n)) : (0x0D000u / 4u + 0x10u*((n)-64u)))
+#define REG_RDBAL(n) ((n) <= 63u ? (0x01000u / 4u + 0x10u * (n)) : (0x0D000u / 4u + 0x10u * ((n) -64u)))
 
 // Section 8.2.3.8.3 Receive Descriptor Length
-#define REG_RDLEN(n) ((n) <= 63u ? (0x01008u / 4u + 0x10u*(n)) : (0x0D008u / 4u + 0x10u*((n)-64u)))
+#define REG_RDLEN(n) ((n) <= 63u ? (0x01008u / 4u + 0x10u * (n)) : (0x0D008u / 4u + 0x10u * ((n) -64u)))
 
 // Section 8.2.3.8.8 Receive DMA Control Register
 // INTERPRETATION-MISSING: Bit 0, which is not mentioned in the table, is reserved
 #define REG_RDRXCTL (0x02F00u / 4u)
 #define REG_RDRXCTL_CRC_STRIP BIT(1)
 #define REG_RDRXCTL_DMAIDONE BIT(3)
-#define REG_RDRXCTL_RSCFRSTSIZE BITS(17,21)
+#define REG_RDRXCTL_RSCFRSTSIZE BITS(17, 21)
 #define REG_RDRXCTL_RSCACKC BIT(25)
 #define REG_RDRXCTL_FCOE_WRFIX BIT(26)
 
 // Section 8.2.3.8.5 Receive Descriptor Tail
-#define REG_RDT(n) ((n) <= 63u ? (0x01018u / 4u + 0x10u*(n)) : (0x0D018u / 4u + 0x10u*((n)-64u)))
+#define REG_RDT(n) ((n) <= 63u ? (0x01018u / 4u + 0x10u * (n)) : (0x0D018u / 4u + 0x10u * ((n) -64u)))
 
 // Section 8.2.3.10.2 DCB Transmit Descriptor Plane Control and Status
 #define REG_RTTDCS (0x04900u / 4u)
@@ -126,7 +125,7 @@
 #define REG_RXCTRL_RXEN BIT(0)
 
 // Section 8.2.3.8.6 Receive Descriptor Control
-#define REG_RXDCTL(n) ((n) <= 63u ? (0x01028u / 4u + 0x10u*(n)) : (0x0D028u / 4u + 0x10u*((n)-64u)))
+#define REG_RXDCTL(n) ((n) <= 63u ? (0x01028u / 4u + 0x10u * (n)) : (0x0D028u / 4u + 0x10u * ((n) -64u)))
 #define REG_RXDCTL_ENABLE BIT(25)
 
 // Section 8.2.3.8.9 Receive Packet Buffer Size
@@ -141,8 +140,8 @@
 #define REG_SECRXSTAT_SECRX_RDY BIT(0)
 
 // Section 8.2.3.8.7 Split Receive Control Registers
-#define REG_SRRCTL(n) ((n) <= 63u ? (0x01014u / 4u + 0x10u*(n)) : (0x0D014u / 4u + 0x10u*((n)-64u)))
-#define REG_SRRCTL_BSIZEPACKET BITS(0,4)
+#define REG_SRRCTL(n) ((n) <= 63u ? (0x01014u / 4u + 0x10u * (n)) : (0x0D014u / 4u + 0x10u * ((n) -64u)))
+#define REG_SRRCTL_BSIZEPACKET BITS(0, 4)
 #define REG_SRRCTL_DROP_EN BIT(28)
 
 // Section 8.2.3.1.2 Device Status Register
@@ -150,27 +149,27 @@
 #define REG_STATUS_PCIE_MASTER_ENABLE_STATUS BIT(19)
 
 // Section 8.2.3.9.6 Transmit Descriptor Base Address High
-#define REG_TDBAH(n) (0x06004u / 4u + 0x10u*(n))
+#define REG_TDBAH(n) (0x06004u / 4u + 0x10u * (n))
 
 // Section 8.2.3.9.5 Transmit Descriptor Base Address Low
-#define REG_TDBAL(n) (0x06000u / 4u + 0x10u*(n))
+#define REG_TDBAL(n) (0x06000u / 4u + 0x10u * (n))
 
 // Section 8.2.3.9.7 Transmit Descriptor Length
-#define REG_TDLEN(n) (0x06008u / 4u + 0x10u*(n))
+#define REG_TDLEN(n) (0x06008u / 4u + 0x10u * (n))
 
 // Section 8.2.3.9.9 Transmit Descriptor Tail
-#define REG_TDT(n) (0x06018u / 4u + 0x10u*(n))
+#define REG_TDT(n) (0x06018u / 4u + 0x10u * (n))
 
 // Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address High
-#define REG_TDWBAH(n) (0x0603Cu / 4u + 0x10u*(n))
+#define REG_TDWBAH(n) (0x0603Cu / 4u + 0x10u * (n))
 
 // Section 8.2.3.9.11 Tx Descriptor Completion Write Back Address Low
-#define REG_TDWBAL(n) (0x06038u / 4u + 0x10u*(n))
+#define REG_TDWBAL(n) (0x06038u / 4u + 0x10u * (n))
 
 // Section 8.2.3.9.10 Transmit Descriptor Control
-#define REG_TXDCTL(n) (0x06028u / 4u + 0x10u*(n))
-#define REG_TXDCTL_PTHRESH BITS(0,6)
-#define REG_TXDCTL_HTHRESH BITS(8,14)
+#define REG_TXDCTL(n) (0x06028u / 4u + 0x10u * (n))
+#define REG_TXDCTL_PTHRESH BITS(0, 6)
+#define REG_TXDCTL_HTHRESH BITS(8, 14)
 #define REG_TXDCTL_ENABLE BIT(25)
 
 // Section 8.2.3.9.13 Transmit Packet Buffer Size
@@ -178,8 +177,7 @@
 
 // Section 8.2.3.9.16 Tx Packet Buffer Threshold
 #define REG_TXPBTHRESH(n) (0x04950u / 4u + (n))
-#define REG_TXPBTHRESH_THRESH BITS(0,9)
-
+#define REG_TXPBTHRESH_THRESH BITS(0, 9)
 
 // Gets the value of the given register address 'reg_addr'; this is the sum of a NIC address and a register offset
 static inline uint32_t reg_read_raw(volatile uint32_t* reg_addr)

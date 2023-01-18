@@ -3,16 +3,14 @@
 // Optionally define IXGBE_AGENT_OUTPUTS_COUNT to a number to hardcode this number instead of using a size stored in the struct
 // which is equivalent to constant generics... but obviously less easy to use
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-
+#include "device.h"
 #include "env/endian.h"
 #include "env/memory.h"
 #include "util/log.h"
 
-#include "device.h"
-
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 // Max number of packets before updating the transmit tail (>= 1, and < RING_SIZE)
 #define IXGBE_AGENT_FLUSH_PERIOD 8
@@ -20,9 +18,7 @@
 // Updating period for receiving transmit head updates from the hardware and writing new values of the receive tail based on it (>= 1, < RING_SIZE, and a power of 2 for fast modulo)
 #define IXGBE_AGENT_RECYCLE_PERIOD 64
 
-
-struct ixgbe_agent
-{
+struct ixgbe_agent {
 	volatile struct ixgbe_packet_data* restrict buffers;
 	volatile struct ixgbe_descriptor* restrict* rings; // 0 == shared receive/transmit, rest are exclusive transmit
 	volatile uint32_t* restrict receive_tail_addr;
@@ -34,7 +30,6 @@ struct ixgbe_agent
 	size_t outputs_count;
 #endif
 };
-
 
 static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t outputs_count, struct ixgbe_device* output_devices, struct ixgbe_agent* out_agent)
 {
@@ -70,7 +65,8 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 			// Since Section 1.5.3 Byte Ordering states "Registers not transferred on the wire are defined in little endian notation.", we will assume they are little-endian.
 			out_agent->rings[r][n].addr = tn_cpu_to_le64(packet_phys_addr);
 		}
-		if (!ixgbe_device_add_output(&(output_devices[r]), (struct ixgbe_descriptor*) out_agent->rings[r], (struct ixgbe_transmit_head*) &(out_agent->transmit_heads[r]), &(out_agent->transmit_tail_addrs[r]))) {
+		if (!ixgbe_device_add_output(&(output_devices[r]), (struct ixgbe_descriptor*) out_agent->rings[r],
+					     (struct ixgbe_transmit_head*) &(out_agent->transmit_heads[r]), &(out_agent->transmit_tail_addrs[r]))) {
 			TN_DEBUG("Could not set input");
 			return false;
 		}
@@ -92,8 +88,7 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 
 typedef void ixgbe_packet_handler(volatile struct ixgbe_packet_data* restrict packet, uint16_t packet_length, uint16_t* restrict outputs);
 
-__attribute__((always_inline))
-static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler)
+__attribute__((always_inline)) static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler)
 {
 #ifdef IXGBE_AGENT_OUTPUTS_COUNT
 #define outs_count IXGBE_AGENT_OUTPUTS_COUNT
@@ -114,7 +109,8 @@ static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* ha
 
 		uint64_t rs_bit = (agent->processed_delimiter % IXGBE_AGENT_RECYCLE_PERIOD) == (IXGBE_AGENT_RECYCLE_PERIOD - 1) ? IXGBE_TX_METADATA_RS : 0;
 		for (uint64_t n = 0; n < outs_count; n++) {
-			agent->rings[n][agent->processed_delimiter].metadata = tn_cpu_to_le64(IXGBE_TX_METADATA_LENGTH(agent->outputs[n]) | rs_bit | IXGBE_TX_METADATA_IFCS | IXGBE_TX_METADATA_EOP);
+			agent->rings[n][agent->processed_delimiter].metadata =
+			    tn_cpu_to_le64(IXGBE_TX_METADATA_LENGTH(agent->outputs[n]) | rs_bit | IXGBE_TX_METADATA_IFCS | IXGBE_TX_METADATA_EOP);
 			agent->outputs[n] = 0;
 		}
 

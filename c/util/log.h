@@ -13,7 +13,13 @@
 // Include this here so that logging can use format specifiers for fixed-size integers, e.g. "PRIu32" for uint32_t
 #include <inttypes.h>
 
-#define TN_PRINT(categ, ...) do { fprintf(stderr, "[%s] ", #categ); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); fflush(stderr); } while(0)
+#define TN_PRINT(categ, ...)                                                                                                                                   \
+	do {                                                                                                                                                   \
+		fprintf(stderr, "[%s] ", #categ);                                                                                                              \
+		fprintf(stderr, __VA_ARGS__);                                                                                                                  \
+		fprintf(stderr, "\n");                                                                                                                         \
+		fflush(stderr);                                                                                                                                \
+	} while (0)
 #endif
 
 #if LOG_LEVEL >= 3

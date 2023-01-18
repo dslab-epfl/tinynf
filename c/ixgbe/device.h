@@ -1,15 +1,13 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stdint.h>
-
 #include "env/pci.h"
 #include "env/time.h"
-#include "util/log.h"
-
 #include "pci_regs.h"
 #include "regs.h"
+#include "util/log.h"
 
+#include <stdbool.h>
+#include <stdint.h>
 
 // Section 7.2.3.3 Transmit Descriptor Ring:
 // "Transmit Descriptor Length register (TDLEN 0-127) - This register determines the number of bytes allocated to the circular buffer. This value must be 0 modulo 128."
@@ -17,16 +15,13 @@
 // We additionally want it to be a power of 2, for fast modulo operations
 #define IXGBE_RING_SIZE 256u
 
-
-struct ixgbe_device
-{
+struct ixgbe_device {
 	volatile uint32_t* restrict addr;
 	bool rx_enabled;
 	bool tx_enabled;
 };
 
-struct ixgbe_descriptor
-{
+struct ixgbe_descriptor {
 	uint64_t addr;
 	uint64_t metadata;
 };
@@ -34,20 +29,17 @@ struct ixgbe_descriptor
 // Section 8.2.3.8.7 Split Receive Control Registers: "Receive Buffer Size for Packet Buffer. Value can be from 1 KB to 16 KB"
 // Section 7.2.3.2.2 Legacy Transmit Descriptor Format: "The maximum length associated with a single descriptor is 15.5 KB"
 // Ethernet maximum transfer unit is 1518 bytes, so let's use 2048 as a nice round number
-struct ixgbe_packet_data
-{
+struct ixgbe_packet_data {
 	uint8_t data[2048];
 } __attribute__((packed));
 
 // transmit heads must be 16-byte aligned; see alignment remarks in transmit queue setup
 // (there is also a runtime check to make sure the array itself is aligned properly)
 // plus, we want each head on its own cache line to avoid conflicts (assumption CACHE -> 64 bytes)
-struct ixgbe_transmit_head
-{
+struct ixgbe_transmit_head {
 	uint32_t value;
 	uint8_t _padding[60];
 } __attribute__((packed));
-
 
 // Section 7.1.2.5 L3/L4 5-tuple Filters:
 // 	"There are 128 different 5-tuple filter configuration registers sets"
@@ -77,9 +69,8 @@ struct ixgbe_transmit_head
 // 	"Unicast Table Array (PFUTA) - a 4 Kb array that covers all combinations of 12 bits from the MAC destination address"
 #define UNICAST_TABLE_ARRAY_SIZE (4u * 1024u)
 
-
 // Length in RX descriptor metadata
-#define IXGBE_RX_METADATA_LENGTH(meta) ((meta) & 0xFFFFu)
+#define IXGBE_RX_METADATA_LENGTH(meta) ((meta) &0xFFFFu)
 // "Descriptor Done" bit in the RX descriptor metadata
 #define IXGBE_RX_METADATA_DD BITL(32)
 
@@ -87,25 +78,23 @@ struct ixgbe_transmit_head
 #define IXGBE_TX_METADATA_LENGTH(length) ((uint64_t) (length))
 // "End of Packet", "Insert FCS", "RS" bits in TX descriptor metadata
 #define IXGBE_TX_METADATA_EOP BITL(24)
-#define IXGBE_TX_METADATA_IFCS BITL(24+1)
-#define IXGBE_TX_METADATA_RS BITL(24+3)
-
+#define IXGBE_TX_METADATA_IFCS BITL(24 + 1)
+#define IXGBE_TX_METADATA_RS BITL(24 + 3)
 
 // Like if(...) but polls with a timeout, and executes the body only if the condition is still true after the timeout
 // This is basically a way to emulate anonymous lambda functions in C (for 'condition')
 static bool timed_out;
-#define IF_AFTER_TIMEOUT(timeout_in_us, condition) \
-		timed_out = true; \
-		tn_sleep_us((timeout_in_us) % 10); \
-		for (uint8_t i = 0; i < 10; i++) { \
-			if (!(condition)) { \
-				timed_out = false; \
-				break; \
-			} \
-			tn_sleep_us((timeout_in_us) / 10); \
-		} \
-		if (timed_out)
-
+#define IF_AFTER_TIMEOUT(timeout_in_us, condition)                                                                                                             \
+	timed_out = true;                                                                                                                                      \
+	tn_sleep_us((timeout_in_us) % 10);                                                                                                                     \
+	for (uint8_t i = 0; i < 10; i++) {                                                                                                                     \
+		if (!(condition)) {                                                                                                                            \
+			timed_out = false;                                                                                                                     \
+			break;                                                                                                                                 \
+		}                                                                                                                                              \
+		tn_sleep_us((timeout_in_us) / 10);                                                                                                             \
+	}                                                                                                                                                      \
+	if (timed_out)
 
 // -------------------------------------
 // Section 4.6.3 Initialization Sequence
@@ -154,18 +143,16 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	uint32_t pci_bar0high = pcireg_read(pci_address, PCIREG_BAR0_HIGH);
 	// No need to detect the size, since we know exactly which device we're dealing with. (This also means no writes to BARs, one less chance to mess everything up)
 
-	*out_device = (struct ixgbe_device) {
-		.rx_enabled = false,
-		.tx_enabled = false
-	};
+	*out_device = (struct ixgbe_device){.rx_enabled = false, .tx_enabled = false};
 	// Section 9.3.6.1 Memory and IO Base Address Registers:
 	// As indicated in Table 9-4, the low 4 bits are read-only and not part of the address
-	uint64_t dev_phys_addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0,3));
+	uint64_t dev_phys_addr = (((uint64_t) pci_bar0high) << 32) | (pci_bar0low & ~BITS(0, 3));
 	// Section 8.1 Address Regions: "Region Size" of "Internal registers memories and Flash (memory BAR)" is "128 KB + Flash_Size"
 	// Thus we can ask for 128KB, since we don't know the flash size (and don't need it thus no need to actually check it)
 	out_device->addr = tn_mem_phys_to_virt(dev_phys_addr, 128 * 1024);
 
-	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to %p", pci_address.bus, pci_address.device, pci_address.function, (void*) out_device->addr);
+	TN_VERBOSE("Device %02" PRIx8 ":%02" PRIx8 ".%" PRIx8 " mapped to %p", pci_address.bus, pci_address.device, pci_address.function,
+		   (void*) out_device->addr);
 
 	// "The following sequence of commands is typically issued to the device by the software device driver in order to initialize the 82599 for normal operation.
 	//  The major initialization steps are:"
@@ -192,7 +179,8 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 		// "The 82599 clears the RXDCTL.ENABLE bit only after all pending memory accesses to the descriptor ring are done.
 		//  The driver should poll this bit before releasing the memory allocated to this queue."
 		// INTERPRETATION-MISSING: There is no mention of what to do if the 82599 never clears the bit; 1s seems like a decent timeout
-		IF_AFTER_TIMEOUT(1000 * 1000, !reg_is_field_cleared(out_device->addr, REG_RXDCTL(queue), REG_RXDCTL_ENABLE)) {
+		IF_AFTER_TIMEOUT(1000 * 1000, !reg_is_field_cleared(out_device->addr, REG_RXDCTL(queue), REG_RXDCTL_ENABLE))
+		{
 			TN_DEBUG("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
 			return false;
 		}
@@ -206,7 +194,8 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	//    Once the bit is cleared, it is guaranteed that no requests are pending from this function."
 	// INTERPRETATION-MISSING: The next sentence refers to "a given time"; let's say 1 second should be plenty...
 	//   "The driver might time out if the PCIe Master Enable Status bit is not cleared within a given time."
-	IF_AFTER_TIMEOUT(1000 * 1000, !reg_is_field_cleared(out_device->addr, REG_STATUS, REG_STATUS_PCIE_MASTER_ENABLE_STATUS)) {
+	IF_AFTER_TIMEOUT(1000 * 1000, !reg_is_field_cleared(out_device->addr, REG_STATUS, REG_STATUS_PCIE_MASTER_ENABLE_STATUS))
+	{
 		// "In these cases, the driver should check that the Transaction Pending bit (bit 5) in the Device Status register in the PCI config space is clear before proceeding.
 		//  In such cases the driver might need to initiate two consecutive software resets with a larger delay than 1 us between the two of them."
 		// INTERPRETATION-MISSING: Might? Let's say this is a must, and that we assume the software resets work...
@@ -283,7 +272,8 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	// "- Wait for EEPROM auto read completion."
 	// INTERPRETATION-MISSING: This refers to Section 8.2.3.2.1 EEPROM/Flash Control Register (EEC), Bit 9 "EEPROM Auto-Read Done"
 	// INTERPRETATION-MISSING: No timeout is mentioned, so we use 1s.
-	IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(out_device->addr, REG_EEC, REG_EEC_AUTO_RD)) {
+	IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(out_device->addr, REG_EEC, REG_EEC_AUTO_RD))
+	{
 		TN_DEBUG("EEPROM auto read timed out");
 		return false;
 	}
@@ -296,7 +286,8 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	}
 	// "- Wait for DMA initialization done (RDRXCTL.DMAIDONE)."
 	// INTERPRETATION-MISSING: Once again, no timeout mentioned, so we use 1s
-	IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(out_device->addr, REG_RDRXCTL, REG_RDRXCTL_DMAIDONE)) {
+	IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(out_device->addr, REG_RDRXCTL, REG_RDRXCTL_DMAIDONE))
+	{
 		TN_DEBUG("DMA init timed out");
 		return false;
 	}
@@ -605,7 +596,6 @@ static inline bool ixgbe_device_set_promiscuous(struct ixgbe_device* device)
 // Section 4.6.7 Receive Initialization
 // ------------------------------------
 
-
 static inline bool ixgbe_device_add_input(struct ixgbe_device* device, volatile struct ixgbe_descriptor* ring, volatile uint32_t* restrict* out_tail_addr)
 {
 	// The 82599 has more than one receive queue, but we only need queue 0
@@ -650,7 +640,8 @@ static inline bool ixgbe_device_add_input(struct ixgbe_device* device, volatile 
 	reg_set_field(device->addr, REG_RXDCTL(queue_index), REG_RXDCTL_ENABLE);
 	// "- Poll the RXDCTL register until the Enable bit is set. The tail should not be bumped before this bit was read as 1b."
 	// INTERPRETATION-MISSING: No timeout is mentioned here, let's say 1s to be safe.
-	IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(device->addr, REG_RXDCTL(queue_index), REG_RXDCTL_ENABLE)) {
+	IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(device->addr, REG_RXDCTL(queue_index), REG_RXDCTL_ENABLE))
+	{
 		TN_DEBUG("RXDCTL.ENABLE did not set, cannot enable queue");
 		return false;
 	}
@@ -665,7 +656,8 @@ static inline bool ixgbe_device_add_input(struct ixgbe_device* device, volatile 
 		reg_set_field(device->addr, REG_SECRXCTRL, REG_SECRXCTRL_RX_DIS);
 		//	"- Wait for the data paths to be emptied by HW. Poll the SECRXSTAT.SECRX_RDY bit until it is asserted by HW."
 		// INTERPRETATION-MISSING: Another undefined timeout, assuming 1s as usual
-		IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(device->addr, REG_SECRXSTAT, REG_SECRXSTAT_SECRX_RDY)) {
+		IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(device->addr, REG_SECRXSTAT, REG_SECRXSTAT_SECRX_RDY))
+		{
 			TN_DEBUG("SECRXSTAT.SECRXRDY timed out, cannot start device");
 			return false;
 		}
@@ -694,7 +686,8 @@ static inline bool ixgbe_device_add_input(struct ixgbe_device* device, volatile 
 // Section 4.6.8 Transmit Initialization
 // -------------------------------------
 
-static inline bool ixgbe_device_add_output(struct ixgbe_device* device, volatile struct ixgbe_descriptor* ring, volatile struct ixgbe_transmit_head* transmit_head, volatile uint32_t* restrict* out_tail_addr)
+static inline bool ixgbe_device_add_output(struct ixgbe_device* device, volatile struct ixgbe_descriptor* ring,
+					   volatile struct ixgbe_transmit_head* transmit_head, volatile uint32_t* restrict* out_tail_addr)
 {
 	uint32_t queue_index = 0;
 	for (; queue_index < TRANSMIT_QUEUES_COUNT; queue_index++) {
@@ -762,7 +755,8 @@ static inline bool ixgbe_device_add_output(struct ixgbe_device* device, volatile
 	//    Poll the TXDCTL register until the Enable bit is set."
 	// INTERPRETATION-MISSING: No timeout is mentioned here, let's say 1s to be safe.
 	reg_set_field(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_ENABLE);
-	IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_ENABLE)) {
+	IF_AFTER_TIMEOUT(1000 * 1000, reg_is_field_cleared(device->addr, REG_TXDCTL(queue_index), REG_TXDCTL_ENABLE))
+	{
 		TN_DEBUG("TXDCTL.ENABLE did not set, cannot enable queue");
 		return false;
 	}

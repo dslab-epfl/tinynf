@@ -16,7 +16,6 @@ static inline uint16_t tn_le_to_cpu16(const uint16_t val)
 	return val;
 }
 
-
 static inline uint32_t tn_cpu_to_le32(const uint32_t val)
 {
 	return val;
@@ -26,7 +25,6 @@ static inline uint32_t tn_le_to_cpu32(const uint32_t val)
 {
 	return val;
 }
-
 
 static inline uint64_t tn_cpu_to_le64(const uint64_t val)
 {
