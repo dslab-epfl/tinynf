@@ -104,13 +104,13 @@ namespace TinyNF.Environment
         }
 
         public unsafe Memory<T> Allocate<T>(int count)
-            where T : struct
+            where T : unmanaged
         {
-            long alignDiff = _usedBytes % (Unsafe.SizeOf<T>() + 64 - (Unsafe.SizeOf<T>() % 64));
+            long alignDiff = _usedBytes % (sizeof(T) + 64 - (sizeof(T) % 64));
             _allocatedPage = _allocatedPage[(int)alignDiff..];
             _usedBytes += alignDiff;
 
-            int fullSize = count * Unsafe.SizeOf<T>();
+            int fullSize = count * sizeof(T);
             var result = _allocatedPage[0..fullSize];
             _allocatedPage = _allocatedPage[fullSize..];
             _usedBytes += fullSize;
@@ -129,7 +129,7 @@ namespace TinyNF.Environment
 
             void* mapped = OSInterop.mmap(
                 0,
-                (uint)(count * Unsafe.SizeOf<T>()),
+                (uint)(count * sizeof(T)),
                 OSInterop.PROT_READ | OSInterop.PROT_WRITE,
                 OSInterop.MAP_SHARED,
                 memFd,
