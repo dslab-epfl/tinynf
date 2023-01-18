@@ -129,7 +129,7 @@ namespace TinyNF.Environment
 
             void* mapped = OSInterop.mmap(
                 0,
-                (uint) (count * Unsafe.SizeOf<T>()),
+                (uint)(count * Unsafe.SizeOf<T>()),
                 OSInterop.PROT_READ | OSInterop.PROT_WRITE,
                 OSInterop.MAP_SHARED,
                 memFd,

@@ -38,9 +38,12 @@ namespace TinyNF.Ixgbe
                 // It was merged but will only be in a later preview
                 // TODO: replace this once the code has gotten downstream
                 // (instead we bounds-check manually, which the compiler will remove since the index is always known to be <Size)
-                if ((uint)index < (uint)Size) {
+                if ((uint)index < (uint)Size)
+                {
                     return Volatile.Read(ref System.Runtime.CompilerServices.Unsafe.Add(ref System.Runtime.CompilerServices.Unsafe.As<PacketData, byte>(ref this), index));
-                } else {
+                }
+                else
+                {
                     throw new Exception("Out of bounds");
                 }
             }
@@ -49,9 +52,12 @@ namespace TinyNF.Ixgbe
             {
                 // TODO: same as above
                 // Volatile.Write(ref MemoryMarshal.Cast<PacketData, byte>(MemoryMarshal.CreateSpan(ref this, 1))[index], value);
-                if ((uint)index < (uint)Size) {
+                if ((uint)index < (uint)Size)
+                {
                     Volatile.Write(ref System.Runtime.CompilerServices.Unsafe.Add(ref System.Runtime.CompilerServices.Unsafe.As<PacketData, byte>(ref this), index), value);
-                } else {
+                }
+                else
+                {
                     throw new Exception("Out of bounds");
                 }
             }
