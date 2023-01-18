@@ -9,17 +9,20 @@ using System.Runtime.InteropServices;
 // We do everything through interop to minimize dependencies on the .NET framework itself,
 // which will help if we ever manage a "no .NET runtime" build.
 
+// We only use blittable imports
+[assembly: DisableRuntimeMarshalling]
+
 namespace TinyNF.Environment
 {
     /// <summary>
     /// Fundamentally unsafe since it interacts with Linux.
     /// </summary>
-    public sealed class LinuxEnvironment : IEnvironment
+    public sealed partial class LinuxEnvironment : IEnvironment
     {
         private const int HugepageLog = 30; // 1 GB hugepages
         private const int HugepageSize = 1 << HugepageLog;
 
-        private static unsafe class OSInterop
+        private static unsafe partial class OSInterop
         {
             public const int _SC_PAGESIZE = 30;
 
@@ -46,40 +49,38 @@ namespace TinyNF.Environment
                 public long Nanoseconds;
             }
 
-            [DllImport("libc")]
-            public static extern long sysconf(int name);
+            [LibraryImport("libc")]
+            public static partial long sysconf(int name);
 
-            [DllImport("libc")]
-            public static extern void* mmap(nuint addr, nuint length, int prot, int flags, int fd, nint offset);
+            [LibraryImport("libc")]
+            public static partial void* mmap(nuint addr, nuint length, int prot, int flags, int fd, nint offset);
 
-#pragma warning disable CA2101 // https://github.com/dotnet/roslyn-analyzers/issues/2886
-            [DllImport("libc")]
-            public static extern int open(string pathName, int flags);
-#pragma warning restore CA2101
+            [LibraryImport("libc", StringMarshalling = StringMarshalling.Utf8)]
+            public static partial int open(string pathName, int flags);
 
-            [DllImport("libc")]
-            public static extern nint lseek(int fd, nint offset, int whence);
+            [LibraryImport("libc")]
+            public static partial nint lseek(int fd, nint offset, int whence);
 
-            [DllImport("libc")]
-            public static extern nint read(int fd, void* buf, nuint count);
+            [LibraryImport("libc")]
+            public static partial nint read(int fd, void* buf, nuint count);
 
-            [DllImport("libc")]
-            public static extern int close(int fd);
+            [LibraryImport("libc")]
+            public static partial int close(int fd);
 
-            [DllImport("libc")]
-            public static extern int nanosleep(in TimeSpec req, out TimeSpec rem);
+            [LibraryImport("libc")]
+            public static partial int nanosleep(in TimeSpec req, out TimeSpec rem);
         }
 
-        private static unsafe class PortInterop
+        private static partial class PortInterop
         {
             public const ushort PCI_CONFIG_ADDR = 0xCF8;
             public const ushort PCI_CONFIG_DATA = 0xCFC;
 
-            [DllImport("cwrapper")]
-            public static extern bool port_out_32(ushort port, uint value);
+            [LibraryImport("cwrapper")]
+            public static partial uint port_out_32(ushort port, uint value);
 
-            [DllImport("cwrapper")]
-            public static extern uint port_in_32(ushort port);
+            [LibraryImport("cwrapper")]
+            public static partial uint port_in_32(ushort port);
         }
 
         private Memory<byte> _allocatedPage;
@@ -198,7 +199,7 @@ namespace TinyNF.Environment
         private static void PciTarget(PciAddress address, byte reg)
         {
             uint regAddr = 0x80000000u | ((uint)address.Bus << 16) | ((uint)address.Device << 11) | ((uint)address.Function << 8) | reg;
-            if (!PortInterop.port_out_32(PortInterop.PCI_CONFIG_ADDR, regAddr))
+            if (PortInterop.port_out_32(PortInterop.PCI_CONFIG_ADDR, regAddr) == 0)
             {
                 throw new Exception("Could not target the PCI addr");
             }
@@ -213,7 +214,7 @@ namespace TinyNF.Environment
         public void PciWrite(PciAddress address, byte register, uint value)
         {
             PciTarget(address, register);
-            if (!PortInterop.port_out_32(PortInterop.PCI_CONFIG_DATA, value))
+            if (PortInterop.port_out_32(PortInterop.PCI_CONFIG_DATA, value) == 0)
             {
                 throw new Exception("Could not write to PCI");
             }

@@ -1,17 +1,14 @@
-#include <stdbool.h>
 #include <stdint.h>
-
 #include <sys/io.h>
 
-
-bool port_out_32(uint16_t port, uint32_t value)
+uint32_t port_out_32(uint16_t port, uint32_t value)
 {
 	if (ioperm(port, 4, 1) < 0 || ioperm(0x80, 1, 1) < 0) {
-		return false;
+		return 0;
 	}
 	outl(value, port);
 	outb(0, 0x80); // wait for the outl to complete
-	return true;
+	return 1;
 }
 
 uint32_t port_in_32(uint16_t port)
