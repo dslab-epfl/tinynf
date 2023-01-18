@@ -22,7 +22,7 @@ namespace TinyNF.Ixgbe
         // OVERHEAD: keep a separate reference to the receive ring to avoid bounds checks during run
         private readonly Array256<Descriptor> _receiveRing;
         private readonly Array256Array<Descriptor> _transmitRings;
-        private readonly Ref<uint> _receiveTail;
+        private readonly ref uint _receiveTail;
         private readonly Span<TransmitHead> _transmitHeads;
         private readonly RefArray<uint> _transmitTails;
         private readonly Array256<ulong> _outputs; // trade off a tiny bit of unused space for no bounds checks
@@ -46,7 +46,7 @@ namespace TinyNF.Ixgbe
             }
 
             _receiveRing = _transmitRings[0];
-            _receiveTail = new Ref<uint>(ref inputDevice.SetInput(env, _receiveRing.AsSpan()).Span[0]);
+            _receiveTail = ref inputDevice.SetInput(env, _receiveRing.AsSpan()).Span[0];
 
             _transmitHeads = env.Allocate<TransmitHead>(outputDevices.Length).Span;
             _transmitTails = new RefArray<uint>(outputDevices.Length, n => ref _fakeTail);
@@ -104,7 +104,7 @@ namespace TinyNF.Ixgbe
                         }
                     }
 
-                    Volatile.Write(ref _receiveTail.Get(), Endianness.ToLittle(earliestTransmitHead));
+                    Volatile.Write(ref _receiveTail, Endianness.ToLittle(earliestTransmitHead));
                 }
             }
             if (n != 0)

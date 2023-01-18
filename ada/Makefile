@@ -18,4 +18,5 @@ build:
 
 # -nM is "names mixed case" and -M is max line length
 format:
-	@gnatpp -nM -M160 --decimal-grouping=3 --eol=unix *.ad*
+	@echo 'Not formatting Ada since gnatpp does not work: https://bugs.launchpad.net/ubuntu/+source/asis/+bug/1787708'
+	@#gnatpp -nM -M160 --decimal-grouping=3 --eol=unix *.ad*

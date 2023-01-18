@@ -74,7 +74,7 @@ namespace TinyNF
                 nbTx = tx1.Batch(buffers, nbRx);
                 for (byte n = nbTx; n < nbRx; n++)
                 {
-                    tx1.Pool.Get().Give(ref buffers.Get(n));
+                    tx1.Pool.Give(ref buffers.Get(n));
                 }
 
                 nbRx = rx1.Batch(buffers, BatchSize);
@@ -85,7 +85,7 @@ namespace TinyNF
                 nbTx = tx0.Batch(buffers, nbRx);
                 for (byte n = nbTx; n < nbRx; n++)
                 {
-                    tx0.Pool.Get().Give(ref buffers.Get(n));
+                    tx0.Pool.Give(ref buffers.Get(n));
                 }
             }
         }

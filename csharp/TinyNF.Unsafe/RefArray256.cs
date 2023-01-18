@@ -19,9 +19,7 @@ namespace TinyNF.Unsafe
 
         public RefArray256(Initializer initializer)
         {
-            // TODO on newer .NET switch to NativeMemory.Alloc, the modern version of this
-            // (we shouldn't depend on Marshal, it's an old very Windows-y thing even though this one API is cross-platform)
-            _data = (T**)Marshal.AllocHGlobal(sizeof(T*) * 256); // No freeing of this, oh well
+            _data = (T**)NativeMemory.Alloc(256, (nuint)sizeof(T*)); // No freeing of this, oh well
             for (int n = 0; n < 256; n++)
             {
                 Set((byte)n, ref initializer((byte)n));
