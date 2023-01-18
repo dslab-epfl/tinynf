@@ -1,44 +1,43 @@
-﻿using System;
+using System;
 using System.Buffers.Binary;
 
-namespace TinyNF.Environment
+namespace TinyNF.Environment;
+
+public static class Endianness
 {
-    public static class Endianness
+    public static ulong FromLittle(ulong value)
     {
-        public static ulong FromLittle(ulong value)
+        if (BitConverter.IsLittleEndian)
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return value;
-            }
-            return BinaryPrimitives.ReverseEndianness(value);
+            return value;
         }
+        return BinaryPrimitives.ReverseEndianness(value);
+    }
 
-        public static uint FromLittle(uint value)
+    public static uint FromLittle(uint value)
+    {
+        if (BitConverter.IsLittleEndian)
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return value;
-            }
-            return BinaryPrimitives.ReverseEndianness(value);
+            return value;
         }
+        return BinaryPrimitives.ReverseEndianness(value);
+    }
 
-        public static ulong ToLittle(ulong value)
+    public static ulong ToLittle(ulong value)
+    {
+        if (BitConverter.IsLittleEndian)
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return value;
-            }
-            return BinaryPrimitives.ReverseEndianness(value);
+            return value;
         }
+        return BinaryPrimitives.ReverseEndianness(value);
+    }
 
-        public static uint ToLittle(uint value)
+    public static uint ToLittle(uint value)
+    {
+        if (BitConverter.IsLittleEndian)
         {
-            if (BitConverter.IsLittleEndian)
-            {
-                return value;
-            }
-            return BinaryPrimitives.ReverseEndianness(value);
+            return value;
         }
+        return BinaryPrimitives.ReverseEndianness(value);
     }
 }
