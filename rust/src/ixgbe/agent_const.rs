@@ -31,7 +31,7 @@ impl<'a, const OUTPUTS: usize> AgentConst<'a, OUTPUTS> {
             }
         }
 
-        let receive_tail = input.add_input(env, rings[0].index(0));
+        let receive_tail = input.set_input(env, rings[0].index(0));
 
         let transmit_heads = LifedArray::new(env.allocate::<TransmitHead, { OUTPUTS }>());
         let transmit_tails = env.allocate::<LifedPtr<'a, u32>, { OUTPUTS }>();

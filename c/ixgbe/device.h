@@ -597,7 +597,7 @@ static inline bool ixgbe_device_set_promiscuous(struct ixgbe_device* device)
 // Section 4.6.7 Receive Initialization
 // ------------------------------------
 
-static inline bool ixgbe_device_add_input(struct ixgbe_device* device, volatile struct ixgbe_descriptor* ring, volatile uint32_t* restrict* out_tail_addr)
+static inline bool ixgbe_device_set_input(struct ixgbe_device* device, volatile struct ixgbe_descriptor* ring, volatile uint32_t* restrict* out_tail_addr)
 {
 	// The 82599 has more than one receive queue, but we only need queue 0
 	uint32_t queue_index = 0;

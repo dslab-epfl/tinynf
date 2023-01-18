@@ -30,7 +30,7 @@ static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe
 		out_queue->ring[n].addr = tn_cpu_to_le64(out_queue->buffers[n]->phys_addr);
 		out_queue->ring[n].metadata = tn_cpu_to_le64(0);
 	}
-	if (!ixgbe_device_add_input(device, out_queue->ring, &(out_queue->receive_tail_addr))) {
+	if (!ixgbe_device_set_input(device, out_queue->ring, &(out_queue->receive_tail_addr))) {
 		return false;
 	}
 	reg_write_raw(out_queue->receive_tail_addr, IXGBE_RING_SIZE - 1);

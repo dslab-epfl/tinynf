@@ -42,7 +42,7 @@ impl<'a> Agent<'a> {
             }
         }
 
-        let receive_tail = input.add_input(env, rings[0].index(0));
+        let receive_tail = input.set_input(env, rings[0].index(0));
 
         let transmit_heads = LifedSlice::new(env.allocate_slice::<TransmitHead>(outputs.len()));
         let transmit_tails = LifedSlice::new(env.allocate_slice::<LifedPtr<'a, u32>>(outputs.len()));

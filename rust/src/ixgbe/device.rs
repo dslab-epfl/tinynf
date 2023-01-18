@@ -248,7 +248,7 @@ impl<'a> Device<'a> {
         regs::set_field(self.buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
     }
 
-    pub fn add_input(&self, env: &impl Environment<'a>, ring_start: LifedPtr<'a, Descriptor>) -> LifedPtr<'a, u32> {
+    pub fn set_input(&self, env: &impl Environment<'a>, ring_start: LifedPtr<'a, Descriptor>) -> LifedPtr<'a, u32> {
         let queue_index: usize = 0;
 
         if !regs::is_field_cleared(self.buffer, regs::RXDCTL(queue_index), regs::RXDCTL_::ENABLE) {

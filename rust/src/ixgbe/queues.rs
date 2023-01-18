@@ -26,7 +26,7 @@ impl<'a> QueueRx<'a> {
             buffers.set(n, buffer);
         }
 
-        let receive_tail_addr = device.add_input(env, ring.index(0));
+        let receive_tail_addr = device.set_input(env, ring.index(0));
         receive_tail_addr.write_volatile(RING_SIZE as u32 - 1);
 
         QueueRx {

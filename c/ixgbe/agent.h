@@ -72,7 +72,7 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 		}
 	}
 
-	if (!ixgbe_device_add_input(input_device, (struct ixgbe_descriptor*) out_agent->rings[0], &(out_agent->receive_tail_addr))) {
+	if (!ixgbe_device_set_input(input_device, (struct ixgbe_descriptor*) out_agent->rings[0], &(out_agent->receive_tail_addr))) {
 		TN_DEBUG("Could not set input");
 		return false;
 	}
