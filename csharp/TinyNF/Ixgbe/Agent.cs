@@ -75,6 +75,7 @@ internal ref struct Agent
             ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? Device.TxMetadataRS : 0;
 
             // not clear why we have to copy _transmitRings here (its only member is an array), but this is necessary for the bounds check to be eliminated
+            // might be https://github.com/dotnet/runtime/issues/72004
             var _transmitRings = this._transmitRings;
             for (int b = 0; b < _transmitRings.Length; b++)
             {
