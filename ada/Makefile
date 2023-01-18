@@ -16,5 +16,6 @@ build:
 	@gnatclean $(APP)
 	@gnatmake $(APP) $(TN_CFLAGS)
 
+# -nM is "names mixed case" and -M is max line length
 format:
-	@gnatpp --name-mixed-case --max-line-length=200 --decimal-grouping=3 --eol=unix *.ad*
+	@gnatpp -nM -M160 --decimal-grouping=3 --eol=unix *.ad*
