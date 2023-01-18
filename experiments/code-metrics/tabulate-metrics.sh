@@ -58,28 +58,28 @@ asm_lines()
 }
 
 # C
-if ! TN_MODE=0 TN_CC=clang make -f Makefile.benchmarking -C c >/dev/null ; then exit $? ; fi
+if ! TN_MODE=0 TN_CC=clang make -C c >/dev/null ; then exit $? ; fi
 asm_c="$(asm_lines 'run' 'c/tinynf' 'C')"
-if ! TN_MODE=2 TN_CC=clang make -f Makefile.benchmarking -C c >/dev/null ; then exit $? ; fi
+if ! TN_MODE=2 TN_CC=clang make -C c >/dev/null ; then exit $? ; fi
 asm_c_queues="$(asm_lines 'run' 'c/tinynf' 'C-queues')"
 
 # Rust is harder due to name mangling, we find the symbol first
-if ! TN_MODE=0 make -f Makefile.benchmarking -C rust >/dev/null 2>&1 ; then exit $? ; fi
+if ! TN_MODE=0 make -C rust >/dev/null 2>&1 ; then exit $? ; fi
 run_symbol="$(nm rust/target/release/tinynf | grep run | grep tinynf | cut -d ' ' -f 3)"
 asm_rust="$(asm_lines "$run_symbol" 'rust/target/release/tinynf' 'Rust')"
 
-if ! TN_MODE=2 make -f Makefile.benchmarking -C rust >/dev/null 2>&1 ; then exit $? ; fi
+if ! TN_MODE=2 make -C rust >/dev/null 2>&1 ; then exit $? ; fi
 run_queues_symbol="$(nm rust/target/release/tinynf | grep run | grep queues | grep tinynf | cut -d ' ' -f 3)"
 asm_rust_queues="$(asm_lines "$run_queues_symbol" 'rust/target/release/tinynf' 'Rust-queues')"
 
 # CSharp always has both compiled so we only compile once
 # There's also like 3 asm lines for the lambda initializing the default value of the buffer references for queues; it does not matter at this scale
-if ! TN_CSHARP_AOT=y make -f Makefile.benchmarking -C csharp >/dev/null 2>&1 ; then exit $? ; fi
+if ! TN_CSHARP_AOT=y make -C csharp >/dev/null 2>&1 ; then exit $? ; fi
 asm_csharp="$(asm_lines 'TinyNF_TinyNF_Program__Run' csharp/out/TinyNF 'C#')"
 asm_csharp_queues="$(asm_lines 'TinyNF_TinyNF_Program__RunQueues' csharp/out/TinyNF 'C#-queues')"
 
 # Ada also has both
-if ! make -f Makefile.benchmarking -C ada >/dev/null 2>&1 ; then exit $? ; fi
+if ! make -C ada >/dev/null 2>&1 ; then exit $? ; fi
 asm_ada="$(asm_lines 'nf__run' 'ada/tinynf' 'Ada')"
 asm_ada_queues="$(asm_lines 'nf_queues__run' 'ada/tinynf' 'Ada-queues')"
 
