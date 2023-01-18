@@ -112,27 +112,27 @@ public sealed class Program
     {
         if (args.Length != 3)
         {
-            throw new Exception("Expected exactly 3 args: <pci dev> <pci dev> <mode>");
+            throw new Exception("Expected exactly 3 args: <mode> <pci dev> <pci dev>");
         }
 
         var env = new LinuxEnvironment();
 
-        var dev0 = new Device(env, ParsePciAddress(args[0]));
+        var dev0 = new Device(env, ParsePciAddress(args[1]));
         dev0.SetPromiscuous();
 
-        var dev1 = new Device(env, ParsePciAddress(args[1]));
+        var dev1 = new Device(env, ParsePciAddress(args[2]));
         dev1.SetPromiscuous();
 
         Console.WriteLine("Initialized. Running...");
 
-        if (args[2] == "safe")
+        if (args[0] == "noextensions")
         {
             var agent0 = new SafeAgent(env, dev0, new[] { dev1 });
             var agent1 = new SafeAgent(env, dev1, new[] { dev0 });
-            Console.WriteLine("Safe C# mode starting...");
+            Console.WriteLine("No-extensions C# mode starting...");
             RunSafe(ref agent0, ref agent1);
         }
-        else if (args[2] == "queues")
+        else if (args[0] == "flexible")
         {
             const int PoolSize = 65536;
 
@@ -145,7 +145,7 @@ public sealed class Program
             Console.WriteLine("Queues C# mode starting...");
             RunQueues(ref rx0, ref rx1, ref tx0, ref tx1);
         }
-        else if (args[2] == "extended")
+        else if (args[0] == "restricted")
         {
             var agent0 = new Agent(env, dev0, new[] { dev1 });
             var agent1 = new Agent(env, dev1, new[] { dev0 });

@@ -40,24 +40,22 @@ def get_color_label_marker(nf):
   if nf == 'ada-const':
     return ('#70B050', 'Ada, static output count', 'P')
 
-  if nf == 'c-clang' or nf == 'c-queues-clang':
+  if nf == 'c-clang' or nf == 'c-flexible-clang':
     return ('#F08030', 'C', '^')
   if nf == 'c':
     return ('#BC6425', 'C, GCC', '>')
-  if nf == 'c-const':
-    return ('#BC0425', 'C, GCC, static output count', 'v')
   if nf == 'c-const-clang':
     return ('#EF0731', 'C, static output count', '<')
-  if nf == 'c-queues':
+  if nf == 'c-flexible' or nf == 'c-const':
     raise "unused"
 
-  if nf == 'csharp' or nf == 'csharp-queues':
+  if nf == 'csharp' or nf == 'csharp-flexible':
     name = 'Extended C#' if INTRO else 'C#'
     return ('#28477E', name, 'X')
-  if nf == 'csharp-safe':
+  if nf == 'csharp-noextensions':
     return ('#28477E', 'C# without extensions', 'X')
 
-  if nf == 'rust' or nf == 'rust-queues':
+  if nf == 'rust' or nf == 'rust-flexible':
     name = 'Extended Rust' if INTRO else 'Rust'
     return ('#7D31ED', name, '.')
   if nf == 'rust-const':

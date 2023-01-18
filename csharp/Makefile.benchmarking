@@ -2,17 +2,8 @@ THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 include $(THIS_DIR)/Makefile
 
-RUN_ARG=extended
-ifeq ($(TN_MODE),2)
-RUN_ARG=queues
-endif
-ifeq ($(TN_MODE),3)
-RUN_ARG=safe
-endif
-
-
 run:
-	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(OUTPUT_DIR)/TinyNF $(NF_ARGS) $(RUN_ARG)
+	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(OUTPUT_DIR)/TinyNF $(TN_MODE) $(NF_ARGS)
 
 print-nf-name:
 	@echo TinyNF

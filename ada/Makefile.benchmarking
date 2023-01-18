@@ -2,7 +2,7 @@ THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 include $(THIS_DIR)/Makefile
 
-TN_MODE ?= 0
+TN_MODE ?= restricted
 
 run:
 	@sudo $(THIS_DIR)/$(APP) $(TN_MODE) $(NF_ARGS)

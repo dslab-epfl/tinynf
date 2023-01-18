@@ -52,7 +52,13 @@ def remove(file_or_folder):
     os.remove(file_or_folder)
 
 # --- benchmarking ---
-def bench(path, name, extra_env):
+def bench(path, extra_env):
+  name = os.path.dirname(path)
+  if 'TN_MODE' in extra_env:
+    name += '-' + extra_env['TN_MODE']
+  if 'TN_CC' in extra_env:
+    name += '-' + extra_env['TN_CC']
+
   print('[ !!! ] Benchmarking', name, 'in', path)
   out_folder = 'results/' + name + '/'
 
@@ -75,19 +81,17 @@ def bench(path, name, extra_env):
 
 
 cpu_low_power()
-#bench('../c', 'c', {})
-#bench('../c', 'c-clang', {'TN_CC': 'clang'})
-#bench('../c', 'c-const', {'TN_MODE': '1'})
-#bench('../c', 'c-const-clang', {'TN_MODE': '1', 'TN_CC': 'clang'})
-#bench('../c', 'c-queues', {'TN_MODE': '2'})
-#bench('../c', 'c-queues-clang', {'TN_MODE': '2', 'TN_CC': 'clang'})
-#bench('../csharp', 'csharp-safe', {'TN_MODE': '3', 'TN_CSHARP_AOT': 'y'})
-bench('../csharp', 'csharp', {'TN_CSHARP_AOT': 'y'})
-#bench('../csharp', 'csharp-queues', {'TN_MODE': '2', 'TN_CSHARP_AOT': 'y'})
-#bench('../rust', 'rust', {})
-#bench('../rust', 'rust-const', {'TN_MODE': '1'})
-#bench('../rust', 'rust-queues', {'TN_MODE': '2'})
-#bench('../ada', 'ada', {})
-#bench('../ada', 'ada-const', {'TN_MODE': '1'})
-#bench('../ada', 'ada-queues', {'TN_MODE': '2'})
+#bench('../c', {})
+#bench('../c', {'TN_CC': 'clang'})
+#bench('../c', {'TN_MODE': 'const', 'TN_CC': 'clang'})
+#bench('../c', {'TN_MODE': 'flexible', 'TN_CC': 'clang'})
+#bench('../csharp', {'TN_MODE': 'noextensions', 'TN_CSHARP_AOT': 'y'})
+bench('../csharp', {'TN_CSHARP_AOT': 'y'})
+#bench('../csharp', {'TN_MODE': 'flexible', 'TN_CSHARP_AOT': 'y'})
+#bench('../rust', {})
+#bench('../rust', {'TN_MODE': 'const'})
+#bench('../rust', {'TN_MODE': 'flexible'})
+#bench('../ada', {})
+#bench('../ada', {'TN_MODE': 'const'})
+#bench('../ada', {'TN_MODE': 'flexible'})
 cpu_full_power()

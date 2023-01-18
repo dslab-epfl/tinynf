@@ -25,7 +25,7 @@ TN_DEBUG ?= 1
 TN_CC ?= gcc
 TN_APP ?= tinynf
 TN_ENV ?= $(TN_DIR)/env/linux-x86
-TN_MODE ?= 0
+TN_MODE ?= restricted
 
 ifneq (,$(findstring clang,$(TN_CC)))
 # Ignore cast warnings, we know what we're doing
@@ -50,7 +50,14 @@ TN_CFLAGS += -march=native
 TN_CFLAGS += -flto
 TN_CFLAGS += -I $(TN_DIR)
 TN_CFLAGS += -DLOG_LEVEL=$(TN_DEBUG)
-TN_CFLAGS += -DTN_MODE=$(TN_MODE)
+
+ifeq ($(TN_MODE),flexible)
+TN_CFLAGS += -DTN_MODE=2
+else ifeq ($(TN_MODE),const)
+TN_CFLAGS += -DTN_MODE=1
+else
+TN_CFLAGS += -DTN_MODE=0
+endif
 
 # Debug mode if level > 1 (i.e. not just 'info')
 ifeq ($(shell test $(TN_DEBUG) -gt 1; echo $$?),0)

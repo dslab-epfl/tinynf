@@ -58,17 +58,17 @@ asm_lines()
 }
 
 # C
-if ! TN_MODE=0 TN_CC=clang make -C c >/dev/null ; then exit $? ; fi
+if ! TN_CC=clang make -C c >/dev/null ; then exit $? ; fi
 asm_c="$(asm_lines 'run' 'c/tinynf' 'C')"
-if ! TN_MODE=2 TN_CC=clang make -C c >/dev/null ; then exit $? ; fi
+if ! TN_MODE=flexible TN_CC=clang make -C c >/dev/null ; then exit $? ; fi
 asm_c_queues="$(asm_lines 'run' 'c/tinynf' 'C-queues')"
 
 # Rust is harder due to name mangling, we find the symbol first
-if ! TN_MODE=0 make -C rust >/dev/null 2>&1 ; then exit $? ; fi
+if ! make -C rust >/dev/null 2>&1 ; then exit $? ; fi
 run_symbol="$(nm rust/target/release/tinynf | grep run | grep tinynf | cut -d ' ' -f 3)"
 asm_rust="$(asm_lines "$run_symbol" 'rust/target/release/tinynf' 'Rust')"
 
-if ! TN_MODE=2 make -C rust >/dev/null 2>&1 ; then exit $? ; fi
+if ! TN_MODE=flexible make -C rust >/dev/null 2>&1 ; then exit $? ; fi
 run_queues_symbol="$(nm rust/target/release/tinynf | grep run | grep queues | grep tinynf | cut -d ' ' -f 3)"
 asm_rust_queues="$(asm_lines "$run_queues_symbol" 'rust/target/release/tinynf' 'Rust-queues')"
 

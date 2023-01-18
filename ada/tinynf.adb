@@ -28,12 +28,12 @@ begin
   declare
     Dev0: Device := Init_Device(Pci_Parse.Parse_Address(Ada.Command_Line.Argument(2)));
     Dev1: Device := Init_Device(Pci_Parse.Parse_Address(Ada.Command_Line.Argument(3)));
-    Mode: Integer := Integer'Value(Ada.Command_Line.Argument(1));
+    Mode: String := Ada.Command_Line.Argument(1);
   begin
     Set_Promiscuous(Dev0);
     Set_Promiscuous(Dev1);
 
-    if Mode = 0 then
+    if Mode = "restricted" then
       declare
         Outs0: Output_Devices(0..0) := (0 => Dev1);
         Outs1: Output_Devices(0..0) := (0 => Dev0);
@@ -44,8 +44,7 @@ begin
         NF.Run(Agent0, Agent1);
       end;
 
-    elsif Mode = 1 then
-
+    elsif Mode = "const" then
       declare
         type Outputs_Range is range 0 .. 0;
         package NetFunc is new NF_Const(Outputs_Range);
@@ -58,8 +57,7 @@ begin
         NetFunc.Run(Agent0, Agent1);
       end;
 
-    elsif Mode = 2 then
-
+    elsif Mode = "flexible" then
       declare
         Pool0: aliased Buffer_Pool := Create_Buffer_Pool(NF_Queues.Pool_Size);
         Pool1: aliased Buffer_Pool := Create_Buffer_Pool(NF_Queues.Pool_Size);

@@ -14,13 +14,13 @@ The following parameters are available:
 
 - `TN_CC` (`c` only): The compiler, tested with GCC and Clang
 - `TN_MODE`: The kind of driver:
-  - `0` (default): The "restricted" model, which is the original TinyNF one
-  - `1` (`ada` and `rust` only): The restricted model with a constant number of devices, instead of detecting them at run-time
-  - `2`: The "flexible" model, using queues similar to DPDK
-  - `3` (`csharp` only): The flexible model using only safe C#, without the language extensions
+  - `restricted` (default): The "restricted" model, which is the original TinyNF one
+  - `const` (`ada`, `c`, and `rust` only): The restricted model with a constant number of devices, instead of detecting them at run-time
+  - `flexible`: The "flexible" model, using queues similar to DPDK
+  - `noextensions` (`csharp` only): The flexible model using only safe C#, without the language extensions
 - `TN_CSHARP_AOT` (`csharp` only): Use ahead-of-time compilation for C# rather than the default just-in-time (any value given to the variable = AOT, undefined = JIT)
 
-Note that despite needing extensions, the Rust driver does not support `TN_MODE=3` ("safe") because, due to Rust's ownership model,
+Note that despite needing extensions, the Rust driver does not support `TN_MODE=safe` because, due to Rust's ownership model,
 unsafe code _must_ be used in the hot loop for volatile reads and writes, whereas C# allows these reads and writes in safe code.
 
 
