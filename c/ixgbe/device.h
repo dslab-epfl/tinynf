@@ -1,5 +1,6 @@
 #pragma once
 
+#include "env/memory.h"
 #include "env/pci.h"
 #include "env/time.h"
 #include "pci_regs.h"
