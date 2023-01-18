@@ -69,9 +69,7 @@ impl<'a, T> LifedPtr<'a, T> {
 impl<'a, T: Copy> LifedPtr<'a, T> {
     #[inline(always)]
     pub fn write(&self, value: T) {
-        unsafe {
-            *self.ptr.as_ptr() = value
-        }
+        unsafe { *self.ptr.as_ptr() = value }
     }
 
     #[inline(always)]
