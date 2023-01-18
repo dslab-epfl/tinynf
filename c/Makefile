@@ -7,7 +7,7 @@
 # - TN_DEBUG, default 1, debug level (0 = no output, 1 = info, 2 = debug, 3 = verbose); if > 1, code will be compiled with debug symbols
 # - TN_ENV, default 'linux-x86', environment to use (folder in env/)
 # - TN_APP, default 'tinynf', app name when compiled
-# - TN_CC, default undocumented, compiler to use
+# - TN_CC, default cc, compiler to use
 # Appendable variables:
 # - TN_FILES, defaults to all TinyNF files, files to compile
 # - TN_CFLAGS, defaults making sense for TinyNF, compilation and linking flags to use
@@ -22,7 +22,7 @@ TN_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 # Defaults
 TN_DEBUG ?= 1
-TN_CC ?= gcc
+TN_CC ?= cc
 TN_APP ?= tinynf
 TN_ENV ?= $(TN_DIR)/env/linux-x86
 TN_MODE ?= restricted
@@ -31,7 +31,8 @@ ifneq (,$(findstring clang,$(TN_CC)))
 # Ignore cast warnings, we know what we're doing
 # Also ignore unused CLI args, this triggers due to -rdynamic in debug mode
 # And packing/padding warnings for stuff like "you don't need to explicitly say this struct should be packed"
-TN_CFLAGS += -Weverything -Wno-cast-qual -Wno-cast-align -Wno-unused-command-line-argument -Wno-packed -Wno-padded
+# And the weird declaration-after-statement that tells you about pre-C99 compat even if you don't like it
+TN_CFLAGS += -Weverything -Wno-cast-qual -Wno-cast-align -Wno-unused-command-line-argument -Wno-packed -Wno-padded -Wno-declaration-after-statement
 endif
 ifneq (,$(findstring gcc,$(TN_CC)))
 TN_CFLAGS += -Wall -Wextra -Wshadow -Wstrict-aliasing -Wunused-macros -pedantic
