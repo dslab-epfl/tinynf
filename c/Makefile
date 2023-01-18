@@ -68,3 +68,6 @@ endif
 .PHONY: build
 build:
 	@$(TN_CC) $(TN_CFLAGS) $(TN_FILES) -o $(TN_APP)
+
+format:
+	@find . -regex '.*\.[ch]' -exec clang-format -i {} \;

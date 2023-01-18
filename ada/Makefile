@@ -15,3 +15,6 @@ TN_CFLAGS += -cargs -ffunction-sections -fdata-sections -largs -Wl,--gc-sections
 build:
 	@gnatclean $(APP)
 	@gnatmake $(APP) $(TN_CFLAGS)
+
+format:
+	@gnatpp --name-mixed-case --max-line-length=200 --decimal-grouping=3 --eol=unix *.ad*

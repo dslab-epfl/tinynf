@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from distutils.dir_util import copy_tree
 import os
 import shutil
 import subprocess
@@ -40,7 +39,7 @@ def cpu_low_power():
 def move_into(src, dst):
   if os.path.isdir(src):
     os.makedirs(dst, exist_ok=True)
-    copy_tree(src, dst + '/')
+    shutil.copytree(src, dst + '/', dirs_exist_ok=True)
   else:
     os.rename(src, dst + '/' + os.path.basename(src))
 
