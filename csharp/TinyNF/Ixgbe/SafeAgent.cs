@@ -10,7 +10,7 @@ namespace TinyNF.Ixgbe;
 
 internal interface ISafePacketProcessor
 {
-    void Process(ref PacketData data, ulong length, Span<ulong> outputs);
+    static abstract void Process(ref PacketData data, ulong length, Span<ulong> outputs);
 }
 
 internal ref struct SafeAgent
@@ -57,7 +57,7 @@ internal ref struct SafeAgent
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Run<T>(T processor) where T : struct, ISafePacketProcessor
+    public void Run<T>() where T : struct, ISafePacketProcessor
     {
         nint n;
         for (n = 0; n < FlushPeriod; n++)
@@ -69,7 +69,7 @@ internal ref struct SafeAgent
             }
 
             ulong length = Device.RxMetadataLength(receiveMetadata);
-            processor.Process(ref _packets[_processDelimiter], length, _outputs);
+            T.Process(ref _packets[_processDelimiter], length, _outputs);
 
             ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? Device.TxMetadataRS : 0;
             var transmitRings = _transmitRings;

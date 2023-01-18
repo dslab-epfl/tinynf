@@ -8,7 +8,7 @@ namespace TinyNF.Ixgbe;
 
 internal interface IPacketProcessor
 {
-    void Process(ref PacketData data, ulong length, Array256<ulong> outputs);
+    abstract static void Process(ref PacketData data, ulong length, Array256<ulong> outputs);
 }
 
 internal ref struct Agent
@@ -56,11 +56,9 @@ internal ref struct Agent
         }
     }
 
-    // Allow the JIT to inline the processor by making it a struct with a method instead of a delegate.
-    // The JIT doesn't inline delegates, as far as I know; however, it will generate a specialized version
-    // of the method per value type (and one shared version for all reference types), at which point it can inline the ""virtual"" call.
+    // Allow the JIT to inline the processor by making it a struct, since the JIT generates a specialized version of the method per value type
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Run<T>(T processor) where T : struct, IPacketProcessor
+    public void Run<T>() where T : struct, IPacketProcessor
     {
         nint n;
         for (n = 0; n < FlushPeriod; n++)
@@ -72,7 +70,7 @@ internal ref struct Agent
             }
 
             ulong length = Device.RxMetadataLength(receiveMetadata);
-            processor.Process(ref _packets[_processDelimiter], length, _outputs);
+            T.Process(ref _packets[_processDelimiter], length, _outputs);
 
             ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? Device.TxMetadataRS : 0;
 

@@ -28,7 +28,7 @@ public sealed class Program
     private struct Processor : IPacketProcessor
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Process(ref PacketData data, ulong len, Array256<ulong> outputs)
+        public static void Process(ref PacketData data, ulong len, Array256<ulong> outputs)
         {
             HandleData(ref data);
             outputs[0] = len;
@@ -38,7 +38,7 @@ public sealed class Program
     private struct SafeProcessor : ISafePacketProcessor
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Process(ref PacketData data, ulong len, Span<ulong> outputs)
+        public static void Process(ref PacketData data, ulong len, Span<ulong> outputs)
         {
             HandleData(ref data);
             outputs[0] = len;
@@ -48,11 +48,10 @@ public sealed class Program
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void Run(ref Agent agent0, ref Agent agent1)
     {
-        var proc = new Processor();
         while (true)
         {
-            agent0.Run(proc);
-            agent1.Run(proc);
+            agent0.Run<Processor>();
+            agent1.Run<Processor>();
         }
     }
 
@@ -92,11 +91,10 @@ public sealed class Program
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void RunSafe(ref SafeAgent agent0, ref SafeAgent agent1)
     {
-        var proc = new SafeProcessor();
         while (true)
         {
-            agent0.Run(proc);
-            agent1.Run(proc);
+            agent0.Run<SafeProcessor>();
+            agent1.Run<SafeProcessor>();
         }
     }
 
