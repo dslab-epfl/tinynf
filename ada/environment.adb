@@ -1,6 +1,6 @@
 with Ada.Unchecked_Conversion;
 with System; use System;
-with System.Address_to_Access_Conversions;
+with System.Address_To_Access_Conversions;
 with System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
@@ -59,7 +59,7 @@ package body Environment is
       Result_Length: Storage_Offset := Storage_Offset(T_Array'Length * T'Size/8);
     begin
       Allocator_Page := Allocator_Page + Result_Length;
-      Allocator_Used_Bytes := Allocator_Used_bytes + Result_Length;
+      Allocator_Used_Bytes := Allocator_Used_Bytes + Result_Length;
       return Result;
     end;
   end;
@@ -98,7 +98,7 @@ package body Environment is
       OS_Abort;
     end if;
 
-    LSeek(Page_Map_FD, Long_Integer(Page) * 8, Seek_Cur);
+    Lseek(Page_Map_FD, Long_Integer(Page) * 8, Seek_Cur);
 
     Read_Count := Read(Page_Map_FD, Metadata'Address, Metadata'Size/8);
     if Read_Count /= Metadata'Size/8 then

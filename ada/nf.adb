@@ -13,7 +13,7 @@ package body NF is
     Data(9) := 0;
     Data(10) := 0;
     Data(11) := 0;
-   end;
+  end Handle_Data;
 
   procedure Processor(Data: not null access Packet_Data;
                       Length: in Packet_Length;

@@ -50,6 +50,6 @@ package body Ixgbe_Regs is
   begin
     Old_Value := Read(Buffer, Reg);
     New_Value := Old_Value or Field;
-    Write(Buffer, Reg, New_value);
+    Write(Buffer, Reg, New_Value);
   end;
 end Ixgbe_Regs;

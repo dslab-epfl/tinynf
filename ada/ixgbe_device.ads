@@ -57,7 +57,7 @@ package Ixgbe_Device is
   type Rx_Metadata is record
     Length: Packet_Length;
     Descriptor_Done: Boolean;
-    end record
+  end record
   with Bit_Order => System.Low_Order_First,
        Size => 64;
   for Rx_Metadata use record

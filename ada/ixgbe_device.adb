@@ -15,7 +15,7 @@ package body Ixgbe_Device is
     delay 0.001; -- no point in doing a % here like in other langs since our timeout is a float
     for I in 1 .. 10 loop
       if Cleared /= Regs.Is_Field_Cleared(Buffer, Reg, Field) then
-        return false;
+        return False;
       end if;
       delay Timeout / 10.0;
     end loop;
@@ -64,7 +64,7 @@ package body Ixgbe_Device is
 
     for Queue in 0 .. Receive_Queues_Count - 1 loop
       Regs.Clear_Field(Buffer, Regs.RXDCTL(Queue), Regs.RXDCTL_ENABLE);
-      if After_Timeout(1.0, false, Buffer, Regs.RXDCTL(Queue), Regs.RXDCTL_ENABLE) then
+      if After_Timeout(1.0, False, Buffer, Regs.RXDCTL(Queue), Regs.RXDCTL_ENABLE) then
         Text_IO.Put_Line("RXDCTL.ENABLE did not clear, cannot disable receive to reset");
         GNAT.OS_Lib.OS_Abort;
       end if;
@@ -72,7 +72,7 @@ package body Ixgbe_Device is
     end loop;
 
     Regs.Set_Field(Buffer, Regs.CTRL, Regs.CTRL_MASTER_DISABLE);
-    if After_Timeout(1.0, false, Buffer, Regs.STATUS, Regs.STATUS_PCIE_MASTER_ENABLE_STATUS) then
+    if After_Timeout(1.0, False, Buffer, Regs.STATUS, Regs.STATUS_PCIE_MASTER_ENABLE_STATUS) then
       if not Pci_Regs.Is_Field_Cleared(Addr, Pci_Regs.DEVICESTATUS, Pci_Regs.DEVICESTATUS_TRANSACTIONPENDING) then
         Text_IO.Put_Line("DEVICESTATUS.TRANSACTIONPENDING did not clear, cannot perform master disable to reset");
         GNAT.OS_Lib.OS_Abort;
@@ -103,7 +103,7 @@ package body Ixgbe_Device is
 
     Regs.Write_Field(Buffer, Regs.FCRTH(0), Regs.FCRTH_RTH, (512 * 1024 - 16#6000#) / 32);
 
-    if After_Timeout(1.0, true, Buffer, Regs.EEC, Regs.EEC_AUTO_RD) then
+    if After_Timeout(1.0, True, Buffer, Regs.EEC, Regs.EEC_AUTO_RD) then
       Text_IO.Put_Line("EEPROM auto read timed out");
       GNAT.OS_Lib.OS_Abort;
     end if;
@@ -113,7 +113,7 @@ package body Ixgbe_Device is
       GNAT.OS_Lib.OS_Abort;
     end if;
 
-    if After_Timeout(1.0, true, Buffer, Regs.RDRXCTL, Regs.RDRXCTL_DMAIDONE) then
+    if After_Timeout(1.0, True, Buffer, Regs.RDRXCTL, Regs.RDRXCTL_DMAIDONE) then
       Text_IO.Put_Line("DMA init timed out");
       GNAT.OS_Lib.OS_Abort;
     end if;
@@ -215,7 +215,7 @@ package body Ixgbe_Device is
     Regs.Set_Field(Dev.Buffer, Regs.SRRCTL(Queue_Index), Regs.SRRCTL_DROP_EN);
 
     Regs.Set_Field(Dev.Buffer, Regs.RXDCTL(Queue_Index), Regs.RXDCTL_ENABLE);
-    if After_Timeout(1.0, true, Dev.Buffer, Regs.RXDCTL(Queue_Index), Regs.RXDCTL_ENABLE) then
+    if After_Timeout(1.0, True, Dev.Buffer, Regs.RXDCTL(Queue_Index), Regs.RXDCTL_ENABLE) then
       Text_IO.Put_Line("RXDCTL.ENABLE did not set, cannot enable queue");
       GNAT.OS_Lib.OS_Abort;
     end if;
@@ -225,7 +225,7 @@ package body Ixgbe_Device is
     if not Dev.RX_Enabled then
       Regs.Set_Field(Dev.Buffer, Regs.SECRXCTRL, Regs.SECRXCTRL_RX_DIS);
 
-      if After_Timeout(1.0, true, Dev.Buffer, Regs.SECRXSTAT, Regs.SECRXSTAT_SECRX_RDY) then
+      if After_Timeout(1.0, True, Dev.Buffer, Regs.SECRXSTAT, Regs.SECRXSTAT_SECRX_RDY) then
         Text_IO.Put_Line("SECRXSTAT.SECRXRDY timed out, cannot start device");
         GNAT.OS_Lib.OS_Abort;
       end if;
@@ -286,7 +286,7 @@ package body Ixgbe_Device is
     end if;
 
     Regs.Set_Field(Dev.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_ENABLE);
-    if After_Timeout(1.0, true, Dev.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_ENABLE) then
+    if After_Timeout(1.0, True, Dev.Buffer, Regs.TXDCTL(Queue_Index), Regs.TXDCTL_ENABLE) then
       Text_IO.Put_Line("TXDCTL.ENABLE did not set, cannot enable queue");
       GNAT.OS_Lib.OS_Abort;
     end if;
