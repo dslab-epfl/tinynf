@@ -53,7 +53,7 @@ def remove(file_or_folder):
 
 # --- benchmarking ---
 def bench(path, extra_env):
-  name = os.path.dirname(path)
+  name = os.path.basename(path)
   if 'TN_MODE' in extra_env:
     name += '-' + extra_env['TN_MODE']
   if 'TN_CC' in extra_env:
@@ -82,11 +82,11 @@ def bench(path, extra_env):
 
 cpu_low_power()
 #bench('../c', {'TN_CC': gcc})
-#bench('../c', {'TN_CC': 'clang'})
+bench('../c', {'TN_CC': 'clang'})
 #bench('../c', {'TN_MODE': 'const', 'TN_CC': 'clang'})
 #bench('../c', {'TN_MODE': 'flexible', 'TN_CC': 'clang'})
 #bench('../csharp', {'TN_MODE': 'noextensions', 'TN_CSHARP_AOT': 'y'})
-bench('../csharp', {'TN_CSHARP_AOT': 'y'})
+#bench('../csharp', {'TN_CSHARP_AOT': 'y'})
 #bench('../csharp', {'TN_MODE': 'flexible', 'TN_CSHARP_AOT': 'y'})
 #bench('../rust', {})
 #bench('../rust', {'TN_MODE': 'const'})

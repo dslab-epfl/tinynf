@@ -1,5 +1,7 @@
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
+TN_MODE ?= restricted
+
 CARGO_FLAGS=
 ifeq ($(TN_MODE),const)
 CARGO_FLAGS=--features constgenerics
