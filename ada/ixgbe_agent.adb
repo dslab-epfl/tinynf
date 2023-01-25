@@ -54,14 +54,13 @@ package body Ixgbe_Agent is
             Processed_Delimiter => 0);
   end;
 
-  procedure Run(This: in out Agent;
-                Proc: in Processor)
+  procedure Run(This: in out Agent)
   is
     N: Integer range 0 .. Flush_Period;
     Receive_Metadata: Rx_Metadata;
     RS_Bit: Interfaces.Unsigned_64;
     Length: Packet_Length;
-    Earliest_Transmit_Head: Interfaces.Unsigned_32; -- TODO can this be delimiter_range? it should be...
+    Earliest_Transmit_Head: Delimiter_Range;
     Min_Diff: Interfaces.Unsigned_64;
     Head: Interfaces.Unsigned_32;
     Diff: Interfaces.Unsigned_64;
@@ -72,7 +71,7 @@ package body Ixgbe_Agent is
       exit when not Receive_Metadata.Descriptor_Done;
 
       Length := Receive_Metadata.Length;
-      Proc(This.Buffers(This.Processed_Delimiter)'Access, Length, This.Outputs);
+      Processor(This.Buffers(This.Processed_Delimiter)'Access, Length, This.Outputs);
 
       RS_Bit := (if (This.Processed_Delimiter mod Recycle_Period) = (Recycle_Period - 1) then Tx_Metadata_RS else 0);
 
@@ -84,18 +83,18 @@ package body Ixgbe_Agent is
       This.Processed_Delimiter := This.Processed_Delimiter + 1;
 
       if RS_Bit /= 0 then
-        Earliest_Transmit_Head := Interfaces.Unsigned_32(This.Processed_Delimiter);
+        Earliest_Transmit_Head := This.Processed_Delimiter;
         Min_Diff := Interfaces.Unsigned_64'Last;
         for H of This.Transmit_Heads loop
           Head := From_Little(H.Value);
           Diff := Interfaces.Unsigned_64(Head) - Interfaces.Unsigned_64(This.Processed_Delimiter);
           if Diff <= Min_Diff then
-            Earliest_Transmit_Head := Head;
+            Earliest_Transmit_Head := Delimiter_Range(Head mod Ring_Size);
             Min_Diff := Diff;
           end if;
         end loop;
 
-        This.Receive_Tail_Addr.all := VolatileUInt32(To_Little(Earliest_Transmit_Head));
+        This.Receive_Tail_Addr.all := VolatileUInt32(To_Little(Interfaces.Unsigned_32(Earliest_Transmit_Head)));
       end if;
 
       N := N + 1;

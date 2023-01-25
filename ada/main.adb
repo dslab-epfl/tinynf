@@ -20,10 +20,10 @@ with Ixgbe_Queues_Tx;
 
 procedure Main is
 begin
---  if Ada.Command_Line.Argument_Count /= 3 then
---    Text_IO.Put_Line("Bad number of args, expected 3, first is TN_MODE");
---    GNAT.OS_Lib.OS_Abort;
---  end if;
+  if Ada.Command_Line.Argument_Count /= 3 then
+    Text_IO.Put_Line("Bad number of args, expected 3, first is TN_MODE");
+    GNAT.OS_Lib.OS_Abort;
+  end if;
 
   declare
     Dev0: Device := Init_Device(Pci_Parse.Parse_Address(Ada.Command_Line.Argument(2)));
@@ -35,7 +35,8 @@ begin
 
     if Mode = "restricted" then
       declare
-        package Agent is new Ixgbe_Agent(UnsignedInteger(Ada.Command_Line.Argument_Count) - 3);
+        function Get_Zero return UnsignedInteger is (0) with No_Inline; -- mimic the other langs for which the outputs count is not a compile-time constant
+        package Agent is new Ixgbe_Agent(Get_Zero);
         procedure MyRun is new Run.Run(Agent);
         Outs0: Agent.Output_Devices := (others => Dev1);
         Outs1: Agent.Output_Devices := (others => Dev0);

@@ -29,10 +29,11 @@ package body Run is
       Handle(Data);
       Output_Lengths(Agent.Outputs_Range'First) := Length;
     end;
+    procedure MyAgentRun is new Agent.Run(Processor);
   begin
     loop
-      Agent.Run(Agent0, Processor'Access);
-      Agent.Run(Agent1, Processor'Access);
+      MyAgentRun(Agent0);
+      MyAgentRun(Agent1);
     end loop;
   end;
 
