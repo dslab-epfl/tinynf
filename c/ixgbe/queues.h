@@ -17,8 +17,8 @@ struct ixgbe_queue_rx {
 
 static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe_buffer_pool* pool, struct ixgbe_queue_rx* out_queue)
 {
-	out_queue->ring = tn_mem_allocate(sizeof(struct ixgbe_descriptor) * IXGBE_RING_SIZE);
-	out_queue->buffers = tn_mem_allocate(sizeof(struct ixgbe_buffer*) * IXGBE_RING_SIZE);
+	out_queue->ring = tn_mem_allocate(IXGBE_RING_SIZE, sizeof(struct ixgbe_descriptor));
+	out_queue->buffers = tn_mem_allocate(IXGBE_RING_SIZE, sizeof(struct ixgbe_buffer*));
 	out_queue->pool = pool;
 	out_queue->next = 0;
 	for (size_t n = 0; n < IXGBE_RING_SIZE; n++) {
@@ -83,10 +83,10 @@ struct ixgbe_queue_tx {
 
 static inline bool ixgbe_queue_tx_init(struct ixgbe_device* device, struct ixgbe_buffer_pool* pool, struct ixgbe_queue_tx* out_queue)
 {
-	out_queue->ring = tn_mem_allocate(sizeof(struct ixgbe_descriptor) * IXGBE_RING_SIZE);
-	out_queue->buffers = tn_mem_allocate(sizeof(struct ixgbe_buffer*) * IXGBE_RING_SIZE);
+	out_queue->ring = tn_mem_allocate(IXGBE_RING_SIZE, sizeof(struct ixgbe_descriptor));
+	out_queue->buffers = tn_mem_allocate(IXGBE_RING_SIZE, sizeof(struct ixgbe_buffer*));
 	out_queue->pool = pool;
-	out_queue->transmit_head_addr = tn_mem_allocate(sizeof(struct ixgbe_transmit_head));
+	out_queue->transmit_head_addr = tn_mem_allocate(1, sizeof(struct ixgbe_transmit_head));
 	out_queue->recycled_head = 0;
 	out_queue->next = 0;
 	return ixgbe_device_add_output(device, out_queue->ring, out_queue->transmit_head_addr, &(out_queue->transmit_tail_addr));

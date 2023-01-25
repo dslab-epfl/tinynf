@@ -48,14 +48,14 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 		return false;
 	}
 
-	out_agent->buffers = tn_mem_allocate(IXGBE_RING_SIZE * sizeof(struct ixgbe_packet_data));
-	out_agent->transmit_heads = tn_mem_allocate(outputs_count * sizeof(struct ixgbe_transmit_head));
-	out_agent->rings = tn_mem_allocate(outputs_count * sizeof(struct ixgbe_descriptor*));
-	out_agent->transmit_tail_addrs = tn_mem_allocate(outputs_count * sizeof(uint32_t*));
-	out_agent->outputs = tn_mem_allocate(outputs_count * sizeof(uint64_t));
+	out_agent->buffers = tn_mem_allocate(IXGBE_RING_SIZE, sizeof(struct ixgbe_packet_data));
+	out_agent->transmit_heads = tn_mem_allocate(outputs_count, sizeof(struct ixgbe_transmit_head));
+	out_agent->rings = tn_mem_allocate(outputs_count, sizeof(struct ixgbe_descriptor*));
+	out_agent->transmit_tail_addrs = tn_mem_allocate(outputs_count, sizeof(uint32_t*));
+	out_agent->outputs = tn_mem_allocate(outputs_count, sizeof(uint64_t));
 
 	for (size_t r = 0; r < outputs_count; r++) {
-		out_agent->rings[r] = tn_mem_allocate(IXGBE_RING_SIZE * sizeof(struct ixgbe_descriptor));
+		out_agent->rings[r] = tn_mem_allocate(IXGBE_RING_SIZE, sizeof(struct ixgbe_descriptor));
 		// Program all descriptors' buffer addresses now
 		for (size_t n = 0; n < IXGBE_RING_SIZE; n++) {
 			// Section 7.2.3.2.2 Legacy Transmit Descriptor Format:

@@ -26,7 +26,7 @@ static bool page_allocated;
 static uint8_t* page_addr;
 static size_t page_used_len;
 
-void* tn_mem_allocate(size_t size)
+void* tn_mem_allocate(size_t count, size_t size)
 {
 	if (!page_allocated) {
 		page_addr = mmap(
@@ -61,27 +61,29 @@ void* tn_mem_allocate(size_t size)
 		page_used_len = 0;
 	}
 
+	size_t length = count * size;
+
 	// Weird but valid; return a likely-invalid address for debugging convenience
-	if (size == 0) {
+	if (length == 0) {
 		return page_addr + HUGEPAGE_SIZE;
 	}
 
 	// Return and align to an integral number of cache lines
-	size = size + (64 - (size % 64));
+	length = length + (64 - (length % 64));
 
 	// Align as required by the contract
-	const size_t align_diff = (size_t) (page_addr + page_used_len) % size;
+	const size_t align_diff = (size_t) (page_addr + page_used_len) % length;
 	if (align_diff != 0) {
-		page_used_len = page_used_len + (size - align_diff);
+		page_used_len = page_used_len + (length - align_diff);
 	}
 
-	if (HUGEPAGE_SIZE - page_used_len < size) {
+	if (HUGEPAGE_SIZE - page_used_len < length) {
 		TN_DEBUG("Not enough space left to allocate");
 		abort();
 	}
 
 	void* result = page_addr + page_used_len;
-	page_used_len = page_used_len + size;
+	page_used_len = page_used_len + length;
 	return result;
 }
 
@@ -124,7 +126,7 @@ void* tn_mem_phys_to_virt(const uint64_t addr, const size_t size)
 }
 
 // See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
-uintptr_t tn_mem_virt_to_phys(void* const addr)
+uintptr_t tn_mem_virt_to_phys(const void* const addr)
 {
 	// sysconf is documented to return -1 on error; let's check all negative cases along the way, to make sure the conversion to unsigned is sound
 	const long page_size_long = sysconf(_SC_PAGESIZE);

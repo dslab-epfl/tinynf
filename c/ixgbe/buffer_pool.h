@@ -25,14 +25,14 @@ struct ixgbe_buffer_pool {
 
 static inline struct ixgbe_buffer_pool* ixgbe_buffer_pool_allocate(size_t size)
 {
-	struct ixgbe_buffer_pool* pool = tn_mem_allocate(sizeof(struct ixgbe_buffer_pool));
-	pool->buffers = tn_mem_allocate(sizeof(struct ixgbe_buffer) * size);
+	struct ixgbe_buffer_pool* pool = tn_mem_allocate(1, sizeof(struct ixgbe_buffer_pool));
+	pool->buffers = tn_mem_allocate(size, sizeof(struct ixgbe_buffer));
 	pool->size = size;
 	pool->index = size - 1; // == full
 
-	struct ixgbe_packet_data* data = tn_mem_allocate(sizeof(struct ixgbe_packet_data) * size);
+	struct ixgbe_packet_data* data = tn_mem_allocate(size, sizeof(struct ixgbe_packet_data));
 	for (size_t n = 0; n < size; n++) {
-		pool->buffers[n] = tn_mem_allocate(sizeof(struct ixgbe_buffer));
+		pool->buffers[n] = tn_mem_allocate(1, sizeof(struct ixgbe_buffer));
 		pool->buffers[n]->data = &(data[n]);
 		pool->buffers[n]->phys_addr = tn_mem_virt_to_phys((void*) pool->buffers[n]->data);
 		// length remains uninitialized, it'll be set by the driver as needed

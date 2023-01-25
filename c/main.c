@@ -73,9 +73,6 @@ static void agent_packet_handler(volatile struct ixgbe_packet_data* restrict pac
 	outputs[0] = packet_length;
 }
 
-// This noinline function is there so GCC realizes it can use all registers
-// (otherwise it keeps some regs unused, presumably because initialization
-//  makes it think they will be used later...)
 __attribute__((noinline)) noreturn static void run(struct ixgbe_agent* restrict agent0, struct ixgbe_agent* restrict agent1)
 {
 	while (true) {
@@ -116,8 +113,6 @@ int main(int argc, char** argv)
 #define TINYNF_QUEUE_BATCH_SIZE 32u
 #define TINYNF_QUEUE_POOL_SIZE 65535u
 
-// I haven't tested if this noinline is also necessary but since it is for the agent case let's just do it
-// TODO centralize the comment above, it's the same for all langs
 __attribute__((noinline)) noreturn static void run(struct ixgbe_queue_rx* restrict rx0, struct ixgbe_queue_rx* restrict rx1,
 						   struct ixgbe_queue_tx* restrict tx0, struct ixgbe_queue_tx* restrict tx1)
 {
