@@ -13,6 +13,8 @@ pub const RING_SIZE: usize = 256;
 
 pub struct Device<'a> {
     buffer: LifedSlice<'a, u32>,
+    rx_enabled: bool,
+    tx_enabled: bool,
 }
 
 #[repr(C)]
@@ -221,22 +223,7 @@ impl<'a> Device<'a> {
 
         regs::clear_field(buffer, regs::RTTDCS, regs::RTTDCS_::ARBDIS);
 
-        // Enable RX
-        regs::set_field(buffer, regs::SECRXCTRL, regs::SECRXCTRL_::RX_DIS);
-        if after_timeout(env, Duration::from_secs(1), true, buffer, regs::SECRXSTAT, regs::SECRXSTAT_::SECRX_RDY) {
-            panic!("SECRXSTAT.SECRXRDY timed out, cannot start device");
-        }
-        regs::set_field(buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
-        regs::clear_field(buffer, regs::SECRXCTRL, regs::SECRXCTRL_::RX_DIS);
-        regs::set_field(buffer, regs::CTRLEXT, regs::CTRLEXT_::NSDIS);
-
-        // Enable TX
-        regs::set_field(buffer, regs::DMATXCTL, regs::DMATXCTL_::TE);
-        // But disable first queue, which is enabled when we enable TX globally (see 8.2.3.9.10 ENABLE)
-        // TODO not exactly what C does, fix this
-        regs::clear_field(buffer, regs::TXDCTL(0), regs::TXDCTL_::ENABLE);
-
-        Device { buffer }
+        Device { buffer, rx_enabled: false, tx_enabled: false }
     }
 
     pub fn set_promiscuous(&mut self) {
@@ -248,7 +235,7 @@ impl<'a> Device<'a> {
         regs::set_field(self.buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
     }
 
-    pub fn set_input(&self, env: &impl Environment<'a>, ring_start: LifedPtr<'a, Descriptor>) -> LifedPtr<'a, u32> {
+    pub fn set_input(&mut self, env: &impl Environment<'a>, ring_start: LifedPtr<'a, Descriptor>) -> LifedPtr<'a, u32> {
         let queue_index: usize = 0;
 
         if !regs::is_field_cleared(self.buffer, regs::RXDCTL(queue_index), regs::RXDCTL_::ENABLE) {
@@ -273,12 +260,23 @@ impl<'a> Device<'a> {
 
         regs::write(self.buffer, regs::RDT(queue_index), RING_SIZE as u32 - 1);
 
+        if !self.rx_enabled {
+            regs::set_field(self.buffer, regs::SECRXCTRL, regs::SECRXCTRL_::RX_DIS);
+            if after_timeout(env, Duration::from_secs(1), true, self.buffer, regs::SECRXSTAT, regs::SECRXSTAT_::SECRX_RDY) {
+                panic!("SECRXSTAT.SECRXRDY timed out, cannot start device");
+            }
+            regs::set_field(self.buffer, regs::RXCTRL, regs::RXCTRL_::RXEN);
+            regs::clear_field(self.buffer, regs::SECRXCTRL, regs::SECRXCTRL_::RX_DIS);
+            regs::set_field(self.buffer, regs::CTRLEXT, regs::CTRLEXT_::NSDIS);
+            self.rx_enabled = true;
+        }
+
         regs::clear_field(self.buffer, regs::DCARXCTRL(queue_index), regs::DCARXCTRL_::UNKNOWN);
 
         self.buffer.index(regs::RDT(queue_index))
     }
 
-    pub fn add_output(&self, env: &impl Environment<'a>, ring_start: LifedPtr<'a, Descriptor>, transmit_head: LifedPtr<'a, TransmitHead>) -> LifedPtr<'a, u32> {
+    pub fn add_output(&mut self, env: &impl Environment<'a>, ring_start: LifedPtr<'a, Descriptor>, transmit_head: LifedPtr<'a, TransmitHead>) -> LifedPtr<'a, u32> {
         let mut queue_index = 0;
         while queue_index < TRANSMIT_QUEUES_COUNT {
             if regs::is_field_cleared(self.buffer, regs::TXDCTL(queue_index), regs::TXDCTL_::ENABLE) {
@@ -309,6 +307,11 @@ impl<'a> Device<'a> {
         regs::write(self.buffer, regs::TDWBAL(queue_index), head_phys_addr as u32 | 1);
 
         regs::clear_field(self.buffer, regs::DCATXCTRL(queue_index), regs::DCATXCTRL_::TX_DESC_WB_RO_EN);
+
+        if !self.tx_enabled {
+            regs::set_field(self.buffer, regs::DMATXCTL, regs::DMATXCTL_::TE);
+            self.tx_enabled = true;
+        }
 
         regs::set_field(self.buffer, regs::TXDCTL(queue_index), regs::TXDCTL_::ENABLE);
         if after_timeout(env, Duration::from_secs(1), true, self.buffer, regs::TXDCTL(queue_index), regs::TXDCTL_::ENABLE) {

@@ -20,7 +20,7 @@ pub struct Agent<'a> {
 }
 
 impl<'a> Agent<'a> {
-    pub fn create(env: &impl Environment<'a>, input: &Device<'a>, outputs: &[&Device<'a>]) -> Agent<'a> {
+    pub fn create(env: &impl Environment<'a>, input: LifedPtr<'a, Device<'a>>, outputs: &[LifedPtr<'a, Device<'a>>]) -> Agent<'a> {
         // LifedSlice requires a nonzero length, allowing us to access the shared first ring without any checks
         if outputs.len() == 0 {
             panic!("Cannot have zero outputs");
@@ -42,12 +42,12 @@ impl<'a> Agent<'a> {
             }
         }
 
-        let receive_tail_addr = input.set_input(env, rings[0].index(0));
+        let receive_tail_addr = input.map(|d| d.set_input(env, rings[0].index(0)));
 
         let transmit_heads = LifedSlice::new(env.allocate_slice::<TransmitHead>(outputs.len()));
         let transmit_tail_addrs = LifedSlice::new(env.allocate_slice::<LifedPtr<'a, u32>>(outputs.len()));
         for n in 0..outputs.len() {
-            transmit_tail_addrs.set(n, outputs[n].add_output(env, rings[n].index(0), transmit_heads.index(n)));
+            transmit_tail_addrs.set(n, outputs[n].map(|d| d.add_output(env, rings[n].index(0), transmit_heads.index(n))));
         }
 
         Agent {

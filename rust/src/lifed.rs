@@ -110,7 +110,6 @@ impl<'a, T, const N: usize> LifedArray<'a, T, N> {
         }
     }
 
-    // TODO rename to get_ptr
     #[inline(always)]
     pub fn index(&self, index: usize) -> LifedPtr<'a, T> {
         if index < N {
@@ -176,7 +175,6 @@ impl<'a, T> LifedSlice<'a, T> {
         self.len.get()
     }
 
-    // TODO rename to get_ptr
     #[inline(always)]
     pub fn index(&self, index: usize) -> LifedPtr<'a, T> {
         if index < self.len.get() {

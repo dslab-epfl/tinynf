@@ -126,12 +126,12 @@ fn main() {
     let mut dev1 = Device::init(&env, pci1);
     dev1.set_promiscuous();
 
-    let agent0outs = [&dev1];
-    let agent1outs = [&dev0];
-
     if cfg!(feature = "constgenerics") {
-        let mut agent0 = AgentConst::create(&env, &dev0, agent0outs);
-        let mut agent1 = AgentConst::create(&env, &dev1, agent1outs);
+        let agent0array = [LifedPtr::new(&mut dev0)];
+        let agent1array = [LifedPtr::new(&mut dev1)];
+
+        let mut agent0 = AgentConst::create(&env, agent0array[0], agent1array);
+        let mut agent1 = AgentConst::create(&env, agent1array[0], agent0array);
 
         println!("All good, running with const generics...");
         run_const::<1>(&mut agent0, &mut agent1);
@@ -143,17 +143,20 @@ fn main() {
         let mut pool1 = BufferPool::allocate(&env, QUEUE_POOL_SIZE);
         let pool1ptr = LifedPtr::new(&mut pool1);
 
-        let mut rx0 = QueueRx::create(&env, &dev0, pool0ptr);
-        let mut rx1 = QueueRx::create(&env, &dev1, pool1ptr);
+        let mut rx0 = QueueRx::create(&env, &mut dev0, pool0ptr);
+        let mut rx1 = QueueRx::create(&env, &mut dev1, pool1ptr);
 
-        let mut tx0 = QueueTx::create(&env, &dev0, pool1ptr);
-        let mut tx1 = QueueTx::create(&env, &dev1, pool0ptr);
+        let mut tx0 = QueueTx::create(&env, &mut dev0, pool1ptr);
+        let mut tx1 = QueueTx::create(&env, &mut dev1, pool0ptr);
 
         println!("All good, running with queues...");
         run_queues(&mut rx0, &mut rx1, &mut tx0, &mut tx1, &env);
     } else {
-        let mut agent0 = Agent::create(&env, &dev0, &agent0outs);
-        let mut agent1 = Agent::create(&env, &dev1, &agent1outs);
+        let agent0array = [LifedPtr::new(&mut dev0)];
+        let agent1array = [LifedPtr::new(&mut dev1)];
+
+        let mut agent0 = Agent::create(&env, agent0array[0], &agent1array);
+        let mut agent1 = Agent::create(&env, agent1array[0], &agent0array);
 
         println!("All good, running...");
         run(&mut agent0, &mut agent1);

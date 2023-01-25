@@ -13,7 +13,7 @@ pub struct QueueRx<'a> {
 }
 
 impl<'a> QueueRx<'a> {
-    pub fn create(env: &impl Environment<'a>, device: &Device<'a>, pool: LifedPtr<'a, BufferPool<'a>>) -> QueueRx<'a> {
+    pub fn create(env: &impl Environment<'a>, device: &mut Device<'a>, pool: LifedPtr<'a, BufferPool<'a>>) -> QueueRx<'a> {
         let ring = LifedArray::new(env.allocate::<Descriptor, { RING_SIZE }>());
         let buffers = LifedArray::new(env.allocate::<LifedPtr<'a, Buffer<'a>>, { RING_SIZE }>());
 
@@ -87,7 +87,7 @@ pub struct QueueTx<'a> {
 }
 
 impl<'a> QueueTx<'a> {
-    pub fn create(env: &impl Environment<'a>, device: &Device<'a>, pool: LifedPtr<'a, BufferPool<'a>>) -> QueueTx<'a> {
+    pub fn create(env: &impl Environment<'a>, device: &mut Device<'a>, pool: LifedPtr<'a, BufferPool<'a>>) -> QueueTx<'a> {
         let ring = LifedArray::new(env.allocate::<Descriptor, { RING_SIZE }>());
         let transmit_head_addr = LifedPtr::new(&mut env.allocate::<TransmitHead, 1>()[0]);
         QueueTx {

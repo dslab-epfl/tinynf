@@ -17,7 +17,7 @@ pub struct AgentConst<'a, const OUTPUTS: usize> {
 }
 
 impl<'a, const OUTPUTS: usize> AgentConst<'a, OUTPUTS> {
-    pub fn create(env: &impl Environment<'a>, input: &Device<'a>, outputs: [&Device<'a>; OUTPUTS]) -> AgentConst<'a, OUTPUTS> {
+    pub fn create(env: &impl Environment<'a>, input: LifedPtr<'a, Device<'a>>, outputs: [LifedPtr<'a, Device<'a>>; OUTPUTS]) -> AgentConst<'a, OUTPUTS> {
         let buffers = env.allocate::<PacketData, { RING_SIZE }>();
 
         let rings = env.allocate::<LifedArray<'a, Descriptor, { RING_SIZE }>, { OUTPUTS }>();
@@ -31,13 +31,13 @@ impl<'a, const OUTPUTS: usize> AgentConst<'a, OUTPUTS> {
             }
         }
 
-        let receive_tail_addr = input.set_input(env, rings[0].index(0));
+        let receive_tail_addr = input.map(|d| d.set_input(env, rings[0].index(0)));
 
         let transmit_heads = LifedArray::new(env.allocate::<TransmitHead, { OUTPUTS }>());
         let transmit_tail_addrs = env.allocate::<LifedPtr<'a, u32>, { OUTPUTS }>();
         let mut t = 0;
         for out in outputs {
-            transmit_tail_addrs[t] = out.add_output(env, rings[t].index(0), transmit_heads.index(t));
+            transmit_tail_addrs[t] = out.map(|d| d.add_output(env, rings[t].index(0), transmit_heads.index(t)));
             t = t + 1;
         }
 
