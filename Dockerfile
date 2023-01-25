@@ -22,9 +22,6 @@ RUN apt-get update && \
     apt-get purge -y curl `# Cleanup...` && \
     rm -rf '/var/lib/apt/lists/*'
 
-COPY c /c
-COPY csharp /csharp
-COPY ada /ada
-COPY rust /rust
+COPY . /.
 
 CMD ["bash"]

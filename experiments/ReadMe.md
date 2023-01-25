@@ -1,21 +1,27 @@
 # Experiments
 
-This folder contains experiments from the paper.
+The ICSE 2023 paper's central claim is that it is possible to write safe code with no run-time overhead compared to C.
+This is implemented as two driver models in C, Ada, C#, and Rust.
 
-**Table 2**:
-`cd code-metrics ; ./tabulate-metrics.sh`
-(this may slightly differ from the paper depending on your exact compiler versions)
+_By definition, you are unlikely to get the exact same results as the paper since it depends on your exact compiler versions and your CPU.
+However, the relative claims should hold._
 
-**Figures**:
+
+## Theory (minutes)
+
+You will need `cloc` in addition to the compilers mentioned in the top-level readme; or use the provided Dockerfile.
+
+Run `cd code-metrics ; ./tabulate-metrics.sh` which will generate an `assembly/` directory containing the assembly code for all hot loops in all drivers.
+This can be manually checked for a lack of compiler-inserted bounds checks.
+That script also outputs **Table 2** from the paper, and takes less than a minute.
+
+## Practice (hours)
+
+For the **figures**, with the exception of Figure 2 which is a simplified form of `rust/src/lifed.rs`, you need a proper testbed.
 Check out the prerequisites below, `cd perf`, then `./bench.sh`, which will take a few hours.
 Then `./plot.sh` assuming you have Python with Matplotlib; run `. setup-virtualenv-graphing.sh` on Ubuntu to create a virtualenv with it if needed.
 
-
-## Prerequisites
-
-Most of the experiments are about performance, measured with benchmarks.
-
-To run these benchmarks, you need two machines running Linux:
+To run the benchmarks, you need two machines running Linux:
 - A "device under test" machine with two Intel 82599ES NICs on the same NUMA node, from which you will run the experiment scripts
 - A "tester" machine connected to the other one by two 10G Ethernet cables
 
@@ -33,12 +39,8 @@ Assuming a 2-CPU machine whose second CPU has cores 8 to 15, we recommend the fo
 - `idle=poll cpuidle.off=1`: Force the CPU to spin instead of using waits for idling
 - `intel_pstate=disable`: Allow Linux to set the CPU frequency via `cpupower` instead of letting the Intel driver choose
 
-You will also need the following software, in addition to the compilers for each language:
-- the NativeAOT dependencies: https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/
-
+You will also need the following software on the device under test machine, in addition to the dependencies mentioned in the top-level readme:
 - The library `libtbb2`, available under that name in most package repositories
-- The build tool `make`, available under that name in most package repositories
-- The shell utility `cloc`, available under that name in most package repositories
 - The shell utility `cpupower`, available under names such as `linux-tools-generic` (Ubuntu) in package repositories
 
 Due to how long some of these scripts take, if you are running them via SSH, you may want to use an utility such as `byobu`, `tmux`, or `screen`,

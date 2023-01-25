@@ -1,5 +1,5 @@
 All references in the code are to the Intel 82599 Data Sheet unless otherwise noted.
-It used to be publicly available but the link is dead, though you may have luck googling it.
+It used to be publicly available but the link is dead, though you may have luck looking it up.
 
 ### Interpretations
 
