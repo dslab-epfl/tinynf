@@ -21,7 +21,7 @@ internal ref struct SafeAgent
     private readonly Span<PacketData> _buffers;
     private readonly Span<Descriptor> _receiveRing;
     private readonly Memory<Descriptor>[] _transmitRings;
-    private readonly Span<uint> _receiveTailAddr;
+    private readonly ref uint _receiveTailAddr;
     private readonly Span<TransmitHead> _transmitHeads;
     private readonly Memory<uint>[] _transmitTailAddrs;
     private readonly Span<ulong> _outputs;
@@ -46,7 +46,7 @@ internal ref struct SafeAgent
         }
 
         _receiveRing = _transmitRings[0].Span;
-        _receiveTailAddr = inputDevice.SetInput(env, _receiveRing).Span;
+        _receiveTailAddr = ref inputDevice.SetInput(env, _receiveRing).Span[0];
 
         _transmitHeads = env.Allocate<TransmitHead>(outputDevices.Length).Span;
         _transmitTailAddrs = new Memory<uint>[outputDevices.Length];
@@ -99,7 +99,7 @@ internal ref struct SafeAgent
                     }
                 }
 
-                Volatile.Write(ref _receiveTailAddr[0], Endianness.ToLittle(earliestTransmitHead));
+                Volatile.Write(ref _receiveTailAddr, Endianness.ToLittle(earliestTransmitHead));
             }
         }
         if (n != 0)
