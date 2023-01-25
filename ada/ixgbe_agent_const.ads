@@ -12,7 +12,7 @@ package Ixgbe_Agent_Const is
 
   type Processor is not null access procedure(Data: not null access Packet_Data;
                                               Length: in Packet_Length;
-                                              Output_Lengths: not null access Packet_Outputs);
+                                              Output_Lengths: out Packet_Outputs);
 
   type Packet_Data_Array is array(Delimiter_Range) of aliased Packet_Data;
   type Descriptor_Ring_Array is array(Outputs_Range) of not null access Descriptor_Ring;
@@ -25,7 +25,7 @@ package Ixgbe_Agent_Const is
     Receive_Tail_Addr: Register_Access;
     Transmit_Heads: Transmit_Head_Access_Array;
     Transmit_Tail_Addrs: Transmit_Tail_Array;
-    Outputs: not null access Packet_Outputs;
+    Outputs: Packet_Outputs;
     Processed_Delimiter: Delimiter_Range;
   end record;
 

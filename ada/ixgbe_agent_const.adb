@@ -50,7 +50,7 @@ package body Ixgbe_Agent_Const is
             Receive_Tail_Addr => Ixgbe_Device.Set_Input(Input_Device, Rings(Outputs_Range'First)),
             Transmit_Heads => Transmit_Heads,
             Transmit_Tail_Addrs => Transmit_Tail_Addrs,
-            Outputs => Outputs.all'Unchecked_Access,
+            Outputs => Outputs.all,
             Processed_Delimiter => 0);
   end;
 
