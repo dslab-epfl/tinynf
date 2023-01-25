@@ -1,17 +1,47 @@
-with Ixgbe; use Ixgbe;
 with Ixgbe_Buffer_Pool; use Ixgbe_Buffer_Pool;
-with Ixgbe_Device; use Ixgbe_Device;
-with NF;
-
 with Ixgbe_Queues_Rx;
 with Ixgbe_Queues_Tx;
 
-package body NF_Queues is
-  procedure Run(Rx0: in out Queue_Rx;
-                Rx1: in out Queue_Rx;
-                Tx0: in out Queue_Tx;
-                Tx1: in out Queue_Tx) is
-    package Rx is new Ixgbe_Queues_Rx(Size => Batch_Size);
+package body Run is
+  procedure Handle(Data: not null access Packet_Data) is
+  begin
+    Data(0) := 0;
+    Data(1) := 0;
+    Data(2) := 0;
+    Data(3) := 0;
+    Data(4) := 0;
+    Data(5) := 1;
+    Data(6) := 0;
+    Data(7) := 0;
+    Data(8) := 0;
+    Data(9) := 0;
+    Data(10) := 0;
+    Data(11) := 0;
+  end;
+
+
+  procedure Run(Agent0: in out Agent.Agent;
+                Agent1: in out Agent.Agent) is
+    procedure Processor(Data: not null access Packet_Data;
+                        Length: in Packet_Length;
+                        Output_Lengths: not null access Agent.Packet_Outputs) is
+    begin
+      Handle(Data);
+      Output_Lengths(Agent.Outputs_Range'First) := Length;
+    end;
+  begin
+    loop
+      Agent.Run(Agent0, Processor'Access);
+      Agent.Run(Agent1, Processor'Access);
+    end loop;
+  end;
+
+  procedure Run_Queues(Rx0: in out Queue_Rx;
+                       Rx1: in out Queue_Rx;
+                       Tx0: in out Queue_Tx;
+                       Tx1: in out Queue_Tx)
+  is
+    package Rx is new Ixgbe_Queues_Rx(Size => 32);
     use Rx;
     Batch: Rx.B := (others => Fake_Buffer'Access);
     Nb_Rx: Rx.R_Full;
@@ -23,7 +53,7 @@ package body NF_Queues is
       begin
         Nb_Rx := Rx.Rx_Batch(Rx0, Batch);
         while N_Rx < Nb_Rx loop
-          NF.Handle(Batch(Rx.R(N_Rx)).Data);
+          Handle(Batch(Rx.R(N_Rx)).Data);
           N_Rx := N_Rx + 1;
         end loop;
         declare
@@ -48,7 +78,7 @@ package body NF_Queues is
       begin
         Nb_Rx := Rx.Rx_Batch(Rx1, Batch);
         while N_Rx < Nb_Rx loop
-          NF.Handle(Batch(Rx.R(N_Rx)).Data);
+          Handle(Batch(Rx.R(N_Rx)).Data);
           N_Rx := N_Rx + 1;
         end loop;
         declare
@@ -67,4 +97,4 @@ package body NF_Queues is
       end;
     end loop;
   end;
-end NF_Queues;
+end Run;

@@ -78,9 +78,9 @@ if ! TN_CSHARP_AOT=y make -C csharp >/dev/null 2>&1 ; then exit $? ; fi
 asm_csharp="$(asm_lines 'TinyNF_TinyNF_Program__Run' csharp/out/TinyNF 'C#')"
 asm_csharp_queues="$(asm_lines 'TinyNF_TinyNF_Program__RunQueues' csharp/out/TinyNF 'C#-queues')"
 
-# Ada also has both
+# Ada also has both; the name is very brittle though
 if ! make -C ada >/dev/null 2>&1 ; then exit $? ; fi
-asm_ada="$(asm_lines 'nf__run' 'ada/tinynf' 'Ada')"
+asm_ada="$(asm_lines 'main__B_1__B_2__netfunc__run.6' 'ada/tinynf' 'Ada')"
 asm_ada_queues="$(asm_lines 'nf_queues__run' 'ada/tinynf' 'Ada-queues')"
 
 printf '\t\tasm\n'
