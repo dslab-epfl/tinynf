@@ -11,6 +11,7 @@
 // "Pinned" here means "the virtual-to-physical mapping will never change", not just that it will always be in memory.
 // This allows the allocated memory's physical address to be given to a device for DMA.
 // No freeing, it's a research prototype anyway, and that makes life easier
+// TODO calloc shape instead
 void* tn_mem_allocate(size_t size);
 
 // Maps the region of physical address memory defined by (address, size) into virtual memory, or crashes.

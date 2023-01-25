@@ -12,7 +12,7 @@ struct ixgbe_queue_rx {
 	struct ixgbe_buffer* restrict* buffers; // kept in sync with ring
 	struct ixgbe_buffer_pool* pool;
 	volatile uint32_t* restrict receive_tail_addr;
-	uint8_t next; // TODO size_t? (also for tx)
+	uint8_t next;
 };
 
 static inline bool ixgbe_queue_rx_init(struct ixgbe_device* device, struct ixgbe_buffer_pool* pool, struct ixgbe_queue_rx* out_queue)

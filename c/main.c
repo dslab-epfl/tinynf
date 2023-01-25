@@ -66,7 +66,7 @@ static inline void packet_handler(volatile struct ixgbe_packet_data* restrict da
 
 #if TN_MODE == 0 || TN_MODE == 1
 
-static void agent_packet_handler(volatile struct ixgbe_packet_data* restrict packet, uint16_t packet_length, uint16_t* restrict outputs)
+static void agent_packet_handler(volatile struct ixgbe_packet_data* restrict packet, uint64_t packet_length, uint64_t* restrict outputs)
 {
 	packet_handler(packet);
 	// Output on opposite device

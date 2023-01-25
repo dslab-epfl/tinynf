@@ -14,7 +14,7 @@
 struct ixgbe_buffer {
 	volatile struct ixgbe_packet_data* data;
 	uintptr_t phys_addr;
-	uint16_t length;
+	uint64_t length;
 };
 
 struct ixgbe_buffer_pool {

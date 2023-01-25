@@ -24,10 +24,10 @@ struct ixgbe_agent {
 	volatile uint32_t* restrict receive_tail_addr;
 	volatile struct ixgbe_transmit_head* restrict transmit_heads;
 	volatile uint32_t* restrict* restrict transmit_tail_addrs;
-	uint16_t* restrict outputs;
-	size_t processed_delimiter;
+	uint64_t* restrict outputs;
+	uint8_t processed_delimiter;
 #ifndef IXGBE_AGENT_OUTPUTS_COUNT
-	size_t outputs_count;
+	uint8_t outputs_count;
 #endif
 };
 
@@ -52,7 +52,7 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 	out_agent->transmit_heads = tn_mem_allocate(outputs_count * sizeof(struct ixgbe_transmit_head));
 	out_agent->rings = tn_mem_allocate(outputs_count * sizeof(struct ixgbe_descriptor*));
 	out_agent->transmit_tail_addrs = tn_mem_allocate(outputs_count * sizeof(uint32_t*));
-	out_agent->outputs = tn_mem_allocate(outputs_count * sizeof(uint16_t));
+	out_agent->outputs = tn_mem_allocate(outputs_count * sizeof(uint64_t));
 
 	for (size_t r = 0; r < outputs_count; r++) {
 		out_agent->rings[r] = tn_mem_allocate(IXGBE_RING_SIZE * sizeof(struct ixgbe_descriptor));
@@ -86,7 +86,7 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t ou
 // High-level API
 // --------------
 
-typedef void ixgbe_packet_handler(volatile struct ixgbe_packet_data* restrict packet, uint16_t packet_length, uint16_t* restrict outputs);
+typedef void ixgbe_packet_handler(volatile struct ixgbe_packet_data* restrict packet, uint64_t packet_length, uint64_t* restrict outputs);
 
 __attribute__((always_inline)) static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler)
 {
@@ -104,7 +104,7 @@ __attribute__((always_inline)) static inline void ixgbe_run(struct ixgbe_agent* 
 		}
 
 		volatile struct ixgbe_packet_data* restrict packet = &(agent->buffers[agent->processed_delimiter]);
-		uint16_t packet_length = IXGBE_RX_METADATA_LENGTH(receive_metadata);
+		uint64_t packet_length = IXGBE_RX_METADATA_LENGTH(receive_metadata);
 		handler(packet, packet_length, agent->outputs);
 
 		uint64_t rs_bit = (agent->processed_delimiter % IXGBE_AGENT_RECYCLE_PERIOD) == (IXGBE_AGENT_RECYCLE_PERIOD - 1) ? IXGBE_TX_METADATA_RS : 0;

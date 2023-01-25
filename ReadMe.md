@@ -1,3 +1,5 @@
+-- WEIRD: This MUST be of size 64, otherwise the card locks up quickly (even the heatup in the benchmarks doesn't finish)
+
 # TinyNF
 
 This repository contains code originally associated with the paper ["A Simpler and Faster NIC Driver Model for Network Functions"](https://www.usenix.org/conference/osdi20/presentation/pirelli) (OSDI 2020).

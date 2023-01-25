@@ -59,12 +59,14 @@ internal sealed class Device
     public const int RingSize = 256;
 
     public const ulong RxMetadataDD = 1ul << 32;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ushort RxMetadataLength(ulong metadata) => (ushort)metadata;
 
     public const ulong TxMetadataEOP = 1ul << 24;
     public const ulong TxMetadataIFCS = 1ul << (24 + 1);
     public const ulong TxMetadataRS = 1ul << (24 + 3);
-    public static ulong TxMetadataLength(ulong length) => length;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong TxMetadataLength(ulong length) => (length & 0xFFFFul);
 
 
     private const uint FiveTupleFiltersCount = 128u;

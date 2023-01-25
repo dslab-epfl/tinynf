@@ -64,7 +64,7 @@ pub const RX_METADATA_DD: u64 = 1 << 32;
 
 #[allow(non_snake_case)] // same
 pub fn TX_METADATA_LENGTH(meta: u64) -> u64 {
-    meta
+    meta & 0xFFFF
 }
 pub const TX_METADATA_EOP: u64 = 1 << 24;
 pub const TX_METADATA_IFCS: u64 = 1 << (24 + 1);

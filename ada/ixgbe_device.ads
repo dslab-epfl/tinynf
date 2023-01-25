@@ -49,7 +49,6 @@ package Ixgbe_Device is
   Traffic_Classes_Count: constant := 8;
   Unicast_Table_Array_Size: constant := 4 * 1024;
 
-  -- WEIRD: This MUST be of size 64, otherwise the card locks up quickly (even the heatup in the benchmarks doesn't finish)
   type Packet_Length is mod 2 ** 16 with Size => 64;
 
   -- This seems to be necessary to not generate any checks when truncating the 16-bit length from the rest of the metadata...
