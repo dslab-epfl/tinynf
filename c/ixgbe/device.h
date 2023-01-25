@@ -173,7 +173,7 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	// "Prior to issuing software reset, the driver needs to execute the master disable algorithm as defined in Section 5.2.5.3.2."
 	//   Section 5.2.5.3.2 Master Disable:
 	//   "The device driver disables any reception to the Rx queues as described in Section 4.6.7.1"
-	for (size_t queue = 0; queue < RECEIVE_QUEUES_COUNT; queue++) {
+	for (uint32_t queue = 0; queue < RECEIVE_QUEUES_COUNT; queue++) {
 		// Section 4.6.7.1.2 [Dynamic] Disabling [of Receive Queues]
 		// "Disable the queue by clearing the RXDCTL.ENABLE bit."
 		reg_clear_field(out_device->addr, REG_RXDCTL(queue), REG_RXDCTL_ENABLE);
@@ -239,7 +239,7 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	//	"Writing a 1b to any bit clears its corresponding bit in the EIMS register disabling the corresponding interrupt in the EICR register. Writing 0b has no impact"
 	//	Note that the first register has its bit 31 reserved.
 	reg_write(out_device->addr, REG_EIMC(0), 0x7FFFFFFFu);
-	for (size_t n = 1; n < INTERRUPT_REGISTERS_COUNT; n++) {
+	for (uint32_t n = 1; n < INTERRUPT_REGISTERS_COUNT; n++) {
 		reg_write(out_device->addr, REG_EIMC(n), 0xFFFFFFFFu);
 	}
 	//	"To enable flow control, program the FCTTV, FCRTL, FCRTH, FCRTV and FCCFG registers.
@@ -328,7 +328,7 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	// INTERPRETATION-MISSING: While the spec appears to mention PFVLVF only in conjunction with VLNCTRL.VFE being enabled, let's be conservative and initialize them anyway.
 	// 	Section 8.2.3.27.15 PF VM VLAN Pool Filter (PFVLVF[n]):
 	//		"Software should initialize these registers before transmit and receive are enabled."
-	for (size_t n = 0; n < POOLS_COUNT; n++) {
+	for (uint32_t n = 0; n < POOLS_COUNT; n++) {
 		reg_clear(out_device->addr, REG_PFVLVF(n));
 	}
 	//	"- MAC Pool Select Array (MPSAR[n])."
@@ -340,13 +340,13 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	//		 Bit 'i' in register '2*n+1' is associated with POOL '32+i'."
 	// INTERPRETATION-MISSING: We should enable pool 0 with address 0 and disable everything else since we only have 1 MAC address.
 	reg_write(out_device->addr, REG_MPSAR(0), 1);
-	for (size_t n = 1; n < RECEIVE_ADDRS_COUNT * 2; n++) {
+	for (uint32_t n = 1; n < RECEIVE_ADDRS_COUNT * 2; n++) {
 		reg_clear(out_device->addr, REG_MPSAR(n));
 	}
 	//	"- VLAN Pool Filter Bitmap (PFVLVFB[n])."
 	// INTERPRETATION-MISSING: See above remark on PFVLVF
 	//	Section 8.2.3.27.16: PF VM VLAN Pool Filter Bitmap
-	for (size_t n = 0; n < POOLS_COUNT * 2; n++) {
+	for (uint32_t n = 0; n < POOLS_COUNT * 2; n++) {
 		reg_clear(out_device->addr, REG_PFVLVFB(n));
 	}
 	//	"Set up the Multicast Table Array (MTA) registers.
@@ -404,7 +404,7 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	//              "Mask, bits 29:25: Mask bits for the 5-tuple fields (1b = don't compare)."
 	//		"Queue Enable, bit 31; When set, enables filtering of Rx packets by the 5-tuple defined in this filter to the queue indicated in register L34TIMIR."
 	// We clear Queue Enable. We then do not need to deal with SAQF, DAQF, SDPQF, SYNQF, by assumption NOWANT
-	for (size_t n = 0; n < FIVETUPLE_FILTERS_COUNT; n++) {
+	for (uint32_t n = 0; n < FIVETUPLE_FILTERS_COUNT; n++) {
 		reg_clear_field(out_device->addr, REG_FTQF(n), REG_FTQF_QUEUE_ENABLE);
 	}
 	//	Section 7.1.2.3 L2 Ethertype Filters:
@@ -438,7 +438,7 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	//			"SIZE, Init val 0x200"
 	//			"The default size of PB[1-7] is also 512 KB but it is meaningless in non-DCB mode."
 	// INTERPRETATION-CONTRADICTION: We're told to clear PB[1-7] but also that it's meaningless. Let's clear it just in case...
-	for (size_t n = 1; n < TRAFFIC_CLASSES_COUNT; n++) {
+	for (uint32_t n = 1; n < TRAFFIC_CLASSES_COUNT; n++) {
 		reg_clear(out_device->addr, REG_RXPBSIZE(n));
 	}
 	//		"- MRQC"
@@ -464,7 +464,7 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	reg_write_field(out_device->addr, REG_FCCFG, REG_FCCFG_TFCE, 1);
 	//		"Reset all arbiters:"
 	//		"- Clear RTTDT1C register, per each queue, via setting RTTDQSEL first"
-	for (size_t n = 0; n < TRANSMIT_QUEUES_COUNT; n++) {
+	for (uint32_t n = 0; n < TRANSMIT_QUEUES_COUNT; n++) {
 		reg_write(out_device->addr, REG_RTTDQSEL, n);
 		reg_clear(out_device->addr, REG_RTTDT1C);
 	}
@@ -532,7 +532,7 @@ static inline bool ixgbe_device_init(struct tn_pci_address pci_address, struct i
 	//				"SIZE, Init val 0xA0"
 	//				"At default setting (no DCB) only packet buffer 0 is enabled and TXPBSIZE values for TC 1-7 are meaningless."
 	// INTERPRETATION-CONTRADICTION: We're both told to clear TXPBSIZE[1-7] and that it's meaningless. Let's clear it to be safe.
-	for (size_t n = 1; n < TRAFFIC_CLASSES_COUNT; n++) {
+	for (uint32_t n = 1; n < TRAFFIC_CLASSES_COUNT; n++) {
 		reg_clear(out_device->addr, REG_TXPBSIZE(n));
 	}
 	//			"- TXPBTHRESH.THRESH[0]=0xA0 - Maximum expected Tx packet length in this TC TXPBTHRESH.THRESH[1-7]=0x0"

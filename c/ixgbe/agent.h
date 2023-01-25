@@ -31,7 +31,7 @@ struct ixgbe_agent {
 #endif
 };
 
-static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, size_t outputs_count, struct ixgbe_device* output_devices, struct ixgbe_agent* out_agent)
+static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, uint8_t outputs_count, struct ixgbe_device* output_devices, struct ixgbe_agent* out_agent)
 {
 #ifdef IXGBE_AGENT_OUTPUTS_COUNT
 	// just so we don't have to change the signature
