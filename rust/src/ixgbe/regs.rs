@@ -2,17 +2,9 @@
 #![allow(clippy::eq_op)]
 #![allow(clippy::erasing_op)]
 
-// TODO move the /4 to match the C code for indexed regs
-// TODO reorder to match the C code
-
 use crate::lifed::LifedSlice;
 
 // Regs are usize so they can index a slice without ceremony
-
-// Registers are split into general-purpose, RX, and TX, so that we can split the device address space
-// Thankfully RX/TX spaces are contiguous, otherwise this would be a huuuuge pain
-
-// --- General ---
 
 pub const CTRL: usize = 0x00000 / 4;
 pub mod CTRL_ {
@@ -23,6 +15,20 @@ pub mod CTRL_ {
 pub const CTRLEXT: usize = 0x00018 / 4;
 pub mod CTRLEXT_ {
     pub const NSDIS: u32 = 1 << 16;
+}
+
+pub const fn DCARXCTRL(n: usize) -> usize {
+    if n <= 63 { 0x0100C / 4 + 0x10 * n } else { 0x0D00C + 0x40 * (n - 64) }
+}
+pub mod DCARXCTRL_ {
+    pub const UNKNOWN: u32 = 1 << 12;
+}
+
+pub const fn DCATXCTRL(n: usize) -> usize {
+    0x0600C / 4 + 0x10 * n
+}
+pub mod DCATXCTRL_ {
+    pub const TX_DESC_WB_RO_EN: u32 = 1 << 11;
 }
 
 pub const DMATXCTL: usize = 0x04A80 / 4;
@@ -42,7 +48,7 @@ pub mod EEC_ {
 }
 
 pub const fn EIMC(n: usize) -> usize {
-    (if n == 0 { 0x00888 } else { 0x00AB0 + 4 * (n - 1) }) / 4
+    if n == 0 { 0x00888 / 4 } else { 0x00AB0 / 4 + (n - 1) }
 }
 
 pub const FCCFG: usize = 0x03D00 / 4;
@@ -64,7 +70,7 @@ pub mod FCTRL_ {
 }
 
 pub const fn FTQF(n: usize) -> usize {
-    (0x0E600 + 4 * n) / 4
+    0x0E600 / 4 + n
 }
 pub mod FTQF_ {
     pub const QUEUE_ENABLE: u32 = 1 << 31;
@@ -91,23 +97,23 @@ pub mod MFLCN_ {
 }
 
 pub const fn MPSAR(n: usize) -> usize {
-    (0x0A600 + 4 * n) / 4
+    0x0A600 / 4 + n
 }
 
 pub const fn MTA(n: usize) -> usize {
-    (0x05200 + 4 * n) / 4
+    0x05200 / 4 + n
 }
 
 pub const fn PFUTA(n: usize) -> usize {
-    (0x0F400 + 4 * n) / 4
+    0x0F400 / 4 + n
 }
 
 pub const fn PFVLVF(n: usize) -> usize {
-    (0x0F100 + 4 * n) / 4
+    0x0F100 / 4 + n
 }
 
 pub const fn PFVLVFB(n: usize) -> usize {
-    (0x0F200 + 4 * n) / 4
+    0x0F200 / 4 + n
 }
 
 pub const RDRXCTL: usize = 0x02F00 / 4;
@@ -134,7 +140,7 @@ pub mod RXCTRL_ {
 }
 
 pub const fn RXPBSIZE(n: usize) -> usize {
-    (0x03C00 + 4 * n) / 4
+    0x03C00 / 4 + n
 }
 
 pub const SECRXCTRL: usize = 0x08D00 / 4;
@@ -147,103 +153,86 @@ pub mod SECRXSTAT_ {
     pub const SECRX_RDY: u32 = 1 << 0;
 }
 
-pub const STATUS: usize = 0x00008 / 4;
-pub mod STATUS_ {
-    pub const PCIE_MASTER_ENABLE_STATUS: u32 = 1 << 19;
-}
-
-pub const fn TXPBSIZE(n: usize) -> usize {
-    (0x0CC00 + 4 * n) / 4
-}
-
-pub const fn TXPBTHRESH(n: usize) -> usize {
-    (0x04950 + 4 * n) / 4
-}
-pub mod TXPBTHRESH_ {
-    pub const THRESH: u32 = 0b11_1111_1111;
-}
-
-// --- RX ---
-
-pub const fn RDBAL(n: usize) -> usize {
-    (if n <= 63 { 0x01000 + 0x40 * n } else { 0x0D000 + 0x40 * (n - 64) }) / 4
-}
-
-pub const fn RDBAH(n: usize) -> usize {
-    (if n <= 63 { 0x01004 + 0x40 * n } else { 0x0D004 + 0x40 * (n - 64) }) / 4
-}
-
-pub const fn RDLEN(n: usize) -> usize {
-    (if n <= 63 { 0x01008 + 0x40 * n } else { 0x0D008 + 0x40 * (n - 64) }) / 4
-}
-
-pub const fn RDT(n: usize) -> usize {
-    (if n <= 63 { 0x01018 + 0x40 * n } else { 0x0D018 + 0x40 * (n - 64) }) / 4
-}
-
-pub const fn RXDCTL(n: usize) -> usize {
-    (if n <= 63 { 0x01028 + 0x40 * n } else { 0x0D028 + 0x40 * (n - 64) }) / 4
-}
-pub mod RXDCTL_ {
-    pub const ENABLE: u32 = 1 << 25;
-}
-
 pub const fn SRRCTL(n: usize) -> usize {
-    (if n <= 63 { 0x01014 + 0x40 * n } else { 0x0D014 + 0x40 * (n - 64) }) / 4
+    if n <= 63 { 0x01014 / 4 + 0x10 * n } else { 0x0D014 / 4 + 0x10 * (n - 64) }
 }
 pub mod SRRCTL_ {
     pub const BSIZEPACKET: u32 = 0b0001_1111;
     pub const DROP_EN: u32 = 1 << 28;
 }
 
-pub const fn DCARXCTRL(n: usize) -> usize {
-    (if n <= 63 { 0x0100C + 0x40 * n } else { 0x0D00C + 0x40 * (n - 64) }) / 4
-}
-pub mod DCARXCTRL_ {
-    pub const UNKNOWN: u32 = 1 << 12; // This bit is reserved, has no name, but must be used anyway
+pub const STATUS: usize = 0x00008 / 4;
+pub mod STATUS_ {
+    pub const PCIE_MASTER_ENABLE_STATUS: u32 = 1 << 19;
 }
 
-// --- TX ---
-
-pub const fn DCATXCTRL(n: usize) -> usize {
-    (0x0600C + 0x40 * n) / 4
+pub const fn RDBAL(n: usize) -> usize {
+    if n <= 63 { 0x01000 / 4 + 0x10 * n } else { 0x0D000 / 4 + 0x10 * (n - 64) }
 }
-pub mod DCATXCTRL_ {
-    pub const TX_DESC_WB_RO_EN: u32 = 1 << 11;
+
+pub const fn RDBAH(n: usize) -> usize {
+    if n <= 63 { 0x01004 / 4 + 0x10 * n } else { 0x0D004 / 4 + 0x10 * (n - 64) }
+}
+
+pub const fn RDLEN(n: usize) -> usize {
+    if n <= 63 { 0x01008 / 4 + 0x10 * n } else { 0x0D008 / 4 + 0x10 * (n - 64) }
+}
+
+pub const fn RDT(n: usize) -> usize {
+    if n <= 63 { 0x01018 / 4 + 0x10 * n } else { 0x0D018 / 4 + 0x10 * (n - 64) }
+}
+
+pub const fn RXDCTL(n: usize) -> usize {
+    if n <= 63 { 0x01028 / 4 + 0x10 * n } else { 0x0D028 / 4 + 0x10 * (n - 64) }
+}
+pub mod RXDCTL_ {
+    pub const ENABLE: u32 = 1 << 25;
 }
 
 pub const fn TDBAH(n: usize) -> usize {
-    (0x06004 + 0x40 * n) / 4
+    0x06004 / 4 + 0x10 * n
 }
 
 pub const fn TDBAL(n: usize) -> usize {
-    (0x06000 + 0x40 * n) / 4
+    0x06000 / 4 + 0x10 * n
 }
 
 pub const fn TDLEN(n: usize) -> usize {
-    (0x06008 + 0x40 * n) / 4
+    0x06008 / 4 + 0x10 * n
 }
 
 pub const fn TDT(n: usize) -> usize {
-    (0x06018 + 0x40 * n) / 4
+    0x06018 / 4 + 0x10 * n
 }
 
 pub const fn TDWBAH(n: usize) -> usize {
-    (0x0603C + 0x40 * n) / 4
+    0x0603C / 4 + 0x10 * n
 }
 
 pub const fn TDWBAL(n: usize) -> usize {
-    (0x06038 + 0x40 * n) / 4
+    0x06038 / 4 + 0x10 * n
 }
 
 pub const fn TXDCTL(n: usize) -> usize {
-    (0x06028 + 0x40 * n) / 4
+    0x06028 / 4 + 0x10 * n
 }
 pub mod TXDCTL_ {
     pub const PTHRESH: u32 = 0b0111_1111;
     pub const HTHRESH: u32 = 0b0111_1111_0000_0000;
     pub const ENABLE: u32 = 1 << 25;
 }
+
+pub const fn TXPBSIZE(n: usize) -> usize {
+    0x0CC00 / 4 + n
+}
+
+pub const fn TXPBTHRESH(n: usize) -> usize {
+    0x04950 / 4 + n
+}
+pub mod TXPBTHRESH_ {
+    pub const THRESH: u32 = 0b11_1111_1111;
+}
+
 
 pub fn read(buffer: LifedSlice<'_, u32>, reg: usize) -> u32 {
     u32::from_le(buffer.index(reg).read_volatile())
