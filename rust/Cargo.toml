@@ -8,9 +8,9 @@ constgenerics = []
 queues = []
 
 [dependencies]
-libc = "0.2.119"
+libc = "0.2.139"
 memmap = "0.7.0"
-x86_64 = { version = "0.14.8", default-features = false, features = ["instructions", "external_asm"] }
+x86_64 = { version = "0.14.10", default-features = false, features = ["instructions", "external_asm"] }
 
 [profile.release]
 lto = true
