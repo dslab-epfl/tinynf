@@ -21,8 +21,9 @@ internal ref struct QueueRx
 
         for (int n = 0; n < _ring.Length; n++)
         {
-            ref var buffer = ref pool.Take(out bool valid);
-            if (!valid)
+            ref var buffer = ref pool.Take();
+            // this is safe despite the name, see https://github.com/dotnet/runtime/issues/41418
+            if (System.Runtime.CompilerServices.Unsafe.AreSame(ref buffer, ref Buffer.Fake))
             {
                 throw new Exception("Could not get a buffer to initialize the RX queue");
             }
@@ -49,8 +50,9 @@ internal ref struct QueueRx
                 break;
             }
 
-            ref var newBuffer = ref _pool.Take(out bool valid);
-            if (!valid)
+            ref var newBuffer = ref _pool.Take();
+            // this is safe despite the name, see https://github.com/dotnet/runtime/issues/41418
+            if (System.Runtime.CompilerServices.Unsafe.AreSame(ref newBuffer, ref Buffer.Fake))
             {
                 break;
             }
