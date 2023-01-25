@@ -18,22 +18,22 @@ internal ref struct SafeAgent
     private const uint FlushPeriod = 8;
     private const uint RecyclePeriod = 64;
 
-    private readonly Span<PacketData> _packets;
+    private readonly Span<PacketData> _buffers;
     private readonly Span<Descriptor> _receiveRing;
     private readonly Memory<Descriptor>[] _transmitRings;
-    private readonly Span<uint> _receiveTail;
+    private readonly Span<uint> _receiveTailAddr;
     private readonly Span<TransmitHead> _transmitHeads;
-    private readonly Memory<uint>[] _transmitTails;
+    private readonly Memory<uint>[] _transmitTailAddrs;
     private readonly Span<ulong> _outputs;
-    private byte _processDelimiter;
+    private byte _processedDelimiter;
 
 
     public SafeAgent(IEnvironment env, Device inputDevice, Device[] outputDevices)
     {
-        _processDelimiter = 0;
+        _processedDelimiter = 0;
         _outputs = env.Allocate<ulong>(outputDevices.Length).Span;
 
-        _packets = env.Allocate<PacketData>(Device.RingSize).Span;
+        _buffers = env.Allocate<PacketData>(Device.RingSize).Span;
 
         _transmitRings = new Memory<Descriptor>[outputDevices.Length];
         for (int n = 0; n < _transmitRings.Length; n++)
@@ -41,18 +41,18 @@ internal ref struct SafeAgent
             _transmitRings[n] = env.Allocate<Descriptor>(Device.RingSize);
             for (int m = 0; m < _transmitRings[n].Length; m++)
             {
-                _transmitRings[n].Span[m].Addr = Endianness.ToLittle(env.GetPhysicalAddress(ref _packets[m]));
+                _transmitRings[n].Span[m].Addr = Endianness.ToLittle(env.GetPhysicalAddress(ref _buffers[m]));
             }
         }
 
         _receiveRing = _transmitRings[0].Span;
-        _receiveTail = inputDevice.SetInput(env, _receiveRing).Span;
+        _receiveTailAddr = inputDevice.SetInput(env, _receiveRing).Span;
 
         _transmitHeads = env.Allocate<TransmitHead>(outputDevices.Length).Span;
-        _transmitTails = new Memory<uint>[outputDevices.Length];
+        _transmitTailAddrs = new Memory<uint>[outputDevices.Length];
         for (byte n = 0; n < outputDevices.Length; n++)
         {
-            _transmitTails[n] = outputDevices[n].AddOutput(env, _transmitRings[n].Span, ref _transmitHeads[n]);
+            _transmitTailAddrs[n] = outputDevices[n].AddOutput(env, _transmitRings[n].Span, ref _transmitHeads[n]);
         }
     }
 
@@ -62,36 +62,36 @@ internal ref struct SafeAgent
         nint n;
         for (n = 0; n < FlushPeriod; n++)
         {
-            ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _receiveRing[_processDelimiter].Metadata));
+            ulong receiveMetadata = Endianness.FromLittle(Volatile.Read(ref _receiveRing[_processedDelimiter].Metadata));
             if ((receiveMetadata & Device.RxMetadataDD) == 0)
             {
                 break;
             }
 
             ulong length = Device.RxMetadataLength(receiveMetadata);
-            T.Process(ref _packets[_processDelimiter], length, _outputs);
+            T.Process(ref _buffers[_processedDelimiter], length, _outputs);
 
-            ulong rsBit = ((_processDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? Device.TxMetadataRS : 0;
+            ulong rsBit = ((_processedDelimiter % RecyclePeriod) == (RecyclePeriod - 1)) ? Device.TxMetadataRS : 0;
             var transmitRings = _transmitRings;
             for (int r = 0; r < transmitRings.Length; r++)
             {
                 Volatile.Write(
-                    ref transmitRings[r].Span[_processDelimiter].Metadata,
+                    ref transmitRings[r].Span[_processedDelimiter].Metadata,
                     Endianness.ToLittle(Device.TxMetadataLength(_outputs[r]) | rsBit | Device.TxMetadataIFCS | Device.TxMetadataEOP)
                 );
                 _outputs[r] = 0;
             }
 
-            _processDelimiter++;
+            _processedDelimiter++;
 
             if (rsBit != 0)
             {
-                uint earliestTransmitHead = _processDelimiter;
+                uint earliestTransmitHead = _processedDelimiter;
                 ulong minDiff = ulong.MaxValue;
                 foreach (ref var headRef in _transmitHeads)
                 {
                     uint head = Endianness.FromLittle(Volatile.Read(ref headRef.Value));
-                    ulong diff = head - _processDelimiter;
+                    ulong diff = head - _processedDelimiter;
                     if (diff <= minDiff)
                     {
                         earliestTransmitHead = head;
@@ -99,14 +99,14 @@ internal ref struct SafeAgent
                     }
                 }
 
-                Volatile.Write(ref _receiveTail[0], Endianness.ToLittle(earliestTransmitHead));
+                Volatile.Write(ref _receiveTailAddr[0], Endianness.ToLittle(earliestTransmitHead));
             }
         }
         if (n != 0)
         {
-            foreach (var tail in _transmitTails)
+            foreach (var tail in _transmitTailAddrs)
             {
-                Volatile.Write(ref tail.Span[0], Endianness.ToLittle(_processDelimiter));
+                Volatile.Write(ref tail.Span[0], Endianness.ToLittle(_processedDelimiter));
             }
         }
     }

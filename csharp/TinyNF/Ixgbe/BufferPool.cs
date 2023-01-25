@@ -64,7 +64,8 @@ internal struct BufferPool
     // OVERHEAD: .NET has no concept of zero-overhead option of pointer like Rust,
     // so we pass an extra bool, and we need a ref to something in case the ref is "invalid"
     // (i.e., it should still be safe to deref, just not the correct thing to do in terms of functional correctness)
-    // Hopefully inlining takes care of this (but we cannot rely on it)
+    // Hopefully inlining takes care of this (but it's not guaranteed)
+    // TODO: instead make the contract about returning ret Buffer.Fake?
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref Buffer Take(out bool valid)
     {
