@@ -42,7 +42,7 @@ TN_CFLAGS += -fno-if-conversion -fno-if-conversion2
 endif
 
 # Files
-TN_FILES := $(TN_DIR)/tinynf.c
+TN_FILES := $(TN_DIR)/main.c
 TN_FILES += $(shell echo $(TN_ENV)/*.c)
 
 # Compiler args

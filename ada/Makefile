@@ -13,8 +13,8 @@ TN_CFLAGS += -cargs -ffunction-sections -fdata-sections -largs -Wl,--gc-sections
 
 # Always clean, just in case
 build:
-	@gnatclean $(APP)
-	@gnatmake $(APP) $(TN_CFLAGS)
+	@gnatclean main
+	@gnatmake -o $(APP) main $(TN_CFLAGS)
 
 # -nM is "names mixed case" and -M is max line length
 format:

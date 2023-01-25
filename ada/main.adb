@@ -18,7 +18,7 @@ with Ixgbe_Buffer_Pool; use Ixgbe_Buffer_Pool;
 with Ixgbe_Device; use Ixgbe_Device;
 with Ixgbe_Queues; use Ixgbe_Queues;
 
-procedure TinyNF is
+procedure Main is
 begin
   if Ada.Command_Line.Argument_Count /= 3 then
     Text_IO.Put_Line("Bad number of args, expected 3, first is TN_MODE");
@@ -72,4 +72,4 @@ begin
 
     end if;
   end;
-end TinyNF;
+end Main;
