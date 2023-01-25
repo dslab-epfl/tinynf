@@ -26,7 +26,6 @@ package body Ixgbe_Agent is
 
     function Allocate_Outputs is new Environment.Allocate(T => Packet_Length, R => Outputs_Range, T_Array => Packet_Outputs);
     Outputs: not null access Packet_Outputs := Allocate_Outputs;
---    Outputs: Packet_Outputs := (others => Packet_Length(0));
   begin
     -- no idea why the .all'unchecked are needed but just like in Device it raises an access error otherwise
 
