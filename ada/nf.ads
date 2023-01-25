@@ -2,7 +2,7 @@ with Ixgbe_Device; use Ixgbe_Device;
 with Ixgbe_Agent;
 
 package NF is
-  procedure Handle_Data(Data: not null access Packet_Data) with Inline_Always;
+  procedure Handle(Data: not null access Packet_Data) with Inline_Always;
 
   procedure Processor(Data: not null access Packet_Data;
                       Length: in Packet_Length;

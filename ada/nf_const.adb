@@ -5,7 +5,7 @@ package body NF_Const is
                       Length: in Packet_Length;
                       Output_Lengths: not null access Agent.Packet_Outputs) is
   begin
-    NF.Handle_Data(Data);
+    NF.Handle(Data);
     Output_Lengths(Outputs_Range'First) := Length;
   end;
 

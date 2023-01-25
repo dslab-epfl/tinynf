@@ -170,7 +170,7 @@ package body Ixgbe_Device is
       Regs.Clear(Buffer, Regs.TXPBSIZE(N));
     end loop;
 
-    Regs.Write_Field(Buffer, Regs.TXPBTHRESH(0), Regs.TXPBTHRESH_THRESH, 16#A0# - (Packet_Buffer_Size / 1024));
+    Regs.Write_Field(Buffer, Regs.TXPBTHRESH(0), Regs.TXPBTHRESH_THRESH, 16#A0# - (Packet_Data_Size / 1024));
 
     Regs.Write_Field(Buffer, Regs.DTXMXSZRQ, Regs.DTXMXSZRQ_MAX_BYTES_NUM_REQ, 16#FFF#);
 
@@ -210,7 +210,7 @@ package body Ixgbe_Device is
 
     Regs.Write(Dev.Buffer, Regs.RDLEN(Queue_Index), Ring_Size * 16);
 
-    Regs.Write_Field(Dev.Buffer, Regs.SRRCTL(Queue_Index), Regs.SRRCTL_BSIZEPACKET, Packet_Buffer_Size / 1024);
+    Regs.Write_Field(Dev.Buffer, Regs.SRRCTL(Queue_Index), Regs.SRRCTL_BSIZEPACKET, Packet_Data_Size / 1024);
 
     Regs.Set_Field(Dev.Buffer, Regs.SRRCTL(Queue_Index), Regs.SRRCTL_DROP_EN);
 

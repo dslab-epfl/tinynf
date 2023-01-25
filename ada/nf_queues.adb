@@ -23,7 +23,7 @@ package body NF_Queues is
       begin
         Nb_Rx := Rx.Rx_Batch(Rx0, Batch);
         while N_Rx < Nb_Rx loop
-          NF.Handle_Data(Batch(Rx.R(N_Rx)).Data);
+          NF.Handle(Batch(Rx.R(N_Rx)).Data);
           N_Rx := N_Rx + 1;
         end loop;
         declare
@@ -48,7 +48,7 @@ package body NF_Queues is
       begin
         Nb_Rx := Rx.Rx_Batch(Rx1, Batch);
         while N_Rx < Nb_Rx loop
-          NF.Handle_Data(Batch(Rx.R(N_Rx)).Data);
+          NF.Handle(Batch(Rx.R(N_Rx)).Data);
           N_Rx := N_Rx + 1;
         end loop;
         declare

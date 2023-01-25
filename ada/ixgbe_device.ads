@@ -19,9 +19,9 @@ package Ixgbe_Device is
     with Pack,
          Volatile;
 
-  Packet_Buffer_Size: constant := 2 ** 11;
-  type Packet_Buffer_Length is mod Packet_Buffer_Size;
-  type Packet_Data is array(Packet_Buffer_Length) of Interfaces.Unsigned_8
+  Packet_Data_Size: constant := 2 ** 11;
+  type Packet_Data_Length is mod Packet_Data_Size;
+  type Packet_Data is array(Packet_Data_Length) of Interfaces.Unsigned_8
        with Volatile;
 
   type Transmit_Head is record
