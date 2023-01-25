@@ -18,7 +18,11 @@ pub mod CTRLEXT_ {
 }
 
 pub const fn DCARXCTRL(n: usize) -> usize {
-    if n <= 63 { 0x0100C / 4 + 0x10 * n } else { 0x0D00C + 0x40 * (n - 64) }
+    if n <= 63 {
+        0x0100C / 4 + 0x10 * n
+    } else {
+        0x0D00C + 0x40 * (n - 64)
+    }
 }
 pub mod DCARXCTRL_ {
     pub const UNKNOWN: u32 = 1 << 12;
@@ -48,7 +52,11 @@ pub mod EEC_ {
 }
 
 pub const fn EIMC(n: usize) -> usize {
-    if n == 0 { 0x00888 / 4 } else { 0x00AB0 / 4 + (n - 1) }
+    if n == 0 {
+        0x00888 / 4
+    } else {
+        0x00AB0 / 4 + (n - 1)
+    }
 }
 
 pub const FCCFG: usize = 0x03D00 / 4;
@@ -154,7 +162,11 @@ pub mod SECRXSTAT_ {
 }
 
 pub const fn SRRCTL(n: usize) -> usize {
-    if n <= 63 { 0x01014 / 4 + 0x10 * n } else { 0x0D014 / 4 + 0x10 * (n - 64) }
+    if n <= 63 {
+        0x01014 / 4 + 0x10 * n
+    } else {
+        0x0D014 / 4 + 0x10 * (n - 64)
+    }
 }
 pub mod SRRCTL_ {
     pub const BSIZEPACKET: u32 = 0b0001_1111;
@@ -167,23 +179,43 @@ pub mod STATUS_ {
 }
 
 pub const fn RDBAL(n: usize) -> usize {
-    if n <= 63 { 0x01000 / 4 + 0x10 * n } else { 0x0D000 / 4 + 0x10 * (n - 64) }
+    if n <= 63 {
+        0x01000 / 4 + 0x10 * n
+    } else {
+        0x0D000 / 4 + 0x10 * (n - 64)
+    }
 }
 
 pub const fn RDBAH(n: usize) -> usize {
-    if n <= 63 { 0x01004 / 4 + 0x10 * n } else { 0x0D004 / 4 + 0x10 * (n - 64) }
+    if n <= 63 {
+        0x01004 / 4 + 0x10 * n
+    } else {
+        0x0D004 / 4 + 0x10 * (n - 64)
+    }
 }
 
 pub const fn RDLEN(n: usize) -> usize {
-    if n <= 63 { 0x01008 / 4 + 0x10 * n } else { 0x0D008 / 4 + 0x10 * (n - 64) }
+    if n <= 63 {
+        0x01008 / 4 + 0x10 * n
+    } else {
+        0x0D008 / 4 + 0x10 * (n - 64)
+    }
 }
 
 pub const fn RDT(n: usize) -> usize {
-    if n <= 63 { 0x01018 / 4 + 0x10 * n } else { 0x0D018 / 4 + 0x10 * (n - 64) }
+    if n <= 63 {
+        0x01018 / 4 + 0x10 * n
+    } else {
+        0x0D018 / 4 + 0x10 * (n - 64)
+    }
 }
 
 pub const fn RXDCTL(n: usize) -> usize {
-    if n <= 63 { 0x01028 / 4 + 0x10 * n } else { 0x0D028 / 4 + 0x10 * (n - 64) }
+    if n <= 63 {
+        0x01028 / 4 + 0x10 * n
+    } else {
+        0x0D028 / 4 + 0x10 * (n - 64)
+    }
 }
 pub mod RXDCTL_ {
     pub const ENABLE: u32 = 1 << 25;
@@ -232,7 +264,6 @@ pub const fn TXPBTHRESH(n: usize) -> usize {
 pub mod TXPBTHRESH_ {
     pub const THRESH: u32 = 0b11_1111_1111;
 }
-
 
 pub fn read(buffer: LifedSlice<'_, u32>, reg: usize) -> u32 {
     u32::from_le(buffer.index(reg).read_volatile())

@@ -5,10 +5,9 @@
 #![warn(unused)]
 
 mod env;
-use env::{Environment, LinuxEnvironment};
-
-mod pci;
-use pci::PciAddress;
+use env::environment::Environment;
+use env::linux::LinuxEnvironment;
+use env::pci::PciAddress;
 
 mod lifed;
 use lifed::LifedPtr;

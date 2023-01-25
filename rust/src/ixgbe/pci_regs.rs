@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
-use crate::env::Environment;
-use crate::pci::PciAddress;
+use crate::env::environment::Environment;
+use crate::env::pci::PciAddress;
 
 pub const BAR0_LOW: u8 = 0x10;
 pub const BAR0_HIGH: u8 = 0x14;

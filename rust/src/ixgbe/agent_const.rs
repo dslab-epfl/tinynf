@@ -1,4 +1,4 @@
-use crate::env::Environment;
+use crate::env::environment::Environment;
 use crate::lifed::{LifedArray, LifedPtr};
 
 use super::device::{Descriptor, Device, PacketData, TransmitHead, RING_SIZE, RX_METADATA_DD, RX_METADATA_LENGTH, TX_METADATA_EOP, TX_METADATA_IFCS, TX_METADATA_LENGTH, TX_METADATA_RS};

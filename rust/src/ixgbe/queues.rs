@@ -1,4 +1,4 @@
-use crate::env::Environment;
+use crate::env::environment::Environment;
 use crate::lifed::{LifedArray, LifedPtr};
 
 use super::buffer_pool::{Buffer, BufferPool};

@@ -8,57 +8,8 @@ use std::slice;
 use std::thread;
 use std::time::Duration;
 
-use x86_64::instructions::port::Port;
-
-use crate::pci::PciAddress;
-
-// TODO split this file into a proper module (folder)
-
-pub trait Environment<'a> {
-    // TODO require initialization of these T by a function, currently we expose zeroed memory
-    fn allocate<T, const COUNT: usize>(&self) -> &'a mut [T; COUNT];
-    fn allocate_slice<T>(&self, count: usize) -> &'a mut [T];
-    fn map_physical_memory<T>(&self, addr: u64, count: usize) -> &'static mut [T]; // addr is u64, not usize, because PCI BARs are 64-bit
-    fn get_physical_address<T>(&self, value: *mut T) -> usize; // mut to emphasize that gaining the phys addr might allow HW to write
-
-    fn pci_read(&self, addr: PciAddress, register: u8) -> u32;
-    fn pci_write(&self, addr: PciAddress, register: u8, value: u32);
-
-    fn sleep(&self, duration: Duration);
-}
-
-// --- PCI ---
-
-const PCI_CONFIG_ADDR: u16 = 0xCF8;
-const PCI_CONFIG_DATA: u16 = 0xCFC;
-
-fn port_out_32(port: u16, value: u32) {
-    unsafe {
-        if libc::ioperm(port.into(), 4, 1) < 0 || libc::ioperm(0x80, 1, 1) < 0 {
-            panic!("Could not ioperm, are you root?");
-        }
-        Port::new(port).write(value);
-        Port::new(0x80).write(0u8);
-    }
-}
-
-fn port_in_32(port: u16) -> u32 {
-    unsafe {
-        if libc::ioperm(port.into(), 4, 1) < 0 {
-            panic!("Could not ioperm, are you root?");
-        }
-        Port::new(port).read()
-    }
-}
-
-fn pci_target(address: PciAddress, register: u8) {
-    port_out_32(
-        PCI_CONFIG_ADDR,
-        0x80000000 | ((address.bus as u32) << 16) | ((address.device as u32) << 11) | ((address.function as u32) << 8) | register as u32,
-    );
-}
-
-// --- Linux ---
+use super::environment::Environment;
+use super::pci;
 
 const HUGEPAGE_LOG: usize = 30; // 1 GB hugepages
 const HUGEPAGE_SIZE: usize = 1 << HUGEPAGE_LOG;
@@ -169,14 +120,14 @@ impl<'a> Environment<'a> for LinuxEnvironment {
         }
     }
 
-    fn pci_read(&self, addr: PciAddress, register: u8) -> u32 {
-        pci_target(addr, register);
-        port_in_32(PCI_CONFIG_DATA)
+    fn pci_read(&self, addr: pci::PciAddress, register: u8) -> u32 {
+        pci::pci_target(addr, register);
+        pci::port_in_32(pci::PCI_CONFIG_DATA)
     }
 
-    fn pci_write(&self, addr: PciAddress, register: u8, value: u32) {
-        pci_target(addr, register);
-        port_out_32(PCI_CONFIG_DATA, value);
+    fn pci_write(&self, addr: pci::PciAddress, register: u8, value: u32) {
+        pci::pci_target(addr, register);
+        pci::port_out_32(pci::PCI_CONFIG_DATA, value);
     }
 
     fn sleep(&self, duration: Duration) {

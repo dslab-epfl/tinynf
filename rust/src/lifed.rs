@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 use std::ptr;
 use std::ptr::NonNull;
 
-use crate::env::Environment;
+use crate::env::environment::Environment;
 
 // All unsafe{} blocks in the impls are safe because the pointers must be valid over lifetime 'a and we do bounds checks as necessary
 

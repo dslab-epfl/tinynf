@@ -2,9 +2,9 @@ use std::convert::TryInto;
 use std::mem::size_of;
 use std::time::Duration;
 
-use crate::env::Environment;
+use crate::env::environment::Environment;
+use crate::env::pci::PciAddress;
 use crate::lifed::{LifedPtr, LifedSlice};
-use crate::pci::PciAddress;
 
 use super::pci_regs;
 use super::regs;
@@ -223,7 +223,11 @@ impl<'a> Device<'a> {
 
         regs::clear_field(buffer, regs::RTTDCS, regs::RTTDCS_::ARBDIS);
 
-        Device { buffer, rx_enabled: false, tx_enabled: false }
+        Device {
+            buffer,
+            rx_enabled: false,
+            tx_enabled: false,
+        }
     }
 
     pub fn set_promiscuous(&mut self) {
