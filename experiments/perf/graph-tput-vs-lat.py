@@ -35,7 +35,7 @@ nfs = sys.argv[2:]
 
 # The labels/colors we'll use
 def get_color_label_marker(nf):
-  if nf == 'ada' or nf == 'ada-queues':
+  if nf == 'ada' or nf == 'ada-flexible':
     return ('#70B050', 'Ada', 'P') # P == filled plus
   if nf == 'ada-const':
     return ('#70B050', 'Ada, static output count', 'P')
