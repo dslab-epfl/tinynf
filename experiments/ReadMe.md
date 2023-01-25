@@ -7,8 +7,8 @@ This folder contains experiments from the paper.
 (this may slightly differ from the paper depending on your exact compiler versions)
 
 **Figures**:
-Check out the prerequisites below, then `cd perf ; ./bench-all.sh`, which will take a few hours.
-Then `./plot-all.sh` assuming you have Python with Matplotlib; run `. setup-virtualenv-graphing.sh` on Ubuntu to create a virtualenv with it if needed.
+Check out the prerequisites below, `cd perf`, then `./bench.sh`, which will take a few hours.
+Then `./plot.sh` assuming you have Python with Matplotlib; run `. setup-virtualenv-graphing.sh` on Ubuntu to create a virtualenv with it if needed.
 
 
 ## Prerequisites
