@@ -14,9 +14,12 @@ The repo contains more programming languages, a second driver model, and scripts
 The code of the drivers is in the `ada`, `c`, `csharp`, and `rust` folders.
 We refer to "agents" in the code for the restricted TinyNF model and "queues" for the flexible DPDK model.
 
-All languages provide a `Makefile` to `build` and `format` the code, wrapping other build systems when needed.
-The following parameters are available:
+You can `make` each driver to compile it, and `make format` it to auto-format the code.
 
+To run a driver with a minimal app, either manually run the binary produced by compilation,
+or `make -f Makefile.benchmarking`, but see the `benchmarking/` folder for required environment variables.
+
+The following environment variables are supported by each driver's Makefile:
 - `TN_MODE`: The kind of driver:
   - `restricted` (default): The "restricted" model, which is the original TinyNF one
   - `const` (`ada`, `c`, and `rust` only): The restricted model with a constant number of devices, instead of detecting them at run-time
@@ -39,7 +42,7 @@ To compile each language, you will need `make`, as well as a compiler:
 - `ada`: `gnat`, though any other compiler might work
 - `c`: `gcc` or `clang`, though any other C11 compiler should work
 - `csharp`: `dotnet`, version 7 or above
-- `rust`: `rustc`, a version that supports Rust 2021
+- `rust`: `rustc`, a version that supports Rust 2021, and the `cargo` build system
 
 If you don't want to install those on your machine, we provide a `Dockerfile`, just run `docker build -t tinynf . ; docker run -it tinynf` (you might need `sudo` for Docker).
 This file is also useful if you want to know how to install the dependencies on any Ubuntu machine.
