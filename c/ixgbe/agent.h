@@ -83,10 +83,6 @@ static inline bool ixgbe_agent_init(struct ixgbe_device* input_device, uint8_t o
 	return true;
 }
 
-// --------------
-// High-level API
-// --------------
-
 typedef void ixgbe_packet_handler(volatile struct ixgbe_packet_data* restrict packet, uint64_t packet_length, uint64_t* restrict outputs);
 
 __attribute__((always_inline)) static inline void ixgbe_run(struct ixgbe_agent* agent, ixgbe_packet_handler* handler)
