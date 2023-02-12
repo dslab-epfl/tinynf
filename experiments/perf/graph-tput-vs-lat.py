@@ -36,9 +36,9 @@ nfs = sys.argv[2:]
 # The labels/colors we'll use
 def get_color_label_marker(nf):
   if nf == 'ada' or nf == 'ada-flexible':
-    return ('#70B050', 'Ada', 'P') # P == filled plus
+    return ('#70B050', 'Ada', '+')
   if nf == 'ada-const':
-    return ('#70B050', 'Ada, static output count', 'P')
+    return ('#70B050', 'Ada, static output count', '+')
 
   if nf == 'c-clang' or nf == 'c-flexible-clang':
     return ('#F08030', 'C', '^')
@@ -51,9 +51,9 @@ def get_color_label_marker(nf):
 
   if nf == 'csharp' or nf == 'csharp-flexible':
     name = 'Extended C#' if INTRO else 'C#'
-    return ('#28477E', name, 'X')
+    return ('#28477E', name, 'x')
   if nf == 'csharp-noextensions':
-    return ('#28477E', 'C# without extensions', 'X')
+    return ('#28477E', 'C# without extensions', 'x')
 
   if nf == 'rust' or nf == 'rust-flexible':
     name = 'Extended Rust' if INTRO else 'Rust'
@@ -96,8 +96,9 @@ for nf, val in numbers.items():
   y_med = [l for (t, l) in lats_med]
   (color, label, marker) = get_color_label_marker(nf)
   plt.plot(x, y_med, color=color, alpha=0.4, linestyle='solid')
-  plt.fill_between(x, y_5, y_med, color=color, alpha=0.15)
-  plt.fill_between(x, y_med, y_95, color=color, alpha=0.15)
+  if not INTRO:
+    plt.fill_between(x, y_5, y_med, color=color, alpha=0.15)
+    plt.fill_between(x, y_med, y_95, color=color, alpha=0.15)
   plt.scatter(x, y_med, color=color, marker=marker, s=60, label=label)
 # Configure axes
 plt.xlim(0, 0.2 + max(tput for (_, _, _, tput) in numbers.values()) / 1000.0) # just a little bit of margin to not hide the right side of the markers
