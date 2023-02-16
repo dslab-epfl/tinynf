@@ -11,7 +11,7 @@ endif
 
 build:
 	@make -C $(THIS_DIR)/cwrapper --no-print-directory
-	@dotnet publish -r linux-x64 -c Release --self-contained -o $(OUTPUT_DIR) $(BUILD_ARGS) $(THIS_DIR)
+	@dotnet publish -r linux-x64 -c Release --self-contained -o $(OUTPUT_DIR) $(BUILD_ARGS) $(THIS_DIR)/TinyNF
 
 format:
 	@dotnet format

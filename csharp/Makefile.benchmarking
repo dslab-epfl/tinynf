@@ -2,6 +2,8 @@ THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 include $(THIS_DIR)/Makefile
 
+TN_MODE ?= restricted
+
 run:
 	@sudo LD_LIBRARY_PATH=$(THIS_DIR)/cwrapper $(OUTPUT_DIR)/TinyNF $(TN_MODE) $(NF_ARGS)
 
