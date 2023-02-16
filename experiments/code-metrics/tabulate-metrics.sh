@@ -58,28 +58,28 @@ asm_lines()
 }
 
 # C
-if ! TN_CC=clang make -C c >/dev/null ; then exit $? ; fi
+TN_CC=clang make -C c >/dev/null || exit $?
 asm_c="$(asm_lines 'run' 'c/tinynf' 'c-clang')"
-if ! TN_MODE=flexible TN_CC=clang make -C c >/dev/null ; then exit $? ; fi
+TN_MODE=flexible TN_CC=clang make -C c >/dev/null || exit $?
 asm_c_queues="$(asm_lines 'run' 'c/tinynf' 'c-flexible-clang')"
 
 # Rust is harder due to name mangling, we find the symbol first
-if ! make -C rust >/dev/null 2>&1 ; then exit $? ; fi
+make -C rust >/dev/null 2>&1 || exit $?
 run_symbol="$(nm rust/target/release/tinynf | grep run | grep tinynf | cut -d ' ' -f 3)"
 asm_rust="$(asm_lines "$run_symbol" 'rust/target/release/tinynf' 'rust')"
 
-if ! TN_MODE=flexible make -C rust >/dev/null 2>&1 ; then exit $? ; fi
+TN_MODE=flexible make -C rust >/dev/null 2>&1 || exit $?
 run_queues_symbol="$(nm rust/target/release/tinynf | grep run | grep queues | grep tinynf | cut -d ' ' -f 3)"
 asm_rust_queues="$(asm_lines "$run_queues_symbol" 'rust/target/release/tinynf' 'rust-flexible')"
 
 # CSharp always has both compiled so we only compile once
 # There's also like 3 asm lines for the lambda initializing the default value of the buffer references for queues; it does not matter at this scale
-if ! TN_CSHARP_AOT=y make -C csharp >/dev/null 2>&1 ; then exit $? ; fi
+TN_CSHARP_AOT=y make -C csharp >/dev/null 2>&1 || exit $?
 asm_csharp="$(asm_lines 'TinyNF_TinyNF_Program__Run' csharp/out/TinyNF 'csharp')"
 asm_csharp_queues="$(asm_lines 'TinyNF_TinyNF_Program__RunQueues' csharp/out/TinyNF 'csharp-flexible')"
 
 # Ada also has both; the first name is very brittle though
-if ! make -C ada >/dev/null 2>&1 ; then exit $? ; fi
+make -C ada >/dev/null 2>&1 || exit $?
 asm_ada="$(asm_lines 'main__B_1__B_2__myrun.7' 'ada/tinynf' 'ada')"
 asm_ada_queues="$(asm_lines 'run__run_queues' 'ada/tinynf' 'ada-flexible')"
 
