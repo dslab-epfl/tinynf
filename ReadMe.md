@@ -48,6 +48,8 @@ If you don't want to install those on your machine, we provide a `Dockerfile`, j
 This file is also useful if you want to know how to install the dependencies on any Ubuntu machine.
 (The Dockerfile does not include `clang-format`, which is used for `make format` in `c`, you'll have to install that manually if you want to auto-format the C code)
 
+Known good versions: GCC 12.1.0; Clang 14.0.0; Rustc and Cargo 1.67.1; .NET 7.0.200; GNAT 12.1.0; on Ubuntu 22.04.
+
 
 ## Experiments
 
