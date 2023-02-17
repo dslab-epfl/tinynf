@@ -7,6 +7,7 @@ You can still find that version of the code, and the experimental scripts to rep
 
 It was extended for the paper ["Safe low-level code without overhead is practical"](https://conf.researchr.org/details/icse-2023/icse-2023-technical-track/18/Safe-low-level-code-without-overhead-is-practical) (ICSE 2023).
 The repo contains more programming languages, a second driver model, and scripts to reproduce the new paper's experiments.
+It is permanently archived at https://doi.org/10.5281/zenodo.7649472
 
 
 ## Code
@@ -49,6 +50,7 @@ This file is also useful if you want to know how to install the dependencies on 
 (The Dockerfile does not include `clang-format`, which is used for `make format` in `c`, you'll have to install that manually if you want to auto-format the C code)
 
 Known good versions: GCC 12.1.0; Clang 14.0.0; Rustc and Cargo 1.67.1; .NET 7.0.200; GNAT 12.1.0; on Ubuntu 22.04.
+These correspond to the following pre-built Docker file: https://doi.org/10.5281/zenodo.7649567
 
 
 ## Experiments
