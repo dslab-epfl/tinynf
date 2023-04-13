@@ -15,5 +15,6 @@ if [ ! -d "$RTE_TARGET" ]; then
   sed -i 's/DESC_DEFAULT 1024/DESC_DEFAULT 2048/g' examples/l3fwd/l3fwd.h
 
   # Ignore a bunch of GCC 10 warnings that cause errors due to DPDK's build system
-  EXTRA_CFLAGS='-Wno-stringop-overflow -Wno-maybe-uninitialized -Wno-zero-length-bounds' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
+  # -fcommon because of https://inbox.dpdk.org/stable/93926f34-404a-3de3-c320-8705354ab89b@intel.com/T/
+  EXTRA_CFLAGS='-fcommon -Wno-stringop-overflow -Wno-maybe-uninitialized -Wno-zero-length-bounds' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
 fi
