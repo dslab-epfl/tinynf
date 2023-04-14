@@ -10,7 +10,8 @@ RTE_TARGET='x86_64-native-linuxapp-gcc'
 cd dpdk
 if [ ! -d $RTE_TARGET ]; then
   # Ignore warnings caused by GCC 10
-  EXTRA_CFLAGS='-Wno-stringop-truncation -Wno-stringop-overflow -Wno-zero-length-bounds' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
+  # -fcommon because of https://inbox.dpdk.org/stable/93926f34-404a-3de3-c320-8705354ab89b@intel.com/T/
+  EXTRA_CFLAGS='-fcommon -Wno-stringop-truncation -Wno-stringop-overflow -Wno-zero-length-bounds' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
 fi
 cd ..
 
@@ -21,5 +22,5 @@ if [ ! -d $RTE_TARGET ]; then
   done
 
   # same but with one more due to the patches
-  EXTRA_CFLAGS='-Wno-stringop-truncation -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-unused-variable' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
+  EXTRA_CFLAGS='-fcommon -Wno-stringop-truncation -Wno-stringop-overflow -Wno-zero-length-bounds -Wno-unused-variable' make install -j$(nproc) T=$RTE_TARGET DESTDIR=.
 fi
